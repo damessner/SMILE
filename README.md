@@ -1,265 +1,146 @@
-# README — SMILE
-
-**MS Telfs Dr. Aloys Weissenbach (Schuljahr 2026/2027)**
-
-SMILE ist eine Web-Plattform zur kollaborativen Schülerbeobachtung, Verhaltenserfassung,
-Klassenkonferenz und zum täglichen Klassenmanagement.
-
-> **Before deploying:** read [`docs/SECURITY.md`](docs/SECURITY.md). The previous
-> version shipped live credentials and shared passwords in this repository. Those
-> secrets must be rotated, and the manual steps are listed there.
+# ✨ SMILE — Collaborative Assessment & School Management
+> **Moderne Schülerbeobachtung, Verhaltenserfassung & Klassenkonferenzen**  
+> *MS Telfs Dr. Aloys Weissenbach (Schuljahr 2026/2027)*
 
 ---
 
-## Systemübersicht
+## 🎯 Über SMILE
+
+**SMILE** ist eine kollaborative Plattform für Lehrpersonen und Schulleitung, die den Schulalltag, die kontinuierliche Verhaltensbeobachtung und die Notenkonferenzen in einem modernen, intuitiven Interface vereint. 
+
+Statt mühsam papierbasierte Bögen auszufüllen, arbeiten alle Lehrkräfte in Echtzeit zusammen — transparent, motivierend und transparent für Schülerinnen und Schüler.
 
 ```
-[ Client: React 19 + Vite 8 + Tailwind CSS 4 ]
-                     │
-        HTTP/REST   │  WebSocket (/ws, authentifiziert)
-                     ▼
-[ Backend: Fastify 5 + TypeScript + JWT (httpOnly Cookie) ]
-                     │
-        Drizzle ORM │  node-postgres Pool (lazy)
-                     ▼
-[ Database: PostgreSQL 17 · Schema via versionierte Migrationen ]
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🌟 MEISTER                 🛠️ GESELLE                  🌱 LEHRLING          │
+│ Herausragende Leistungen   Solide & verlässliche       Fokus auf Begleitung │
+│ & Vorbildfunktion          Mitarbeit im Schulalltag    & nächste Lernschritte│
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Frontend:** React 19, TypeScript, Tailwind CSS 4, Vite. Compact responsive tables,
-  accessible modals, error boundary.
-- **Backend:** Fastify 5, `@fastify/websocket`, `@fastify/jwt`, `@fastify/cookie`,
-  `@fastify/rate-limit`, `@fastify/static`.
-- **Datenbank:** PostgreSQL. The schema is owned by a single source of truth
-  (`server/src/db/schema.ts`) and applied through generated Drizzle migrations. There
-  is no hand-written DDL.
+---
+
+## 🚀 Kernfunktionen im Überblick
+
+### 🏫 1. Schulalltag — Minimalistisches Klassenmanagement
+Die zentrale Arbeitsfläche für Lehrpersonen während jeder Unterrichtsstunde. Entwickelt für maximale Übersicht und minimale Ablenkung:
+
+- 📋 **Kompakte Listenansicht:** Alle Schülerinnen und Schüler einer Klasse auf einen Blick — kein langes Scrollen mehr!
+  - 👤 **Name:** Schnelle Erkennung mit dezenten Live-Badges für aktives Time-Out (`⏱️ LW`) oder Mahnstufen-Warnung (`⚠️`).
+  - 🏅 **RANG:** Sofort sichtbar als `👑 Meister`, `🛠️ Geselle` oder `🌱 Lehrling` (inklusive automatischer Anzeige von Rangverlusten `-1`).
+  - 🚦 **Karten-Zähler:** Direkte Zählerübersicht für 🟢 Grüne, 🟡 Gelbe und 🔴 Rote Karten.
+  - ⚡ **1-Klick Schnell-Aktionen:** Direkte Buttons pro Zeile: `[+ Grün]`, `[+ Gelb]`, `[+ Rot]` und `[⏱️ TIMEOUT]`.
+- 🔍 **Detailansicht per Zeilenklick:**
+  - Klick auf die Zeile klappt direkt darunter das Detail-Panel auf.
+  - Zeigt erfüllte Beobachtungskriterien (z. B. *14 von 18 positiv*).
+  - Vollständige chronologische Historie aller Karten mit Datum, Uhrzeit, Lehrperson und Begründung.
+  - Fehlerhaft vergebene Karten können mit einem Klick auf `[X]` wieder zurückgezogen werden.
+  - Schnelles Notizfeld für spontane Beobachtungen im Unterricht.
+- 🕒 **Automatische Stundenplan-Erkennung:**
+  - Erkennt anhand des Stundenplans automatisch die aktuelle Klasse der Lehrperson und schlägt diese direkt vor.
 
 ---
 
-## Erste Einrichtung
+### ⏱️ 2. Time-Out & Lernwerkstatt (LW) System
+Disziplinäre Vorfälle werden pädagogisch sinnvoll und nachvollziehbar gelöst:
 
-```bash
-npm install
-
-# Secrets: keine Defaults, der Server startet sonst nicht.
-cp .env.example .env
-# Werte eintragen. Zwei Secrets generieren:
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"   # JWT_SECRET
-node -e "console.log(require('crypto').randomBytes(18).toString('base64url'))"   # INITIAL_USER_PASSWORD
-
-# Schema anlegen und Stammdaten aus export/ importieren
-npm run db:migrate
-npm run seed
-
-npm run build
-npm start
-```
-
-### Zugänge
-
-Es gibt **keine** gemeinsamen Standardpasswörter mehr. `npm run seed` erstellt jedes Konto
-mit einem individuellen Startpasswort aus `INITIAL_USER_PASSWORD` und setzt
-`must_change_password`. Bis zum Ändern des Passworts sind schreibende Zugriffe
-serverseitig gesperrt.
-
-Ein erneuter `npm run seed` überschreibt **keine** bestehenden Passwörter.
-
-Passwort vergessen: Die Schulleitung ruft `POST /api/auth/request-reset` auf. Es gibt
-bewusst keinen Self-Service-Reset, da im Schulnetz kein Mailversand stattfindet.
+- 🚪 **Time-Out Button im Unterricht:**
+  - Bei schwerwiegenden Störungen klickt die Lehrkraft auf `[ ⏱️ TIMEOUT (LW) ]`.
+  - Eingabe eines verpflichtenden **Arbeitsauftrags** für die Lernwerkstatt.
+  - Gilt automatisch als **Rote Karte** (sofortiger Rangverlust: Meister ➔ Geselle, Geselle ➔ Lehrling) und wird revisionssicher im Protokoll vermerkt.
+- 🛠️ **Lernwerkstatt Live-View:**
+  - Betreuungspersonen in der Lernwerkstatt sehen alle anwesenden Schülerinnen und Schüler live.
+  - Zeigt genau an: *Wer hat den Schüler geschickt? Um welche Uhrzeit? Welcher Arbeitsauftrag ist zu erledigen?*
+  - Button **`[ ✓ Arbeitsauftrag erledigt / Zurück in die Klasse ]`** beendet das Time-Out und sendet den Schüler mit Erledigungsvermerk zurück.
 
 ---
 
-## Befehle
+### 🚨 3. SLC Time-Out Eskalationssystem (Mahnstufen 3, 6, 9...)
+Ein strukturierter Stufenplan für die Schulleitung zur frühen Elternarbeit:
 
-| Befehl | Wirkung |
-|---|---|
-| `npm run dev` | Server und Client parallel starten |
-| `npm run dev:server` | Nur der Server (`tsx watch`) |
-| `npm run dev:client` | Nur der Vite-Dev-Server auf Port 5173 |
-| `npm run build` | Server (`tsc`) und Client (`vite build`) bauen |
-| `npm start` | Gebauten Server starten |
-| `npm test` | Testsuite (94 Tests) |
-| `npm run typecheck` | Typecheck für beide Workspaces |
-| `npm run db:generate` | Neue Migration aus `schema.ts` erzeugen |
-| `npm run db:migrate` | Ausstehende Migrationen anwenden |
-| `npm run db:studio` | Drizzle Studio |
-| `npm run seed` | Stammdaten aus `export/` importieren |
-
-Nach jeder `npm install` läuft `scripts/verify-env.mjs`: Der Check bricht mit Exit-Code 1
-ab, wenn `.env` noch die alten, kompromittierten Secrets enthält oder Backup-Archive mit
-Schülerdaten im Arbeitsverzeichnis liegen.
+- 🔔 **Direkte Benachrichtigung:** Schulleiter **SLC** (und Admin) sehen einen roten Zähler auf dem `[ ⏱️ Time-Out ]`-Button in der Navigationsleiste.
+- 📈 **Automatische Schwellenwerte:** Erreicht ein Schüler das **3., 6., 9., 12. ...** Time-Out, schlägt das System automatisch Alarm.
+- 📞 **Elternvereinbarung:**
+  - Schulleitung kontaktiert die Eltern und klickt auf **`[ Eltern verständigt & Nachholtermin am Nachmittag vereinbart ]`**.
+  - Eingabe des vereinbarten Termins und kurzer Notizen.
+  - Der Schüler gilt für diese Stufe als erledigt, bis die nächste 3er-Schwelle erreicht wird.
 
 ---
 
-## Rollen und Berechtigungen
+### 📋 4. Beobachtungsraster & Bewertung
+Das Herzstück für die formative Beurteilung der überfachlichen Kompetenzen:
 
-Die Berechtigungslogik liegt zentral in `server/src/lib/guards.ts`
-(`getClassAccess`). Jede Route prüft gegen dieses Ergebnis; es gibt keine
-route-lokalen Kopien mehr.
+- 🧩 **18 Beobachtungsmerkmale in 6 Schlüsselbereichen:**
+  1. 🗂️ **Arbeitsorganisation:** Arbeitsauftrag kennen, selbstständiger Start, Material- und Zeiteinteilung.
+  2. 💡 **Fragen & Problemlösen:** Gezieltes Nachfragen, präzise Problemformulierung, eigene Lösungsansätze.
+  3. 🎯 **Arbeitshaltung:** Konzentration, Ausdauer, Mitschüler nicht stören, Dranbleiben bei Hürden.
+  4. 🤝 **Verantwortung:** Regeln einhalten, zu Entscheidungen stehen, verantwortungsvoller Umgang mit Freiräumen.
+  5. 🪞 **Reflexion:** Realistische Selbsteinschätzung, Stärken/Schwächen erkennen, nächste Lernschritte benennen.
+  6. 🔍 **Verstehen statt Erledigen:** Echtes Verständnis prüfen, Fehler konstruktiv aufarbeiten, Qualität vor Quantität.
 
-| Rolle | Zugriff |
+- 😊 **5 Smiley-Bewertungsstufen:**
+  - 👑 **Krone:** Herausragend erfüllt
+  - 😊 **Lächeln:** Gut & verlässlich erfüllt
+  - 😖 **Angestrengt:** Teilweise / mit Unterstützung erfüllt
+  - 😢 **Traurig:** Noch nicht erfüllt
+  - 🔄 **Neustart:** Zurücksetzen / Neu ansetzen
+  - *(Leer):* Keine Beurteilung abgegeben
+
+- ⚡ **Schnellauswahl & Sofort-Rang:**
+  - Ganze Kategorien mit einem einzigen Smiley-Klick füllen.
+  - Schnellbuttons: *„Meister füllen“*, *„Geselle füllen“*, *„Reset“*.
+- 📂 **Zwei-Ordner-Workflow:**
+  - **Offen:** Noch zu bewertende Schülerinnen und Schüler.
+  - **Bewertet:** Bereits eingereichte Bewertungen mit Zeitstempel.
+  - Nach Klick auf *„Ranking einreichen“* springt die Ansicht automatisch zur nächsten Person.
+
+---
+
+### ⚖️ 5. Konferenz-Modus (Klassenkonferenz & Abstimmung)
+Spezieller Vollbildmodus für die Beschlussfassung am Notenkonferenztag:
+
+- 🖥️ **Präsentationsansicht:** Für Beamer und Großbildschirme optimiert.
+- 📊 **Farbbalken pro Schüler:**
+  - 🟨 **Gelb:** Meister-Vorschlag
+  - 🟦 **Blau:** Gesellen-Vorschlag
+  - 🟥 **Rot:** Lehrlings-Vorschlag
+- 🗳️ **Demokratische Beschlussfassung:**
+  - Zeigt die Stimmen aller unterrichtenden Lehrpersonen einer Klasse.
+  - Button **`[ Angenommen ]`** mit Live-Anzeige der Gegenstimmen (basierend auf der Anzahl der unterrichtenden Lehrkräfte).
+  - Fehlklicks können jederzeit per Klick wieder rückgängig gemacht werden.
+  - Zum Stichtag werden alle Beschlüsse revisionssicher fixiert.
+
+---
+
+### 📊 6. Schul- & Klassenstatistik
+Transparente Kennzahlen für Lehrkräfte und Schulleitung:
+
+- 📈 **Übersichtliche Balkendiagramme:** Anteil von Lehrlingen, Gesellen und Meistern auf Klassen- und Schulebene.
+- 🎯 **Verteilungsquoten:** Schneller Überblick über Förderschwerpunkte und Klassenentwicklungen über das Schuljahr.
+
+---
+
+### 🖨️ 7. 1-Seiten Klassenexport (PDF / Druck)
+Kompakter Überblick für Konferenzen, Elterngespräche (KEL) und Notizen:
+
+- 📄 **1 Seite pro Klasse:** Alle Notizen, Rangempfehlungen und Kriterienübersichten komprimiert auf einer DIN-A4-Druckseite.
+- 🖨️ **Druckoptimiert:** Klares Layout ohne störende Seitenelemente für den schnellen Ausdruck im Lehrerzimmer.
+
+---
+
+## 👥 Rollen- & Berechtigungskonzept
+
+| Rolle | Zuständigkeit & Berechtigungen |
 | :--- | :--- |
-| **Administrator (`admin`)** | Alle Klassen, Konferenzen, Backups, Benutzerverwaltung |
-| **Schulleitung (`SLC`, `MED`)** | Alle Klassen, Konferenzmodus, Eskalations-Dashboard, Statistiken |
-| **Klassenvorstand** | Vollzugriff auf die eigene Stammklasse; Schüleranlage/-bearbeitung; Konferenzmodus für diese Klasse |
-| **Fachlehrperson** | Nur zugewiesene Klassen laut Stundenplan; Karten und Time-Outs dort; Bewertungsraster nur für Hauptfächer (D, M, E) |
-
-`canRead` / `canRecord` / `canRate` / `canManagePupils` / `canRunConference` sind getrennt
-vorhanden, damit eine Route nur die Berechtigung prüft, die sie tatsächlich braucht.
-
-Karten-Aktionen: Eine Karte kann nur von der ausstellenden Lehrperson, dem
-Klassenvorstand oder der Schulleitung zurückgezogen werden.
+| 👑 **Schulleitung (`SLC`, `MED`)** | • Zugriff auf alle Klassen (`1B` bis `4G`)<br>• Konferenzmodus mit Beschlussrechten<br>• SLC: Time-Out Eskalations-Dashboard (Mahnstufen 3, 6, 9...)<br>• Vollständige Schulstatistiken |
+| 🧑‍🏫 **Klassenvorstände (KVs)** | • Vollzugriff auf die eigene Stammklasse<br>• Mahnstufen-Warnungen (Gelbe Karten ≥ 2) für eigene Schüler<br>• Konferenz-Modus für die eigene Klasse |
+| 📚 **Fachlehrpersonen (z. B. `ZIA`)** | • Zugriff auf die zugewiesenen Klassen laut Stundenplan<br>• Beobachtungsraster für Hauptfächer (D, M, E; z. B. SD+D als eine Einheit)<br>• Vergabe von Karten und Time-Outs im Schulalltag |
+| 🛡️ **Administrator (`admin`)** | • Vollzugriff auf alle Systembereiche, Benutzer und Backups |
 
 ---
 
-## Konferenzmodus
+## ⚡ Echtzeit-Kollaboration (Live-Sync)
 
-- Zugriff: Schulleitung sowie die Klassenvorstände der jeweiligen Klasse.
-- Eine Bestätigung wird gegen `pupilId ∈ classId` geprüft. Ein Beschluss für einen
-  Schüler einer anderen Klasse wird abgelehnt.
-- Beschlüsse tragen den Konferenzzeitstempel aus `OFFICIAL_CONFERENCE_DATE`.
-- `vote-all` läuft als eine Transaktion: die Klasse ist entweder ganz oder gar nicht
-  bestätigt.
-
----
-
-## Bewertungslogik
-
-Die Rangberechnung liegt einmalig in `server/src/lib/ranking.ts`. Vorher war sie in
-zwei Routendateien dupliziert, mit fest verdrahteten Schwellen von 14/8.
-
-```
-positiv bewertet >= RANK_THRESHOLD_MEISTER  -> Meister
-positiv bewertet >= RANK_THRESHOLD_GESELLE  -> Geselle
-sonst                                       -> Lehrling
-aktive Rote Karte                           -> eine Stufe abwärts
-```
-
-`RANK_AGGREGATION` steuert, was "positiv bewertet" über mehrere Fachlehrkräfte hinweg
-bedeutet:
-
-- `total` (Vorgabe, bisheriges Verhalten): Summe aller positiven Merkmale über alle
-  Bewertungen. Die Summe wächst mit der Zahl der beteiligten Lehrkräfte.
-- `normalized`: Jede Bewertung wird auf 18 Merkmale normiert, bevor gemittelt wird. "14"
-  bedeutet dann unabhängig von der Lehrkraftzahl 14 von 18.
-
-Beide Werte sind in `.env` konfigurierbar, ebenso die Schwellen selbst.
-
----
-
-## Echtzeit-Synchronisierung
-
-`/ws` ist authentifiziert. Eine nicht angemeldete Verbindung wird mit 401 abgelehnt,
-bevor der Socket geöffnet wird. Die Identität stammt ausschließlich aus dem verifizierten
-JWT; Angaben aus der Nachricht (`teacherId`, `teacherName`) werden ignoriert.
-
-- **Zellen-Sperren:** Wer eine Zelle bearbeitet, sieht einen Hinweis bei den Kolleginnen.
-- **Konflikte:** Bewertungen werden mit einem atomaren Versionsvergleich geschrieben.
-  Zwei gleichzeitige Taps können nicht beide gewinnen; der Verlierer bekommt ein
-  `CONFLICT` mit dem aktuellen Stand.
-- **Heartbeat:** 30 Sekunden. Sockets, die ohne TCP-FIN verschwinden, werden entfernt.
-- **Räume:** maximal `WS_ROOM_MAX_CLIENTS` Verbindungen pro Klasse.
-
----
-
-## Datenbank und Migrationen
-
-Das Schema liegt in `server/src/db/schema.ts`. Änderungen laufen über:
-
-```bash
-npm run db:generate   # erzeugt server/drizzle/000N_*.sql
-npm run db:migrate    # wendet sie an
-```
-
-Migrationen werden beim Serverstart automatisch angewendet, bevor Traffic angenommen wird.
-
-Indisizes auf heißen Pfaden (Karten je Schüler, Time-Outs, Stundenplan je Lehrkraft und
-Tag, Klassenzugriffsprüfungen) und Unique-Indizes, die doppelte Bewertungen und
-Beschlüsse unter Nebenläufigkeit verhindern, sind Teil des generierten Schemas.
-
----
-
-## Backup
-
-- `GET /api/backup/export-json` — vollständiger Datenexport, **nur für `admin`**. Der
-  Audit-Log ist vollständig enthalten (vorher auf 500 Zeilen gekürzt).
-- `GET /api/backup/verify` — Erreichbarkeit und Zeilenzahlen.
-- `GET /api/backup/audit-log` — Audit-Log paginiert durchsuchbar.
-
-Ein Wiederherstellen ist **nicht** implementiert. Ein JSON-Export ersetzt kein
-`pg_dump`: Er hängt an der ORM-Abbildung und erfasst keine Schemaänderungen.
-
-Automatische Backups über Cron oder PBS sind in `PLAN.md` §7 beschrieben, aber nicht
-umgesetzt.
-
----
-
-## Tests
-
-```bash
-npm test
-```
-
-Abgedeckt: Konfigurationsvalidierung (inklusive Ablehnung der kompromittierten Secrets),
-Berechtigungslogik für Klassenvorstand und Rollen, Rangberechnung und
-Rangdemotion, WebSocket-Autorisierung (einschließlich der Regressionen „teacherId
-weglassen" und „teacherId fälschen"), Sicherheitsheader, CSRF-Origin-Prüfung und die
-Authentifizierungspflicht jeder einzelnen Route.
-
----
-
-## Verzeichnisstruktur
-
-```
-SMILE/
-├── client/
-│   └── src/
-│       ├── components/     # UI
-│       ├── hooks/          # useLiveSync
-│       ├── services/       # api.ts (Cookie-Session)
-│       └── types.ts
-├── server/
-│   ├── drizzle/            # generierte Migrationen
-│   └── src/
-│       ├── config.ts       # Env-Validierung, keine Secret-Defaults
-│       ├── db/             # schema.ts, Migrationen, Seed
-│       ├── lib/            # guards.ts, ranking.ts, session.ts
-│       ├── plugins/        # security.ts
-│       ├── routes/         # REST-Endpunkte
-│       └── ws/live-sync.ts
-├── docs/SECURITY.md        # Findings und offene Punkte
-├── export/                 # WebUntis-Exporte (Eingang für den Seed)
-└── scripts/verify-env.mjs  # Post-Install-Secrets-Check
-```
-
----
-
-## Infrastruktur
-
-| Parameter | Wert |
-| :--- | :--- |
-| Proxmox Host | `192.168.178.87:8006` |
-| LXC Container | `115` (`smile`) |
-| Anwendung | `http://192.168.178.54:3000` |
-| OS | Debian 12 |
-| Node.js | 22+ |
-| PostgreSQL | 17 auf `127.0.0.1:5432` |
-| Datenbank | `smile_db` |
-| Verzeichnis | `/opt/smile` |
-| Service | `smile.service` |
-
-```bash
-pct exec 115 -- systemctl status smile.service
-pct exec 115 -- journalctl -u smile.service -f
-```
-
----
-
-## Offene Punkte
-
-- Kein TLS. Das Schulnetz liefert HTTP; der Session-Cookie ist `httpOnly` und
-  `SameSite=Strict`, aber im Klartext unterwegs. `COOKIE_SECURE=true` und ein
-  TLS-Terminierender Proxy sind empfohlen.
-- Kein automatisierter Backup-Zyklus.
-- Kein Wiederherstellen aus dem Export.
-- `PLAN.md` beschreibt teilweise den alten Stand (Stack, Standardpasswörter).
-- Keine CI-Pipeline; Tests laufen lokal.
+- 🔄 **Kein Neuladen erforderlich:** Bewertet Lehrkraft A einen Schüler oder vergibt eine Karte, erscheint die Änderung in Bruchteilen einer Sekunde bei allen angemeldeten Kolleginnen und Kollegen.
+- 🔒 **Smarte Zellensperren (Soft Locks):** Bearbeitet jemand gerade ein Kriterium, sehen andere ein dezentes Namens-Badge auf der Zelle, um Überschreiben zu verhindern.
+- 🛑 **Konferenz-Sperre:** Sobald die Konferenzleitung eine Klasse sperrt, wird das Raster für Fachlehrer in Echtzeit schreibgeschützt.
