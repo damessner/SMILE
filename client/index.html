@@ -3,13 +3,55 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <!--
+      viewport-fit=cover lets the layout extend under the notch when the app is
+      installed to the Home Screen; the .safe-top/.safe-bottom classes then inset
+      the content back. Without it, safe-area insets are zero and content sits
+      under the status bar.
+
+      maximum-scale/user-scalable are intentionally NOT disabled: pinch-zoom is
+      an accessibility feature, and suppressing it is a WCAG 1.4.4 failure. Touch
+      targets are 44px on their own merits, so accidental zoom is not a concern.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Installed-web-app behaviour: full screen, dark status bar. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#1e293b" />
+    <meta name="apple-mobile-web-app-title" content="SMILE" />
+
+    <!--
+      Two theme-colors: the light one applies when the OS is in light mode and
+      the page chrome is not yet painted, avoiding a white flash against the
+      dark UI. Without it the status bar area renders white for a moment.
+    -->
+    <meta name="theme-color" content="#080b12" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#080b12" media="(prefers-color-scheme: light)" />
+
     <title>SMILE — Bewertung & Konferenz</title>
+
+    <script>
+      /*
+        Apply the stored theme BEFORE the bundle loads.
+
+        Without this, a light-theme user gets a dark flash on every page load:
+        the stylesheet and React both arrive after the first paint, so the page
+        renders with the dark default first and then switches.
+      */
+      (function () {
+        try {
+          var t = localStorage.getItem('smile_theme');
+          if (t !== 'light' && t !== 'dark') t = 'dark';
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-slate-900 text-slate-100 antialiased min-h-screen selection:bg-amber-500 selection:text-white">
+  <body class="bg-surface-0 text-slate-200 antialiased min-h-[100dvh]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

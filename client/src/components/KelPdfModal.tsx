@@ -23,13 +23,13 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
   const positiveCount = allItems.filter((i) => isPositive(i.rating)).length;
 
   let calculatedRank = 'Lehrling';
-  let rankBadgeStyle = 'bg-rose-500 text-white';
+  let rankBadgeStyle = 'bg-rose-500 text-slate-50';
   if (positiveCount >= 14) {
     calculatedRank = 'Meister';
-    rankBadgeStyle = 'bg-amber-400 text-slate-950 font-black';
+    rankBadgeStyle = 'bg-amber-400 text-slate-950 font-bold';
   } else if (positiveCount >= 8) {
     calculatedRank = 'Geselle';
-    rankBadgeStyle = 'bg-blue-500 text-white font-bold';
+    rankBadgeStyle = 'bg-blue-500 text-slate-50 font-bold';
   }
 
   const handlePrint = () => {
@@ -39,8 +39,8 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 print:p-0 print:bg-white print:static">
       {/* Control Header for Screen */}
-      <div className="w-full max-w-3xl bg-white text-slate-900 rounded-3xl shadow-2xl overflow-hidden print:shadow-none print:w-full print:max-w-none print:rounded-none">
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white print:hidden">
+      <div className="w-full max-w-3xl bg-white text-slate-900 rounded-3xl shadow-lg overflow-hidden print:shadow-none print:w-full print:max-w-none print:rounded-none">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-slate-50 print:hidden">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-400" />
             <h3 className="font-bold text-sm">KEL-Gespräch / Entwicklungsbericht Druckansicht</h3>
@@ -55,7 +55,7 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-white transition"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-50 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -70,7 +70,7 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
               <span className="text-xs uppercase font-extrabold tracking-wider text-slate-500">
                 Mittelschule Telfs Weissenbach
               </span>
-              <h1 className="text-2xl font-black text-slate-900">SMILE Entwicklungsübersicht</h1>
+              <h1 className="text-2xl font-bold text-slate-900">SMILE Entwicklungsübersicht</h1>
               <p className="text-xs text-slate-600">Beobachtungsraster & KEL-Gesprächsbeiblatt · {roundName}</p>
             </div>
             <div className="text-right">
@@ -83,11 +83,11 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
           <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-100 border border-slate-200 mb-6">
             <div>
               <span className="text-xs uppercase font-bold text-slate-500">Schülerin / Schüler</span>
-              <h2 className="text-xl font-black text-slate-900">{pupil.fullName}</h2>
+              <h2 className="text-xl font-bold text-slate-900">{pupil.fullName}</h2>
             </div>
             <div className="text-right">
               <span className="text-xs uppercase font-bold text-slate-500 block">Erreichter Status</span>
-              <span className={`inline-block px-4 py-1.5 rounded-xl text-sm font-black uppercase tracking-wider shadow-sm ${rankBadgeStyle}`}>
+              <span className={`inline-block px-4 py-1.5 rounded-xl text-sm font-bold uppercase tracking-wider shadow-sm ${rankBadgeStyle}`}>
                 {calculatedRank}
               </span>
             </div>

@@ -21,6 +21,10 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  Crown,
+  Wrench,
+  Sprout,
+  ShieldAlert as ShieldAlertIcon,
 } from 'lucide-react';
 import { SchoolClass, PupilWithData, User } from '../types';
 import { useToast } from './Toast';
@@ -546,7 +550,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
           <div className="flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-            <h1 className="text-lg font-black text-white">
+            <h1 className="text-lg font-bold text-slate-50">
               {isLwView ? 'Lernwerkstatt (LW)' : currentClass ? `Klasse ${currentClass.name}` : 'Klasse'}
             </h1>
             <span className="text-xs text-slate-400">
@@ -594,14 +598,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               onClick={() => setIsLwView(true)}
               className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                 isLwView
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25'
-                  : 'bg-slate-800/80 text-amber-300 hover:text-white hover:bg-slate-700 border border-amber-500/30'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-sm'
+                  : 'bg-slate-800/80 text-amber-300 hover:text-slate-50 hover:bg-slate-700 border border-amber-500/30'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
               <span>Lernwerkstatt (LW)</span>
               {activeTimeouts.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-black text-[10px] animate-pulse">
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-50 font-bold text-[10px] animate-pulse">
                   {activeTimeouts.length}
                 </span>
               )}
@@ -618,8 +622,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 }}
                 className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                   !isLwView && currentClass?.id === cls.id
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
-                    : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-sm'
+                    : 'bg-slate-800/80 text-slate-300 hover:text-slate-50 hover:bg-slate-700'
                 }`}
               >
                 <span>{cls.name}</span>
@@ -654,7 +658,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     className={`min-h-[40px] px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
                       (isLwView && isThisLW) || (!isLwView && currentClass.name === cName)
                         ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                        : 'bg-slate-800 text-slate-400 hover:text-white border-slate-700'
+                        : 'bg-slate-800 text-slate-400 hover:text-slate-50 border-slate-700'
                     }`}
                     title={`${l.period}. Stunde: ${cName} ${sCode} (Raum ${l.room})`}
                   >
@@ -672,12 +676,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       {/* ===================================================================== */}
       {isLwView ? (
         <div className="space-y-6">
-          <div className="bg-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 shadow-xl">
+          <div className="bg-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 shadow-lg">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
-                  <h2 className="text-xl font-black text-white">
+                  <h2 className="text-xl font-bold text-slate-50">
                     Lernwerkstatt – Aktive Time-Out Schüler*innen
                   </h2>
                 </div>
@@ -692,7 +696,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 </span>
                 <button
                   onClick={loadTimeoutsData}
-                  className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition"
+                  className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-xs font-bold transition"
                 >
                   Aktualisieren
                 </button>
@@ -708,7 +712,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               ) : activeTimeouts.length === 0 ? (
                 <div className="py-16 text-center text-slate-400 bg-slate-950/40 rounded-2xl border border-slate-800/80">
                   <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-80" />
-                  <p className="font-bold text-white text-base">Aktuell keine Schüler im Time-Out!</p>
+                  <p className="font-bold text-slate-50 text-base">Aktuell keine Schüler im Time-Out!</p>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Sobald eine Lehrkraft eine Schülerin / einen Schüler ins Time-Out schickt, erscheint sie/er hier live mit Arbeitsauftrag.
                   </p>
@@ -718,21 +722,21 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   {activeTimeouts.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-slate-950 border-2 border-rose-500/50 rounded-3xl p-5 shadow-xl flex flex-col justify-between"
+                      className="bg-slate-950 border-2 border-rose-500/50 rounded-3xl p-5 shadow-lg flex flex-col justify-between"
                     >
                       <div>
                         {/* Header: Pupil Name & Class */}
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-black animate-pulse">
-                                ⏱️ Time-Out aktiv
+                              <span className="px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold animate-pulse">
+                                <Clock className="w-3.5 h-3.5 inline" aria-hidden="true" /> Time-Out aktiv
                               </span>
                               <span className="text-xs font-bold text-slate-400">
                                 Klasse {item.class_name}
                               </span>
                             </div>
-                            <h3 className="text-xl font-black text-white">
+                            <h3 className="text-xl font-bold text-slate-50">
                               {item.pupil_name}
                             </h3>
                           </div>
@@ -750,11 +754,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Arbeitsauftrag Box */}
                         <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 mb-4">
-                          <div className="flex items-center gap-1.5 text-[11px] font-black uppercase text-amber-300 mb-1.5">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-300 mb-1.5">
                             <FileText className="w-3.5 h-3.5" />
                             <span>Arbeitsauftrag der Lehrperson:</span>
                           </div>
-                          <p className="text-xs text-white leading-relaxed font-medium bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                          <p className="text-xs text-slate-50 leading-relaxed font-medium bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
                             &bdquo;{item.task_assignment}&ldquo;
                           </p>
                         </div>
@@ -763,7 +767,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       {/* Action: Resolve and send back */}
                       <button
                         onClick={() => handleResolveTimeout(item.id, item.pupil_name)}
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20 active:scale-95"
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-sm active:scale-95"
                       >
                         <Check className="w-4 h-4" />
                         <span>Arbeitsauftrag erledigt / Zurück in die Klasse</span>
@@ -778,7 +782,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           {/* Today's Resolved History */}
           {timeoutHistory.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg">
-              <h3 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
+              <h3 className="font-bold text-slate-50 text-sm mb-3 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-400" />
                 <span>Kürzlich erledigte Time-Outs (letzte 48 Stunden)</span>
               </h3>
@@ -787,10 +791,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 {timeoutHistory.map((h) => (
                   <div
                     key={h.id}
-                    className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 text-xs flex items-center justify-between gap-3"
+                    className="p-3 rounded-2xl surface-1 text-xs flex items-center justify-between gap-3"
                   >
                     <div>
-                      <div className="font-bold text-white">
+                      <div className="font-bold text-slate-50">
                         {h.pupil_name} ({h.class_name})
                         <span className="ml-2 text-slate-500 font-normal">
                           von {h.sent_by_short} am {new Date(h.sent_at).toLocaleDateString('de-AT')} um {new Date(h.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
@@ -802,7 +806,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     </div>
 
                     <div className="text-right text-[11px] text-emerald-400 flex-shrink-0 font-bold">
-                      {h.status === 'resolved' ? '✓ Erledigt' : '⏱️ Aktiv'}
+                      {h.status === 'resolved' ? 'Erledigt' : 'Aktiv'}
                     </div>
                   </div>
                 ))}
@@ -824,7 +828,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Schüler in Klasse suchen..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
               />
             </div>
 
@@ -832,7 +836,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <button
                 onClick={() => setFilterRank('all')}
                 className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition ${
-                  filterRank === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                  filterRank === 'all' ? 'bg-slate-700 text-slate-50' : 'bg-slate-800 text-slate-400 hover:text-slate-50'
                 }`}
               >
                 Alle ({pupils.length})
@@ -840,7 +844,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <button
                 onClick={() => setFilterRank('Lehrling')}
                 className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
-                  filterRank === 'Lehrling' ? 'bg-rose-500 text-white' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
+                  filterRank === 'Lehrling' ? 'bg-rose-500 text-slate-50' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
                 }`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
@@ -849,7 +853,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <button
                 onClick={() => setFilterRank('Geselle')}
                 className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
-                  filterRank === 'Geselle' ? 'bg-blue-500 text-white' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'
+                  filterRank === 'Geselle' ? 'bg-blue-500 text-slate-50' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'
                 }`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
@@ -858,7 +862,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <button
                 onClick={() => setFilterRank('Meister')}
                 className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
-                  filterRank === 'Meister' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
+                  filterRank === 'Meister' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
                 }`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -868,9 +872,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           </div>
 
           {/* Compact Minimalist Pupils List */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden divide-y divide-slate-800/80">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden divide-y divide-slate-800/80">
             {/* Table / List Header */}
-            <div className="hidden md:grid md:grid-cols-12 gap-3 px-4 py-2.5 bg-slate-950/70 text-[11px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800">
+            <div className="hidden md:grid md:grid-cols-12 gap-3 px-4 py-2.5 bg-slate-950/70 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <div className="col-span-4 flex items-center gap-1.5">
                 <span>Schüler*in ({filteredPupils.length})</span>
               </div>
@@ -918,23 +922,28 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       {/* Col 1: Pupil Name & Status Indicators */}
                       <div className="col-span-4 flex items-center justify-between md:justify-start gap-2 min-w-0">
                         <div className="flex items-center gap-2 truncate">
-                          <span className="font-bold text-sm text-white truncate">
+                          {/*
+                            The pupil name is the anchor of the row, so it gets the
+                            only real emphasis in it: 15px at medium weight. Everything
+                            else in the row is deliberately quieter.
+                          */}
+                          <span className="font-medium text-base text-slate-50 truncate select-none">
                             {pupil.fullName}
                           </span>
                           {activeTimeoutIncident && (
                             <span
-                              className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black animate-pulse flex-shrink-0"
+                              className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse flex-shrink-0"
                               title="Aktuell im Time-Out (Lernwerkstatt)"
                             >
-                              ⏱️ LW
+                              <Clock className="w-3 h-3" aria-hidden="true" /> LW
                             </span>
                           )}
                           {isYellowAlert && (
                             <span
-                              className="px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black flex-shrink-0"
+                              className="px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold flex-shrink-0"
                               title="Mahnstufe (>= 2 gelbe Karten)"
                             >
-                              ⚠️
+                              <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
                             </span>
                           )}
                         </div>
@@ -943,26 +952,37 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         </span>
                       </div>
 
-                      {/* Col 2: Rang */}
+                      {/* Col 2: Rang
+
+                          Minimalist treatment: colour alone carries the meaning, so the
+                          badge drops its tint, border, bold weight and letter-spacing.
+                          Those four layers were stacked on every label in this row,
+                          which is what made the list read as busy rather than calm. */}
                       <div className="col-span-2 flex items-center gap-1.5">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-black tracking-wider border ${
+                          className={`inline-flex items-center gap-1.5 text-xs font-medium ${
                             rank === 'Meister'
-                              ? 'bg-amber-400/15 text-amber-300 border-amber-400/40'
+                              ? 'text-amber-300'
                               : rank === 'Geselle'
-                              ? 'bg-sky-400/15 text-sky-300 border-sky-400/40'
-                              : 'bg-rose-400/15 text-rose-300 border-rose-400/40'
+                              ? 'text-sky-300'
+                              : 'text-rose-300'
                           }`}
                         >
-                          <span>{rank === 'Meister' ? '👑' : rank === 'Geselle' ? '🛠️' : '🌱'}</span>
+                          {rank === 'Meister' ? (
+                            <Crown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                          ) : rank === 'Geselle' ? (
+                            <Wrench className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                          ) : (
+                            <Sprout className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                          )}
                           <span>{rank}</span>
                         </span>
                         {hasRedCardDemotion && (
                           <span
-                            className="text-[10px] font-black text-rose-400"
+                            className="text-[11px] text-rose-400/80"
                             title={`Rangverlust durch Rote Karte (ursprünglich ${baseRank})`}
                           >
-                            -1
+                            −1
                           </span>
                         )}
                       </div>
@@ -977,7 +997,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           }`}
                           title={`${greenCards.length} Grüne Karten`}
                         >
-                          <span className="text-[10px]">🟢</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
                           <span>{greenCards.length}</span>
                         </span>
 
@@ -989,7 +1009,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           }`}
                           title={`${yellowCards.length} Gelbe Karten`}
                         >
-                          <span className="text-[10px]">🟡</span>
+                          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-hidden="true" />
                           <span>{yellowCards.length}</span>
                         </span>
 
@@ -1001,7 +1021,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           }`}
                           title={`${redCards.length} Rote Karten`}
                         >
-                          <span className="text-[10px]">🔴</span>
+                          <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" aria-hidden="true" />
                           <span>{redCards.length}</span>
                         </span>
                       </div>
@@ -1018,7 +1038,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
                           title="Grüne Karte vergeben  (Tastatur: 1)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1035,7 +1055,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
                           title="Gelbe Karte vergeben  (Tastatur: 2)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1047,10 +1067,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenRedCardModal(pupil);
                           }}
-                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
                           title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
                         >
-                          <span>🟥</span>
+                          <ShieldAlertIcon className="w-3.5 h-3.5" aria-hidden="true" />
                           <span>Rot</span>
                         </button>
 
@@ -1059,7 +1079,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil);
                           }}
-                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-xs font-black transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
                           title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -1074,12 +1094,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                     {/* Expanded Detail Panel (When clicked) */}
                     {isExpanded && (
-                      <div className="bg-slate-950/80 px-5 py-4 border-t border-slate-800 space-y-4">
+                      <div className="bg-surface-2 px-5 py-4 border-t border-hairline space-y-4">
                         {/* Header inside detail: Info Bar */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 text-xs">
                           <div className="flex items-center gap-3">
                             <span className="text-slate-400">
-                              Kriterien: <strong className="text-white">{positiveTicks}</strong> von 18 positiv
+                              Kriterien: <strong className="text-slate-50">{positiveTicks}</strong> von 18 positiv
                             </span>
                             <span className="text-slate-600">·</span>
                             <span className="text-slate-400">
@@ -1116,7 +1136,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Cards History List */}
                         <div className="space-y-2">
-                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
                             Verhaltenskarten &amp; Vorfälle
                           </h4>
                           {pupilCards.length === 0 ? (
@@ -1138,12 +1158,22 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                 >
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5 font-bold mb-0.5">
-                                      <span>
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span
+                                          className={`w-2 h-2 rounded-full shrink-0 ${
+                                            c.card_type === 'green'
+                                              ? 'bg-emerald-400'
+                                              : c.card_type === 'yellow'
+                                              ? 'bg-amber-400'
+                                              : 'bg-rose-400'
+                                          }`}
+                                          aria-hidden="true"
+                                        />
                                         {c.card_type === 'green'
-                                          ? '🟢 Grüne Karte'
+                                          ? 'Grüne Karte'
                                           : c.card_type === 'yellow'
-                                          ? '🟡 Gelbe Karte'
-                                          : '🔴 Rote Karte'}
+                                          ? 'Gelbe Karte'
+                                          : 'Rote Karte'}
                                       </span>
                                       <span className="text-[11px] text-slate-400 font-normal">
                                         von {c.teacher_short} · {new Date(c.created_at).toLocaleDateString('de-AT')} {new Date(c.created_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
@@ -1188,12 +1218,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveInlineNote(pupil.id);
                             }}
-                            className="flex-1 min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            className="flex-1 min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
                           />
                           <button
                             onClick={() => handleSaveInlineNote(pupil.id)}
                             disabled={savingInlineNote === pupil.id || !inlineNotes[pupil.id]?.trim()}
-                            className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition disabled:opacity-40"
+                            className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-xs font-bold transition disabled:opacity-40"
                           >
                             {savingInlineNote === pupil.id ? '...' : 'Notiz speichern'}
                           </button>
@@ -1211,23 +1241,23 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       {/* Modal: Standard Card Issue with Note (Green or Yellow) */}
       {activeCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-lg">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-              <h3 className="font-bold text-white text-base flex items-center gap-2">
+              <h3 className="font-bold text-slate-50 text-base flex items-center gap-2">
                 <span>
                   {activeCardModal.cardType === 'green' ? '★ Grüne Karte' : '▲ Gelbe Karte'} vergeben
                 </span>
               </h3>
               <button
                 onClick={() => setActiveCardModal(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 transition"
+                className="p-1.5 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs text-slate-300 mb-3">
-              Für Schüler*in: <strong className="text-white">{activeCardModal.pupilName}</strong> (Klasse {currentClass.name})
+              Für Schüler*in: <strong className="text-slate-50">{activeCardModal.pupilName}</strong> (Klasse {currentClass.name})
             </p>
 
             <div className="mb-4">
@@ -1243,7 +1273,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     ? 'z.B. Vorbildliches Engagement, herausragende Mitarbeit...'
                     : 'z.B. Wiederholte Störung, Hausübung unvollständig...'
                 }
-                className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
               />
             </div>
 
@@ -1257,10 +1287,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <button
                 onClick={handleConfirmCard}
                 disabled={submittingCard}
-                className={`px-4 py-2 rounded-xl text-slate-950 font-black text-xs transition shadow-md ${
+                className={`px-4 py-2 rounded-xl text-slate-950 font-bold text-xs transition shadow-md ${
                   activeCardModal.cardType === 'green'
-                    ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20'
-                    : 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/20'
+                    ? 'bg-emerald-500 hover:bg-emerald-400 shadow-sm'
+                    : 'bg-amber-500 hover:bg-amber-400 shadow-sm'
                 }`}
               >
                 {submittingCard ? 'Speichere...' : 'Karte jetzt vergeben'}
@@ -1273,12 +1303,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       {/* Two-Step Security Modal: ROTE KARTE (Instant Rank Loss) */}
       {redCardTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="bg-slate-900 border-2 border-rose-500/60 rounded-3xl w-full max-w-lg p-6 shadow-2xl shadow-rose-950/50">
+          <div className="bg-slate-900 border-2 border-rose-500/60 rounded-3xl w-full max-w-lg p-6 shadow-lg shadow-sm">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-rose-500/20 mb-4">
               <div className="flex items-center gap-2.5 text-rose-400">
                 <ShieldAlert className="w-5 h-5 flex-shrink-0 animate-bounce" />
-                <h3 className="font-black text-white text-base">
+                <h3 className="font-bold text-slate-50 text-base">
                   {redCardStep === 1
                     ? 'Sicherheitswarnung: Rote Karte (Instant Rank Loss)'
                     : 'Schritt 2: Vorfallsbeschreibung erfassen'}
@@ -1286,7 +1316,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </div>
               <button
                 onClick={() => setRedCardTarget(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 transition"
+                className="p-1.5 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1296,14 +1326,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {redCardStep === 1 && (
               <div className="space-y-4">
                 <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-xs text-rose-200 space-y-2">
-                  <p className="text-sm font-black text-rose-300">
+                  <p className="text-sm font-bold text-rose-300">
                     Möchten Sie den Schüler {redCardTarget.pupilName} wirklich zu {redCardTarget.demotedRank} degradieren?
                   </p>
                   <p className="text-slate-300 leading-relaxed">
                     Eine <strong className="text-rose-400">Rote Karte</strong> führt zu einem <strong>sofortigen Rangverlust (Instant Rank Loss)</strong>.
                     Der Schüler wird verbindlich um eine Rangstufe degradiert:
                   </p>
-                  <div className="flex items-center gap-3 pt-2 font-black text-sm">
+                  <div className="flex items-center gap-3 pt-2 font-bold text-sm">
                     <span className="px-3 py-1 rounded-xl bg-slate-800 border border-slate-700 text-slate-300">
                       {redCardTarget.currentRank}
                     </span>
@@ -1327,7 +1357,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   </button>
                   <button
                     onClick={() => setRedCardStep(2)}
-                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition shadow-lg shadow-rose-600/30 flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-slate-50 font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5"
                   >
                     <span>Ja, weiter zur Vorfallsbeschreibung</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -1340,14 +1370,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {redCardStep === 2 && (
               <div className="space-y-4">
                 <div className="text-xs text-slate-300">
-                  Schüler*in: <strong className="text-white">{redCardTarget.pupilName}</strong> (Klasse {currentClass.name})
+                  Schüler*in: <strong className="text-slate-50">{redCardTarget.pupilName}</strong> (Klasse {currentClass.name})
                   <span className="block text-rose-400 font-bold mt-1">
                     Degradierung zu: {redCardTarget.demotedRank}
                   </span>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-black uppercase text-rose-300 block mb-1.5">
+                  <label className="text-[11px] font-bold uppercase text-rose-300 block mb-1.5">
                     Was ist passiert? Vorfallsbeschreibung (zwingend erforderlich):
                   </label>
                   <textarea
@@ -1355,7 +1385,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     value={redCardNote}
                     onChange={(e) => setRedCardNote(e.target.value)}
                     placeholder="Beschreiben Sie präzise und sachlich den Vorfall..."
-                    className="w-full p-3.5 rounded-2xl bg-slate-950 border border-rose-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-400"
+                    className="w-full p-3.5 rounded-2xl bg-slate-950 border border-rose-500/40 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-400"
                   />
                 </div>
 
@@ -1377,7 +1407,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     <button
                       onClick={handleConfirmRedCard}
                       disabled={submittingRedCard || !redCardNote.trim()}
-                      className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition shadow-lg shadow-rose-600/30 flex items-center gap-1.5 disabled:opacity-40"
+                      className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-slate-50 font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40"
                     >
                       <ShieldAlert className="w-3.5 h-3.5" />
                       <span>{submittingRedCard ? 'Speichere...' : 'Rote Karte & Degradierung bestätigen'}</span>
@@ -1393,17 +1423,17 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       {/* Modal: TIMEOUT (Ins Time-Out / Lernwerkstatt schicken) */}
       {timeoutTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="bg-slate-900 border-2 border-amber-500/60 rounded-3xl w-full max-w-lg p-6 shadow-2xl shadow-amber-950/40">
+          <div className="bg-slate-900 border-2 border-amber-500/60 rounded-3xl w-full max-w-lg p-6 shadow-lg shadow-sm">
             <div className="flex items-center justify-between pb-3 border-b border-amber-500/20 mb-4">
               <div className="flex items-center gap-2 text-amber-400">
                 <Clock className="w-5 h-5 flex-shrink-0 animate-pulse" />
-                <h3 className="font-black text-white text-base">
+                <h3 className="font-bold text-slate-50 text-base">
                   Schüler*in ins Time-Out (Lernwerkstatt) schicken
                 </h3>
               </div>
               <button
                 onClick={() => setTimeoutTarget(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 transition"
+                className="p-1.5 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1412,7 +1442,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             <div className="space-y-4">
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-xs text-amber-200">
                 <p className="font-bold text-amber-300 mb-1">
-                  ⚠️ Disziplinäres Time-Out für {timeoutTarget.pupilName} (Klasse {currentClass.name})
+                  <ShieldAlertIcon className="w-5 h-5 inline align-text-bottom" aria-hidden="true" /> Disziplinäres Time-Out für {timeoutTarget.pupilName} (Klasse {currentClass.name})
                 </p>
                 <p className="text-slate-300 leading-relaxed">
                   Dieses Time-Out gilt verbindlich als <strong>Rote Karte (Instant Rank Loss)</strong> und leitet den Schüler mit dem unten stehenden Arbeitsauftrag direkt an die Aufsicht in der Lernwerkstatt (LW) weiter.
@@ -1420,7 +1450,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </div>
 
               <div>
-                <label className="text-[11px] font-black uppercase text-amber-300 block mb-1.5">
+                <label className="text-[11px] font-bold uppercase text-amber-300 block mb-1.5">
                   Arbeitsauftrag für das Time-Out (zwingend erforderlich):
                 </label>
                 <textarea
@@ -1428,7 +1458,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   value={timeoutTask}
                   onChange={(e) => setTimeoutTask(e.target.value)}
                   placeholder="Geben Sie hier die Aufgaben oder Arbeitsblätter an, die der Schüler in der Lernwerkstatt bearbeiten muss..."
-                  className="w-full p-3.5 rounded-2xl bg-slate-950 border border-amber-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                  className="w-full p-3.5 rounded-2xl bg-slate-950 border border-amber-500/40 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                 />
                 {timeoutTask.trim().length === 0 && (
                   <span className="text-[10px] text-amber-400 mt-1 block">
@@ -1447,7 +1477,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 <button
                   onClick={handleConfirmTimeout}
                   disabled={submittingTimeout || !timeoutTask.trim()}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950 font-black text-xs transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-40"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40"
                 >
                   <Clock className="w-3.5 h-3.5" />
                   <span>{submittingTimeout ? 'Übermittle...' : 'Ins Time-Out schicken & Rote Karte eintragen'}</span>

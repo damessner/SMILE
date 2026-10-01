@@ -92,7 +92,7 @@ function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
-        className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl"
+        className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-lg"
       >
         <div className="flex items-start gap-3 mb-4">
           {danger && (
@@ -101,7 +101,7 @@ function ConfirmDialog({
               <AlertTriangle className="w-5 h-5" aria-hidden="true" />
             </div>
           )}
-          <h3 id="confirm-title" className="text-lg font-extrabold text-white pt-1.5 leading-tight">
+          <h3 id="confirm-title" className="text-lg font-extrabold text-slate-50 pt-1.5 leading-tight">
             {title}
           </h3>
         </div>
@@ -119,9 +119,9 @@ function ConfirmDialog({
           <button
             ref={confirmRef}
             onClick={() => onSettle(true)}
-            className={`flex-1 min-h-[44px] px-4 rounded-xl font-black text-white transition
+            className={`flex-1 min-h-[44px] px-4 rounded-xl font-bold text-slate-50 transition
               ${danger
-                ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/30'
+                ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-sm'
                 : 'bg-amber-500 hover:bg-amber-400 text-slate-950'}`}
           >
             {confirmLabel}

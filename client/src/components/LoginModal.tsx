@@ -33,7 +33,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-lg relative overflow-hidden">
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -41,7 +41,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 mb-4 border border-amber-500/30">
             <GraduationCap className="w-8 h-8" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-50 mb-2">
             SMILE <span className="text-amber-400">Plattform</span>
           </h1>
           <p className="text-sm text-slate-400">
@@ -74,7 +74,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="z.B. ofj, zia, brt oder admin"
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
             />
           </div>
 
@@ -92,14 +92,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-[0.99] text-slate-950 font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
+            className="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-[0.99] text-slate-950 font-bold flex items-center justify-center gap-2 shadow-lg shadow-sm transition disabled:opacity-50"
           >
             {loading ? (
               <span className="inline-block w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />

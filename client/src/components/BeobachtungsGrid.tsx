@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Crown,
+  ClipboardList,
   Award,
   AlertTriangle,
   FileText,
@@ -247,14 +249,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     <div className="flex flex-col lg:flex-row gap-6">
       {/* Co-Teacher Conflict Banner */}
       {conflict && (
-        <div className="fixed top-20 right-6 z-50 max-w-md p-4 rounded-2xl bg-amber-500 text-slate-950 font-bold shadow-2xl flex items-center justify-between gap-3 animate-bounce">
+        <div className="fixed top-20 right-6 z-50 max-w-md p-4 rounded-2xl bg-amber-500 text-slate-950 font-bold shadow-lg flex items-center justify-between gap-3 animate-bounce">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
             <span className="text-xs">{conflict.message}</span>
           </div>
           <button
             onClick={onClearConflict}
-            className="px-2.5 py-1 rounded-lg bg-slate-950 text-white text-xs hover:bg-slate-800"
+            className="px-2.5 py-1 rounded-lg bg-slate-950 text-slate-50 text-xs hover:bg-slate-800"
           >
             OK
           </button>
@@ -262,7 +264,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       )}
 
       {/* Left Column: Pupil Selector Bar with "Offen" & "Bewertet" Folder Tabs */}
-      <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col max-h-[84vh] overflow-hidden shadow-xl">
+      <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col max-h-[84vh] overflow-hidden shadow-lg">
         {/* Folder Tabs (Offen vs Bewertet) */}
         <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-3">
           <button
@@ -274,14 +276,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             }}
             className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
               folderTab === 'offen'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
+                : 'text-slate-400 hover:text-slate-50'
             }`}
           >
             <Folder className="w-3.5 h-3.5" />
             <span>Offen</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                 folderTab === 'offen' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -298,14 +300,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             }}
             className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
               folderTab === 'bewertet'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 font-black'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-sm font-bold'
+                : 'text-slate-400 hover:text-slate-50'
             }`}
           >
             <FolderCheck className="w-3.5 h-3.5" />
             <span>Bewertet</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                 folderTab === 'bewertet' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -321,13 +323,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               {folderTab === 'offen' ? (
                 <div>
                   <span className="text-2xl block mb-2">🎉</span>
-                  <strong className="text-white block mb-1">Alle Schüler bewertet!</strong>
+                  <strong className="text-slate-50 block mb-1">Alle Schüler bewertet!</strong>
                   <span>Alle Schüler dieser Klasse wurden bereits eingereicht. Sie finden diese im Ordner &bdquo;Bewertet&ldquo;.</span>
                 </div>
               ) : (
                 <div>
-                  <span className="text-2xl block mb-2">📋</span>
-                  <strong className="text-white block mb-1">Noch keine Einreichungen</strong>
+                  <ClipboardList className="w-8 h-8 block mb-2 mx-auto opacity-60" aria-hidden="true" />
+                  <strong className="text-slate-50 block mb-1">Noch keine Einreichungen</strong>
                   <span>Bewerten Sie einen Schüler und klicken Sie auf &bdquo;Ranking einreichen&ldquo;.</span>
                 </div>
               )}
@@ -345,8 +347,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   className={`w-full p-3 rounded-2xl flex items-center justify-between text-left transition min-h-[48px] ${
                     isSelected
                       ? folderTab === 'offen'
-                        ? 'bg-amber-500/15 border border-amber-500/40 text-white'
-                        : 'bg-emerald-500/15 border border-emerald-500/40 text-white'
+                        ? 'bg-amber-500/15 border border-amber-500/40 text-slate-50'
+                        : 'bg-emerald-500/15 border border-emerald-500/40 text-slate-50'
                       : 'bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800 text-slate-300'
                   }`}
                 >
@@ -371,7 +373,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   </div>
 
                   <span
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
                   >
                     {pRank.rank}
                   </span>
@@ -383,13 +385,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       </div>
 
       {/* Right Column: Observation Grid for Selected Pupil */}
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col max-h-[84vh] overflow-hidden shadow-xl">
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col max-h-[84vh] overflow-hidden shadow-lg">
         {/* Pupil Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800 mb-6">
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-black text-white">{selectedPupil.fullName}</h2>
-              <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider border ${rankColor}`}>
+              <h2 className="text-2xl font-bold text-slate-50">{selectedPupil.fullName}</h2>
+              <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider border ${rankColor}`}>
                 {rank} ({positiveTicks}/18)
               </span>
               {isSubmitted && (
@@ -401,7 +403,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   {onReopenPupil && !isLockedByConference && (
                     <button
                       onClick={() => onReopenPupil(selectedPupil.id)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-bold transition flex items-center gap-1"
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1"
                       title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
                     >
                       <RotateCcw className="w-3 h-3 text-amber-400" />
@@ -457,7 +459,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   onClick={handleResetAll}
                   disabled={isLockedByConference || isPastDeadline || isSubmitted}
                   title="Alle 18 Bewertungen leeren / zurücksetzen"
-                  className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 text-xs font-bold transition active:scale-95 flex items-center gap-1 ml-1 disabled:opacity-40"
+                  className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-xs font-bold transition active:scale-95 flex items-center gap-1 ml-1 disabled:opacity-40"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Reset</span>
@@ -471,10 +473,10 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 onClick={handleSubmitPupil}
                 disabled={isLockedByConference || isPastDeadline}
                 title="Ranking einreichen und zum nächsten Schüler wechseln"
-                className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-lg transition active:scale-95 disabled:opacity-40 ${
+                className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-lg transition active:scale-95 disabled:opacity-40 ${
                   isSubmitted
                     ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 shadow-emerald-500/20'
+                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 shadow-sm'
                 }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
@@ -486,7 +488,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             {onOpenReportModal && (
               <button
                 onClick={onOpenReportModal}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
                 title="1-Seiten Klassenbericht für Lehrpersonen drucken"
               >
                 <Printer className="w-3.5 h-3.5 text-amber-400" />
@@ -497,7 +499,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             {/* Card Drawer Button */}
             <button
               onClick={() => onOpenCardDrawer(selectedPupil.id, selectedPupil.fullName)}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
             >
               <Award className="w-3.5 h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Karte</span>
@@ -506,7 +508,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             {/* KEL Report Button */}
             <button
               onClick={() => onOpenKelReport(selectedPupil)}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
             >
               <FileText className="w-3.5 h-3.5 text-sky-400" />
               <span className="hidden sm:inline">KEL-Bericht</span>
@@ -520,7 +522,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
               <Info className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Kein Hauptfach (D, M, E) in dieser Klasse</h3>
+            <h3 className="text-xl font-bold text-slate-50 mb-2">Kein Hauptfach (D, M, E) in dieser Klasse</h3>
             <p className="text-xs text-slate-400 max-w-lg mb-6 leading-relaxed">
               Sie unterrichten in dieser Klasse{' '}
               <span className="text-amber-400 font-bold">
@@ -540,22 +542,22 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               >
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border-b border-slate-800/80 pb-3">
                   <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-50 flex items-center gap-2">
                       <span>{crit.name}</span>
                     </h3>
                   </div>
 
                   {/* Category Quick Fill Buttons */}
                   <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
-                    <span className="text-[10px] text-slate-500 uppercase font-black px-1.5 hidden sm:inline">Kategorie:</span>
+                    <span className="text-[10px] text-slate-500 uppercase font-bold px-1.5 hidden sm:inline">Kategorie:</span>
                     <button
                       type="button"
                       disabled={isLockedByConference || isPastDeadline || isSubmitted}
                       onClick={() => handleQuickFillCategory(crit, 'crown')}
                       title="Alle Merkmale dieser Kategorie mit Krone füllen"
-                      className="w-7 h-7 rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                      className="pressable focus-ring min-h-[36px] min-w-[36px] rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
                     >
-                      👑
+                      <Crown className="w-4 h-4" aria-hidden="true" />
                     </button>
                     <button
                       type="button"
@@ -620,36 +622,40 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       {
                         val: 'crown',
                         label: (
-                          <div className="relative flex flex-col items-center justify-center -space-y-1">
-                            <span className="text-xs leading-none">👑</span>
+                          // Crowned smiley = "Meister". The five faces are the
+                          // SMILE rating scale itself, not decoration, so they are kept
+                          // as-is; only the deliberate negative-space stacking that
+                          // made this look accidental was fixed.
+                          <div className="flex flex-col items-center justify-center leading-none gap-0.5">
+                            <span className="text-[11px] leading-none">👑</span>
                             <span className="text-lg leading-none">😊</span>
                           </div>
                         ),
-                        activeBg: 'bg-amber-400 text-slate-950 font-black shadow-lg shadow-amber-400/30 scale-105 border-2 border-amber-300 ring-2 ring-amber-400/40',
+                        activeBg: 'bg-amber-400 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-amber-300 ring-2 ring-amber-400/40',
                         title: 'Hervorragend (Krone)',
                       },
                       {
                         val: 'smile',
                         label: <span className="text-2xl leading-none">😊</span>,
-                        activeBg: 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/30 scale-105 border-2 border-emerald-300 ring-2 ring-emerald-500/40',
+                        activeBg: 'bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-emerald-300 ring-2 ring-emerald-500/40',
                         title: 'Gut (😊)',
                       },
                       {
                         val: 'struggle',
                         label: <span className="text-2xl leading-none">😖</span>,
-                        activeBg: 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/30 scale-105 border-2 border-amber-300 ring-2 ring-amber-500/40',
+                        activeBg: 'bg-amber-500 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-amber-300 ring-2 ring-amber-500/40',
                         title: 'Mit Mühe (😖)',
                       },
                       {
                         val: 'sad',
                         label: <span className="text-2xl leading-none">😢</span>,
-                        activeBg: 'bg-rose-500 text-white font-black shadow-lg shadow-rose-500/30 scale-105 border-2 border-rose-300 ring-2 ring-rose-500/40',
+                        activeBg: 'bg-rose-500 text-slate-50 font-bold shadow-lg shadow-sm scale-105 border-2 border-rose-300 ring-2 ring-rose-500/40',
                         title: 'Traurig (😢)',
                       },
                       {
                         val: 'newstart',
                         label: <span className="text-2xl leading-none">🔄</span>,
-                        activeBg: 'bg-sky-500 text-slate-950 font-black shadow-lg shadow-sky-500/30 scale-105 border-2 border-sky-300 ring-2 ring-sky-500/40',
+                        activeBg: 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-sky-300 ring-2 ring-sky-500/40',
                         title: 'Neustart (🔄)',
                       },
                     ];

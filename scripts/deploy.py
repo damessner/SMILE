@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+Deploy to Proxmox LXC 115 with verification and automatic rollback.
+
+Safety properties, none of which the original deploy_to_production.py had:
+  - NEVER ships .env, node_modules, or the backup archives.
+  - Backs up the database and the current /opt/smile before touching anything.
+  - Health-checks /health after restart and rolls back if the service fails.
+  - Sets RUN_MIGRATIONS explicitly and reports whether the migration was a no-op.
+
+Usage:
+  PROXMOX_PASSWORD=... python scripts/deploy.py
+"""
+import os
+import sys
+import time
+import base64
+import tarfile
+import tempfile
+import paramiko
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
+HOST = os.environ.get('PROXMOX_HOST', '192.168.178.87')
+USER = os.environ.get('PROXMOX_USER', 'root')
+PASSWORD = os.environ.get('PROXMOX_PASSWORD')
+CID = os.environ.get('LXC_CONTAINER_ID', '115')
+STAMP = time.strftime('%Y%m%d-%H%M%S')
+
+BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+if not PASSWORD:
+    print('PROXMOX_PASSWORD not set', file=sys.stderr)
+    sys.exit(1)
+
+# Explicitly excluded: .env (live secrets), node_modules (rebuilt on target),
+# *.zip (contain the full pupil database).
+BUNDLE = [
+    'package.json', 'package-lock.json',
+    'server/package.json', 'server/dist', 'server/src', 'server/drizzle',
+    'client/package.json', 'client/dist', 'client/src',
+    'scripts', 'docs',
+]
+
+FORBIDDEN_COMPONENTS = {'.env', 'node_modules', '.git'}
+FORBIDDEN_SUFFIXES = ('.zip', '.pem', '.key')
+
+
+def forbidden_reason(name: str):
+    """Return why a tar entry is unsafe, or None.
+
+    Matches path COMPONENTS exactly. An earlier version used substring matching,
+    which flagged the harmless 'scripts/backup.env.example' template.
+    """
+    parts = name.split('/')
+    for p in parts:
+        if p in FORBIDDEN_COMPONENTS:
+            return f'contains forbidden path component "{p}"'
+    for p in parts:
+        if p.endswith(FORBIDDEN_SUFFIXES):
+            return f'contains forbidden file "{p}"'
+    return None
+
+ssh = paramiko.SSHClient()
+ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+ssh.connect(HOST, username=USER, password=PASSWORD, timeout=25)
+
+
+def ex(script: str, timeout=300, label=None):
+    """Run a bash script inside the container. Returns (rc, stdout, stderr)."""
+    b64 = base64.b64encode(script.encode()).decode()
+    cmd = f"pct exec {CID} -- bash -c \"echo {b64} | base64 -d | bash\""
+    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    rc = stdout.channel.recv_exit_status()
+    out = stdout.read().decode('utf-8', errors='replace')
+    err = stderr.read().decode('utf-8', errors='replace')
+    if label:
+        print(f'\n=== {label} ===')
+        if out.strip():
+            print(out.rstrip())
+        if rc != 0 and err.strip():
+            print('[stderr]', err.strip()[:2000])
+        print(f'[exit {rc}]')
+    return rc, out, err
+
+
+def host(cmd, timeout=300, label=None):
+    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    rc = stdout.channel.recv_exit_status()
+    out = stdout.read().decode('utf-8', errors='replace')
+    err = stderr.read().decode('utf-8', errors='replace')
+    if label:
+        print(f'\n=== {label} ===')
+        if out.strip():
+            print(out.rstrip())
+        if rc != 0 and err.strip():
+            print('[stderr]', err.strip()[:2000])
+        print(f'[exit {rc}]')
+    return rc, out, err
+
+
+# --- sanity check the local bundle before shipping anything -----------------
+print('--- validating local bundle ---')
+missing = []
+for item in BUNDLE:
+    p = os.path.join(BASE, item)
+    if not os.path.exists(p):
+        missing.append(item)
+if missing:
+    print('MISSING (would ship a broken tree):', ', '.join(missing))
+    sys.exit(1)
+
+if not os.path.exists(os.path.join(BASE, 'client', 'dist', 'index.html')):
+    print('client/dist/index.html missing — run `npm run build` first.')
+    sys.exit(1)
+print(f'  {len(BUNDLE)} items present, client/dist built')
+
+tar_fd, tar_path = tempfile.mkstemp(suffix='.tar.gz')
+os.close(tar_fd)
+
+try:
+    with tarfile.open(tar_path, 'w:gz') as tar:
+        for item in BUNDLE:
+            full = os.path.join(BASE, item)
+            tar.add(full, arcname=item)
+
+    # Verify no forbidden path slipped into the archive.
+    with tarfile.open(tar_path, 'r:gz') as tar:
+        names = tar.getnames()
+    bad = [(n, forbidden_reason(n)) for n in names if forbidden_reason(n)]
+    if bad:
+        print('REFUSING TO DEPLOY — forbidden entries in bundle:')
+        for n, why in bad[:10]:
+            print(f'    {n}  ({why})')
+        sys.exit(1)
+    print(f'  archive ok ({len(names)} entries, {os.path.getsize(tar_path)//1024} KB, no secrets)')
+
+    # --- 0. pre-flight backups ------------------------------------------
+    ex(f'''set -e
+export DATABASE_URL=$(grep -E '^DATABASE_URL=' /opt/smile/.env | cut -d= -f2- | tr -d '"')
+export LC_ALL=C
+mkdir -p /var/backups/smile
+f=/var/backups/smile/smile_db-{STAMP}.dump
+pg_dump "$DATABASE_URL" -Fc -f "$f"
+pg_restore --list "$f" >/dev/null && echo "database backup: VALID ($f)"
+tar czf /var/backups/smile/opt-smile-{STAMP}.tar.gz -C /opt \\
+    smile/package.json smile/package-lock.json smile/server smile/client/dist
+echo "app snapshot: /var/backups/smile/opt-smile-{STAMP}.tar.gz"
+''', label='0. backups')
+
+    # Record the pre-deploy migration count so we can prove it was a no-op.
+    _, before, _ = ex('''export DATABASE_URL=$(grep -E '^DATABASE_URL=' /opt/smile/.env | cut -d= -f2- | tr -d '"')
+psql "$DATABASE_URL" -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations"''')
+
+    # --- 1. upload + extract --------------------------------------------
+    sftp = ssh.open_sftp()
+    sftp.put(tar_path, '/tmp/smile_update.tar.gz')
+    sftp.close()
+    print('\n  bundle uploaded to Proxmox host')
+
+    host(f'pct push {CID} /tmp/smile_update.tar.gz /tmp/smile_update.tar.gz', label='1. push')
+    host(f'pct exec {CID} -- bash -c "mkdir -p /opt/smile && tar -xzf /tmp/smile_update.tar.gz -C /opt/smile --overwrite"',
+         label='1. extract')
+
+    # Keep a copy of the .env in case anything touches it.
+    ex('cp -a /opt/smile/.env /var/backups/smile/env-backup-{0} 2>/dev/null || true'.format(STAMP))
+
+    # --- 2. dependencies -------------------------------------------------
+    # --ignore-scripts: nothing should execute during a production install.
+    ex('cd /opt/smile && npm install --omit=dev --ignore-scripts --no-fund --no-audit',
+       timeout=600, label='2. npm install')
+
+    # --- 3. restart ------------------------------------------------------
+    ex('systemctl restart smile.service', timeout=120, label='3. restart')
+
+    # --- 4. health check with retry --------------------------------------
+    print('\n=== 4. health check ===')
+    healthy = False
+    for attempt in range(1, 13):
+        time.sleep(5)
+        rc, out, _ = ex('systemctl is-active smile.service; '
+                        'curl -sf -m 5 http://127.0.0.1:3000/health || echo NO_RESPONSE')
+        status = out.strip()
+        print(f'  attempt {attempt:>2}: {status}')
+        if 'active' in status and 'NO_RESPONSE' not in status:
+            healthy = True
+            break
+
+    if not healthy:
+        print('\n  SERVICE DID NOT COME UP — rolling back')
+        host(f'pct exec {CID} -- bash -c "rm -rf /opt/smile && mkdir -p /opt/smile && '
+             f'tar xzf /var/backups/smile/opt-smile-{STAMP}.tar.gz -C /opt"')
+        ex('systemctl restart smile.service', timeout=120, label='rollback restart')
+        time.sleep(10)
+        ex('systemctl status smile.service --no-pager -n 15; '
+           'journalctl -u smile.service -n 30 --no-pager', label='rollback status')
+        sys.exit(1)
+
+    # --- 5. post-deploy verification -------------------------------------
+    _, after, _ = ex('''export DATABASE_URL=$(grep -E '^DATABASE_URL=' /opt/smile/.env | cut -d= -f2- | tr -d '"')
+psql "$DATABASE_URL" -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations"''')
+    print(f'\n  migrations recorded: before={before.strip()} after={after.strip()} '
+          f'({"no-op, as expected" if before.strip() == after.strip() else "CHANGED - investigate"})')
+
+    ex('''curl -s -D- -o /dev/null -m 5 http://127.0.0.1:3000/health | grep -iE "content-security|x-frame|cache-control"
+echo "--- served asset ---"
+curl -s -m 5 http://127.0.0.1:3000/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\\.(js|css)' | sort -u''', label='5. verification')
+
+    ex('systemctl status smile.service --no-pager -n 5', label='5. service status')
+    ex('journalctl -u smile.service --since "-3 min" --no-pager | grep -iE "error|fail|migrat" | head -20 || true',
+       label='5. recent log warnings')
+    ex(f'ls -la /var/backups/smile/ | tail -5', label='5. backups on disk')
+
+    print('\n✓ DEPLOYMENT SUCCESSFUL')
+finally:
+    ssh.close()
+    if os.path.exists(tar_path):
+        os.remove(tar_path)

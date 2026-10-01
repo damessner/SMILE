@@ -219,6 +219,26 @@ export const config = {
   yellowCardAlertWindowDays: readInt('YELLOW_CARD_ALERT_WINDOW_DAYS', 7),
   /** Timeout counts that trigger a headmaster escalation (3, 6, 9, ...). */
   escalationStep: readInt('ESCALATION_STEP', 3),
+
+  // --- Statistics visibility -------------------------------------------------
+  /**
+   * School decision: every teacher may view the school-wide and per-class
+   * statistics. The endpoint is read-only — it is a GET with no write path.
+   *
+   * Set to false to restrict teachers back to their own classes.
+   */
+  statisticsSchoolWide: readBool('STATISTICS_SCHOOL_WIDE', true),
+
+  /**
+   * Whether a teacher sees the individual `comment` and `nextStep` that OTHER
+   * teachers wrote about a pupil. Rank counts and teacher attributions are
+   * returned either way.
+   *
+   * Defaults to true: staff under the same controller may legitimately share
+   * professional judgements, and this is the school's call. Set to false if
+   * private notes should stay with their author.
+   */
+  statisticsShowForeignComments: readBool('STATISTICS_SHOW_FOREIGN_COMMENTS', true),
 } as const;
 
 export type AppConfig = typeof config;

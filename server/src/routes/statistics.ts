@@ -13,11 +13,13 @@ import {
   teachers,
 } from '../db/schema.js';
 import {
+  forbid,
   getGlobalAccess,
   parseIdParam,
   requireAuth,
   type AuthUser,
 } from '../lib/guards.js';
+import { config } from '../config.js';
 import { calculateRank, summarizeRatings } from '../lib/ranking.js';
 import { normalizeSubject } from '../utils/subject.js';
 
@@ -25,23 +27,39 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * GET /api/statistics/overview?classId=...
    *
-   * Previously commented "Accessible to ALL authenticated teachers!" and returned every
-   * pupil in the school together with each teacher's individual comment and next step.
-   * Now scoped: a teacher sees only the classes they are responsible for, and the
-   * aggregate is computed over that set.
+   * READ-ONLY. There is no POST/PUT/PATCH/DELETE variant of this route and the
+   * client only ever reads it, so "every teacher sees everything, nobody edits"
+   * holds structurally rather than by an edit check somewhere.
+   *
+   * School decision (STATISTICS_SCHOOL_WIDE, default true): every teacher sees the
+   * school-wide and per-class figures, not just their own classes. This reverses the
+   * scoping introduced during the hardening pass, on the grounds that staff under the
+   * same controller may see the whole picture.
+   *
+   * STATISTICS_SHOW_FOREIGN_COMMENTS (default true) additionally exposes the
+   * individual `comment` / `nextStep` another teacher wrote about a pupil. Turn it off
+   * to keep private notes with their author while still sharing the aggregates.
+   *
+   * Pupil logins are excluded outright: this view is for staff.
    */
   fastify.get('/overview', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const user: AuthUser = requireAuth(request);
     const { classId } = request.query as { classId?: string };
 
-    const global = await getGlobalAccess(user);
+    if (user.role === 'pupil') {
+      return forbid(reply, 'Die Schulstatistik ist für Lehrkräfte freigegeben.');
+    }
+
+    const schoolWide = config.statisticsSchoolWide;
+    const global = schoolWide ? { classIds: null } : await getGlobalAccess(user);
+
     if (global.classIds !== null && global.classIds.length === 0) {
       return reply.send({
         classes: [],
         round: null,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: true, classIds: [] },
+        scope: { restricted: true, schoolWide: false, classIds: [] },
       });
     }
 
@@ -50,7 +68,6 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       .from(schoolClasses)
       .orderBy(schoolClasses.grade, schoolClasses.name);
 
-    // The class picker must not advertise classes the caller cannot open.
     const visibleClasses =
       global.classIds === null
         ? allClasses
@@ -68,7 +85,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         round: null,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, classIds: global.classIds },
+        scope: { restricted: global.classIds !== null, schoolWide, classIds: global.classIds },
       });
     }
 
@@ -78,8 +95,6 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       if (!cid) {
         return reply.status(400).send({ error: 'Ungültige Klassen-ID.' });
       }
-      // Reject a request for a class outside the caller's scope instead of silently
-      // returning another class's data.
       if (global.classIds !== null && !global.classIds.includes(cid)) {
         return reply.status(403).send({
           error: 'Für diese Klasse haben Sie keine Zugriffsberechtigung.',
@@ -119,7 +134,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         round,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, classIds: global.classIds },
+        scope: { restricted: global.classIds !== null, schoolWide, classIds: global.classIds },
       });
     }
 
@@ -201,6 +216,14 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         const evalCounts = summarizeRatings([
           { evaluationId: ev.id, items: itemsByEvalId.get(ev.id) ?? [] },
         ]);
+
+        // When STATISTICS_SHOW_FOREIGN_COMMENTS is off, another teacher's written
+        // judgement is withheld. Their rank proposal and attribution stay visible, so the
+        // statistics remain complete without exposing private notes.
+        const isOwn = ev.teacherId != null && ev.teacherId === user.teacherId;
+        const showNotes =
+          config.statisticsShowForeignComments || isOwn || user.role !== 'teacher';
+
         return {
           teacherId: ev.teacherId,
           teacherShort: teacher?.shortName || 'LEH',
@@ -209,8 +232,9 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
           subjectName: normSub.name,
           isCore: normSub.isCoreSmile,
           proposedStatus: ev.proposedStatus,
-          nextStep: ev.nextStep,
-          comment: ev.comment,
+          nextStep: showNotes ? ev.nextStep : null,
+          comment: showNotes ? ev.comment : null,
+          notesWithheld: !showNotes,
           positiveCount: evalCounts.positiveCount,
           totalRated: evalCounts.totalRated,
           updatedAt: ev.updatedAt,

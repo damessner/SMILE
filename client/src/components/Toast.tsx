@@ -185,7 +185,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
 
   return (
     <div
-      className={`pointer-events-auto w-full rounded-2xl border px-4 py-3 shadow-2xl
+      className={`pointer-events-auto w-full rounded-2xl border px-4 py-3 shadow-lg
                   backdrop-blur-md flex items-start gap-3 animate-[toast-in_180ms_ease-out] ${style.wrap}`}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}

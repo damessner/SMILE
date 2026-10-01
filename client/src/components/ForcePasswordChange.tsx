@@ -61,12 +61,12 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-lg">
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 mb-4 border border-amber-500/30">
             <KeyRound className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-white mb-2">
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-50 mb-2">
             Passwort ändern
           </h1>
           <p className="text-sm text-slate-400">
@@ -108,7 +108,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
               autoComplete="current-password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
             />
           </div>
 
@@ -126,7 +126,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
             />
             <p className="mt-1.5 text-xs text-slate-500">
               Mindestens 12 Zeichen, davon Groß- und Kleinbuchstaben sowie eine Ziffer.
@@ -147,7 +147,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
             />
           </div>
 
@@ -155,7 +155,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
+              className="flex-1 py-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold shadow-lg shadow-sm transition disabled:opacity-50"
             >
               {loading ? 'Wird gespeichert …' : 'Passwort ändern'}
             </button>

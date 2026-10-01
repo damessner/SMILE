@@ -33,12 +33,12 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
-          <div className="max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-4">
+        <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-lg space-y-4">
             <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
               <AlertTriangle className="w-7 h-7" />
             </div>
-            <h1 className="text-xl font-black text-white">Anwendungsfehler aufgetreten</h1>
+            <h1 className="text-xl font-bold text-slate-50">Anwendungsfehler aufgetreten</h1>
             <p className="text-xs text-slate-400">
               Es ist ein unerwarteter Rendering-Fehler aufgetreten.
             </p>
@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="pt-2 flex flex-col gap-2">
               <button
                 onClick={() => window.location.reload()}
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Seite neu laden</span>

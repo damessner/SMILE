@@ -67,15 +67,15 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg relative">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-white">Karte vergeben</h3>
+            <h3 className="text-lg font-bold text-slate-50">Karte vergeben</h3>
             <p className="text-sm text-amber-400 font-medium">{pupilName}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-50 hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -104,7 +104,7 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="z.B. Vorbildliche Hilfsbereitschaft / Störung"
-            className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 text-sm"
+            className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 text-sm"
           />
         </div>
 

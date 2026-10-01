@@ -91,14 +91,14 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner & Deadline Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-800">
           <div>
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-black">
+              <span className="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold">
                 Klasse {currentClass.name}
               </span>
-              <h1 className="text-2xl font-black text-white">Klassenübersicht</h1>
+              <h1 className="text-2xl font-bold text-slate-50">Klassenübersicht</h1>
             </div>
             <p className="text-xs text-slate-400 mt-1">
               {pupils.length} Schüler/innen gesamt · {rankedPupils.length} bewertet · {openPupils.length} noch offen
@@ -122,7 +122,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
               <button
                 onClick={() => onStartRating(openPupils[0]?.id || pupils[0]?.id)}
                 disabled={isPastDeadline}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition active:scale-95 disabled:opacity-40"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-sm transition active:scale-95 disabled:opacity-40"
               >
                 <Play className="w-4 h-4 fill-slate-950" />
                 <span>Bewertungsmodus starten</span>
@@ -134,7 +134,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
         {/* Progress Bar of Ranked vs Open */}
         <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-white">{rankedPupils.length} von {pupils.length} abgeschlossen</span>
+            <span className="font-bold text-slate-50">{rankedPupils.length} von {pupils.length} abgeschlossen</span>
             <span>({pupils.length > 0 ? Math.round((rankedPupils.length / pupils.length) * 100) : 0}%)</span>
           </div>
           <div className="w-full sm:w-64 h-2.5 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700">
@@ -156,14 +156,14 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
             onClick={() => setActiveFolder('open')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
               activeFolder === 'open'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm'
+                : 'text-slate-400 hover:text-slate-50'
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
             <span>Offen / Zu bewerten</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 activeFolder === 'open' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
               }`}
             >
@@ -175,14 +175,14 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
             onClick={() => setActiveFolder('ranked')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
               activeFolder === 'ranked'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-sm'
+                : 'text-slate-400 hover:text-slate-50'
             }`}
           >
             <FolderCheck className="w-3.5 h-3.5" />
             <span>Bewertet (Abgeschlossen)</span>
             <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 activeFolder === 'ranked' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
               }`}
             >
@@ -199,7 +199,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Schüler filtern..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
           />
         </div>
       </div>
@@ -210,7 +210,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
           {activeFolder === 'open' ? (
             <div className="space-y-2">
               <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-              <h3 className="text-base font-bold text-white">Alle Schüler dieser Klasse sind bewertet!</h3>
+              <h3 className="text-base font-bold text-slate-50">Alle Schüler dieser Klasse sind bewertet!</h3>
               <p className="text-xs text-slate-500">
                 Sie haben alle Rankings eingereicht. Sie finden diese im Ordner „Bewertet (Abgeschlossen)“.
               </p>
@@ -218,7 +218,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
           ) : (
             <div className="space-y-2">
               <FolderCheck className="w-10 h-10 text-slate-600 mx-auto" />
-              <h3 className="text-base font-bold text-white">Noch keine Bewertungen abgeschlossen</h3>
+              <h3 className="text-base font-bold text-slate-50">Noch keine Bewertungen abgeschlossen</h3>
               <p className="text-xs text-slate-500">
                 Starten Sie den Bewertungsmodus, um Schüler zu ranken und einzureichen.
               </p>
@@ -241,7 +241,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
                   {/* Header: Name and Status */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
-                      <h3 className="font-bold text-base text-white group-hover:text-amber-400 transition">
+                      <h3 className="font-bold text-base text-slate-50 group-hover:text-amber-400 transition">
                         {pupil.fullName}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
@@ -262,7 +262,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
                     </div>
 
                     <span
-                      className={`px-2.5 py-1 rounded-xl text-[11px] font-black uppercase tracking-wider border ${pRank.color}`}
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold uppercase tracking-wider border ${pRank.color}`}
                     >
                       {pRank.rank}
                     </span>
@@ -302,14 +302,14 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
                     <button
                       onClick={() => onOpenCardDrawer(pupil.id, pupil.fullName)}
                       title="Verhaltenskarte"
-                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-slate-50 transition"
                     >
                       <Award className="w-4 h-4 text-emerald-400" />
                     </button>
                     <button
                       onClick={() => onOpenKelReport(pupil)}
                       title="KEL-Bericht"
-                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-slate-50 transition"
                     >
                       <FileText className="w-4 h-4 text-sky-400" />
                     </button>

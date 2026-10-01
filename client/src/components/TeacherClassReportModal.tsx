@@ -71,26 +71,26 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
       {/* Container */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden print:m-0 print:p-0 print:border-none print:shadow-none print:bg-white print:max-h-none print:w-full print:max-w-none">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[96vh] flex flex-col shadow-lg overflow-hidden print:m-0 print:p-0 print:border-none print:shadow-none print:bg-white print:max-h-none print:w-full print:max-w-none">
         {/* Modal Controls (Hidden in Print) */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 print:hidden">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-amber-400" />
-            <h3 className="font-bold text-white text-sm">
+            <h3 className="font-bold text-slate-50 text-sm">
               1-Seiten Lehrer-Export (Druckansicht Klasse {currentClass.name})
             </h3>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition shadow-md shadow-amber-500/20"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-md shadow-sm"
             >
               <Printer className="w-4 h-4" />
               <span>Drucken / Als PDF speichern</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 transition"
+              className="p-2 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 hover:bg-slate-700 transition"
             >
               <X className="w-5 h-5" />
             </button>
@@ -107,13 +107,13 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-2 mb-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-black text-lg tracking-tight text-slate-950">SMILE</span>
+                <span className="font-bold text-lg tracking-tight text-slate-950">SMILE</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-bold text-slate-700">
                   MS Neustift
                 </span>
                 <span className="text-xs text-slate-500 font-medium">· Schuljahr 2026/27</span>
               </div>
-              <h1 className="text-base font-black uppercase tracking-wide text-slate-900 mt-1">
+              <h1 className="text-base font-bold uppercase tracking-wide text-slate-900 mt-1">
                 Lehrer-Klassenübersicht &amp; Bewertungsprotokoll
               </h1>
             </div>
@@ -138,18 +138,24 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
 
             <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
               <div className="bg-white border border-rose-200 rounded-lg p-1.5 shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-rose-600 block">🔴 Lehrling</span>
-                <strong className="text-sm font-black text-slate-900">{lehrlingCount}</strong>
+                {/* Print view: no emoji. They print as greyscale blobs or missing glyphs on most
+                    school printers, so status is carried by colour + label alone. */}
+                <span className="text-[10px] uppercase font-bold text-rose-600 block">
+                  <span className="inline-block w-2 h-2 rounded-full bg-rose-500 align-middle" /> Lehrling
+                </span>
+                <strong className="text-sm font-bold text-slate-900">{lehrlingCount}</strong>
                 <span className="text-[10px] text-slate-500 ml-1">({percentLehrling}%)</span>
               </div>
               <div className="bg-white border border-blue-200 rounded-lg p-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-blue-600 block">🔵 Geselle</span>
-                <strong className="text-sm font-black text-slate-900">{geselleCount}</strong>
+                <strong className="text-sm font-bold text-slate-900">{geselleCount}</strong>
                 <span className="text-[10px] text-slate-500 ml-1">({percentGeselle}%)</span>
               </div>
               <div className="bg-white border border-amber-200 rounded-lg p-1.5 shadow-sm">
-                <span className="text-[10px] uppercase font-bold text-amber-600 block">🟡 Meister</span>
-                <strong className="text-sm font-black text-slate-900">{meisterCount}</strong>
+                <span className="text-[10px] uppercase font-bold text-amber-600 block">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle" /> Meister
+                </span>
+                <strong className="text-sm font-bold text-slate-900">{meisterCount}</strong>
                 <span className="text-[10px] text-slate-500 ml-1">({percentMeister}%)</span>
               </div>
             </div>
@@ -174,7 +180,7 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
               <tr className="bg-slate-100 text-slate-700 text-[10px] uppercase border-b border-slate-300">
                 <th className="py-1 px-2 border-r border-slate-300 w-8 text-center">Nr.</th>
                 <th className="py-1 px-2 border-r border-slate-300 font-bold">Schüler*in</th>
-                <th className="py-1 px-2 border-r border-slate-300 w-24 text-center font-bold">Smileys (+/👑)</th>
+                <th className="py-1 px-2 border-r border-slate-300 w-24 text-center font-bold">Smileys</th>
                 <th className="py-1 px-2 border-r border-slate-300 w-28 text-center font-bold">Rangvorschlag</th>
                 <th className="py-1 px-2 border-r border-slate-300 w-28 text-center font-bold">Status</th>
                 <th className="py-1 px-2">Anmerkung / Nächster Schritt</th>
@@ -198,7 +204,7 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
                       {p.positiveCount} / 18
                     </td>
                     <td className="py-1 px-2 border-r border-slate-200 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black border uppercase ${badgeClass}`}>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${badgeClass}`}>
                         {p.rank}
                       </span>
                     </td>

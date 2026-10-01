@@ -271,7 +271,15 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
     canRecord: isResponsible,
     canRate: base.isCoreTeacher,
     canManagePupils: base.isKv,
-    canRunConference: base.isKv,
+    /*
+      Conference mode is reserved for the Schulleitung (SLC, MED) by school decision.
+
+      Homeroom heads previously received this via `canRunConference: base.isKv`, which
+      let them lock voting and confirm formal ranks for their class. Hiding the button
+      alone would not have stopped that — the endpoints would still have accepted the
+      call — so the restriction is enforced here as well as in the UI.
+    */
+    canRunConference: false,
   };
 }
 

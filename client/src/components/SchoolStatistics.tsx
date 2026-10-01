@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  Crown,
   BarChart3,
   Search,
   Printer,
@@ -76,7 +77,7 @@ export const renderSmiley = (rating: string) => {
     case '++':
       return (
         <span className="relative inline-flex flex-col items-center justify-center -space-y-1" title="Hervorragend (Krone)">
-          <span className="text-[10px] leading-none">👑</span>
+          <Crown className="w-3 h-3 inline align-text-bottom" aria-hidden="true" />
           <span className="text-base leading-none">😊</span>
         </span>
       );
@@ -165,7 +166,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
               <BarChart3 className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="text-lg font-black text-white leading-tight">Schul- &amp; Klassenstatistik</h1>
+              <h1 className="text-lg font-bold text-slate-50 leading-tight">Schul- &amp; Klassenstatistik</h1>
               <p className="text-[11px] text-slate-400">
                 Kompakte Übersicht aller Klassen, Statusverteilung und Lehrer-Voten
               </p>
@@ -175,7 +176,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition"
             >
               <Printer className="w-3.5 h-3.5 text-sky-400" />
               <span>Drucken / PDF</span>
@@ -189,8 +190,8 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             onClick={() => setSelectedClassId('all')}
             className={`px-3 py-1 rounded-xl font-bold text-xs transition flex-shrink-0 ${
               selectedClassId === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
             }`}
           >
             Alle Klassen (Gesamt)
@@ -201,8 +202,8 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
               onClick={() => setSelectedClassId(String(c.id))}
               className={`px-3 py-1 rounded-xl font-bold text-xs transition flex-shrink-0 ${
                 selectedClassId === String(c.id)
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
-                  : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
               }`}
             >
               Klasse {c.name}
@@ -215,7 +216,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-white">Status-Verteilung</h2>
+            <h2 className="text-sm font-bold text-slate-50">Status-Verteilung</h2>
             <span className="text-xs text-slate-400">
               ({dist.total} Schüler gesamt)
             </span>
@@ -245,7 +246,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
               {dist.percentLehrling > 0 && (
                 <div
                   style={{ width: `${dist.percentLehrling}%` }}
-                  className="bg-rose-500 rounded-lg flex items-center justify-center text-white text-[11px] font-black transition-all duration-500 shadow-sm"
+                  className="bg-rose-500 rounded-lg flex items-center justify-center text-slate-50 text-[11px] font-bold transition-all duration-500 shadow-sm"
                   title={`Lehrling: ${dist.lehrling} (${dist.percentLehrling}%)`}
                 >
                   {dist.percentLehrling >= 12 && `${dist.percentLehrling}%`}
@@ -254,7 +255,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
               {dist.percentGeselle > 0 && (
                 <div
                   style={{ width: `${dist.percentGeselle}%` }}
-                  className="bg-blue-500 rounded-lg flex items-center justify-center text-white text-[11px] font-black transition-all duration-500 shadow-sm"
+                  className="bg-blue-500 rounded-lg flex items-center justify-center text-slate-50 text-[11px] font-bold transition-all duration-500 shadow-sm"
                   title={`Geselle: ${dist.geselle} (${dist.percentGeselle}%)`}
                 >
                   {dist.percentGeselle >= 12 && `${dist.percentGeselle}%`}
@@ -263,7 +264,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
               {dist.percentMeister > 0 && (
                 <div
                   style={{ width: `${dist.percentMeister}%` }}
-                  className="bg-amber-400 rounded-lg flex items-center justify-center text-slate-950 text-[11px] font-black transition-all duration-500 shadow-sm"
+                  className="bg-amber-400 rounded-lg flex items-center justify-center text-slate-950 text-[11px] font-bold transition-all duration-500 shadow-sm"
                   title={`Meister: ${dist.meister} (${dist.percentMeister}%)`}
                 >
                   {dist.percentMeister >= 12 && `${dist.percentMeister}%`}
@@ -287,7 +288,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Schüler nach Name suchen..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+            className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
           />
         </div>
 
@@ -296,8 +297,8 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             onClick={() => setRankFilter('all')}
             className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
               rankFilter === 'all'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
+                ? 'bg-slate-700 text-slate-50'
+                : 'bg-slate-800 text-slate-400 hover:text-slate-50'
             }`}
           >
             Alle ({data?.pupils.length || 0})
@@ -306,7 +307,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             onClick={() => setRankFilter('Lehrling')}
             className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
               rankFilter === 'Lehrling'
-                ? 'bg-rose-500 text-white'
+                ? 'bg-rose-500 text-slate-50'
                 : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
             }`}
           >
@@ -317,7 +318,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             onClick={() => setRankFilter('Geselle')}
             className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
               rankFilter === 'Geselle'
-                ? 'bg-blue-500 text-white'
+                ? 'bg-blue-500 text-slate-50'
                 : 'bg-slate-800 text-blue-400 hover:bg-slate-700'
             }`}
           >
@@ -328,7 +329,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             onClick={() => setRankFilter('Meister')}
             className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
               rankFilter === 'Meister'
-                ? 'bg-amber-400 text-slate-950 font-black'
+                ? 'bg-amber-400 text-slate-950 font-bold'
                 : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
             }`}
           >
@@ -382,7 +383,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                         <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] font-bold text-slate-400 border border-slate-700">
                           {pupil.className}
                         </span>
-                        <span className="font-bold text-white text-xs leading-tight truncate">
+                        <span className="font-bold text-slate-50 text-xs leading-tight truncate">
                           {pupil.fullName}
                         </span>
                       </div>
@@ -395,7 +396,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                     <div className="w-full lg:w-48 flex-shrink-0">
                       <div className="flex items-center justify-between mb-1">
                         <span
-                          className={`px-2 py-0.2 rounded-md text-[10px] font-black uppercase tracking-wider border ${rankBadgeClass}`}
+                          className={`px-2 py-0.2 rounded-md text-[10px] font-bold uppercase tracking-wider border ${rankBadgeClass}`}
                         >
                           {pupil.finalRank}
                         </span>
@@ -489,7 +490,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                               >
                                 <div>
                                   <div className="flex items-center justify-between mb-1">
-                                    <span className="font-bold text-white text-xs">
+                                    <span className="font-bold text-slate-50 text-xs">
                                       {v.teacherName} ({v.teacherShort})
                                     </span>
                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
@@ -497,7 +498,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-slate-400 mb-1.5">
-                                    Einstufung: <strong className="text-white">{v.proposedStatus || 'Keine'}</strong>
+                                    Einstufung: <strong className="text-slate-50">{v.proposedStatus || 'Keine'}</strong>
                                   </div>
                                   {v.comment && (
                                     <p className="text-xs text-amber-200/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 italic">

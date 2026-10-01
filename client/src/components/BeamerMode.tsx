@@ -61,21 +61,21 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
   if (loading || !data) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 text-white">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 text-slate-50">
         <RefreshCw className="w-8 h-8 animate-spin text-amber-400" />
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-white p-6 overflow-hidden select-none">
+    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-50 p-6 overflow-hidden select-none">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
         <div>
           <span className="text-xs uppercase tracking-widest text-amber-400 font-bold">
             Beamer & Konferenz-Modus
           </span>
-          <h1 className="text-3xl font-black tracking-tight">Klasse {className}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Klasse {className}</h1>
           <p className="text-xs text-slate-400">
             {data.summary.length} Schüler/innen · {data.round?.name || 'Aktiver Zeitraum'}
           </p>
@@ -97,7 +97,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
           <button
             onClick={onClose}
-            className="p-2.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition"
+            className="p-2.5 rounded-xl bg-slate-800 text-slate-400 hover:text-slate-50 transition"
           >
             <X className="w-6 h-6" />
           </button>
@@ -117,7 +117,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
                 className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-lg"
               >
                 <div>
-                  <h3 className="font-bold text-lg text-white mb-1">{p.fullName}</h3>
+                  <h3 className="font-bold text-lg text-slate-50 mb-1">{p.fullName}</h3>
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <span>
                       Punkte: <b className="text-amber-400">{p.positiveCount}</b> / 18
@@ -132,7 +132,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
                 <div className="flex items-center gap-2">
                   <span
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
                       isMeister
                         ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
                         : isGeselle
@@ -166,8 +166,8 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
       {/* Override Modal */}
       {overrideModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-1">Konferenzbeschluss</h3>
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg">
+            <h3 className="text-lg font-bold text-slate-50 mb-1">Konferenzbeschluss</h3>
             <p className="text-sm text-amber-400 mb-4">{overrideModal.name}</p>
 
             <div className="space-y-4 mb-6">
@@ -177,9 +177,9 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { rank: 'Lehrling', active: 'bg-rose-500 text-white' },
-                    { rank: 'Geselle', active: 'bg-blue-500 text-white' },
-                    { rank: 'Meister', active: 'bg-amber-400 text-slate-950 font-black' },
+                    { rank: 'Lehrling', active: 'bg-rose-500 text-slate-50' },
+                    { rank: 'Geselle', active: 'bg-blue-500 text-slate-50' },
+                    { rank: 'Meister', active: 'bg-amber-400 text-slate-950 font-bold' },
                   ].map((btn) => (
                     <button
                       key={btn.rank}
@@ -204,7 +204,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
                   type="text"
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-50 text-sm"
                 />
               </div>
             </div>

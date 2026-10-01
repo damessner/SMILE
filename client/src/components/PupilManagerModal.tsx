@@ -78,14 +78,14 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
           <div>
-            <h3 className="text-xl font-bold text-white">Schülerverwaltung</h3>
+            <h3 className="text-xl font-bold text-slate-50">Schülerverwaltung</h3>
             <p className="text-xs text-slate-400">Klasse {currentClass.name} · Schüler hinzufügen, bearbeiten oder archivieren</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white transition">
+          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-50 transition">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -98,7 +98,7 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
             value={newFullName}
             onChange={(e) => setNewFullName(e.target.value)}
             placeholder="Neuer Schülername (z.B. Mustermann Max)"
-            className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
+            className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-50 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
           />
           <button
             type="submit"
@@ -126,12 +126,12 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
                       type="text"
                       value={editingPupil.fullName}
                       onChange={(e) => setEditingPupil({ ...editingPupil, fullName: e.target.value })}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white text-xs"
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-slate-50 text-xs"
                     />
                     <select
                       value={editingPupil.classId}
                       onChange={(e) => setEditingPupil({ ...editingPupil, classId: parseInt(e.target.value, 10) })}
-                      className="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-white text-xs"
+                      className="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-slate-50 text-xs"
                     >
                       {classes.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -154,12 +154,12 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
                   </div>
                 ) : (
                   <>
-                    <span className="font-semibold text-white">{p.fullName}</span>
+                    <span className="font-semibold text-slate-50">{p.fullName}</span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setEditingPupil({ id: p.id, fullName: p.fullName, classId: p.classId })}
                         title="Bearbeiten / Klasse wechseln"
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-50 hover:bg-slate-700 transition"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
