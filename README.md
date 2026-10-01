@@ -41,7 +41,7 @@ Klassenkonferenz und zum täglichen Klassenmanagement.
 npm install
 
 # Secrets: keine Defaults, der Server startet sonst nicht.
-cp server/.env.example .env
+cp .env.example .env
 # Werte eintragen. Zwei Secrets generieren:
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"   # JWT_SECRET
 node -e "console.log(require('crypto').randomBytes(18).toString('base64url'))"   # INITIAL_USER_PASSWORD
