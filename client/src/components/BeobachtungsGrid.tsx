@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
+import { useConfirm } from './ConfirmDialog';
 
 interface BeobachtungsGridProps {
   pupils: PupilWithData[];
@@ -65,6 +66,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   onBatchUpdate,
   onOpenReportModal,
 }) => {
+  const confirm = useConfirm();
   // Folder tabs: "offen" (unsubmitted) vs "bewertet" (submitted)
   const [folderTab, setFolderTab] = useState<'offen' | 'bewertet'>('offen');
   const [selectedPupilId, setSelectedPupilId] = useState<number | null>(
@@ -163,9 +165,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   // Reset all 18 criteria for pupil
   const handleResetAll = async () => {
     if (!selectedPupil) return;
-    if (!window.confirm(`Möchten Sie wirklich alle Bewertungen für ${selectedPupil.fullName} leeren?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Alle Bewertungen leeren?',
+      message: `Alle 18 Merkmale für ${selectedPupil.fullName} werden zurückgesetzt.`,
+      confirmLabel: 'Zurücksetzen',
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     for (const crit of criteria) {

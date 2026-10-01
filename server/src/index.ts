@@ -78,6 +78,10 @@ export async function buildServer() {
 
   await fastify.register(fastifyJwt, {
     secret: jwtSecret(),
+    cookie: {
+      cookieName: 'smile_session',
+      signed: false,
+    },
     // Restrict to a single algorithm. fast-jwt <6 accepted alg confusion.
     sign: { algorithm: 'HS256' },
     verify: { allowedIss: undefined, algorithms: ['HS256'] },

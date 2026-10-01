@@ -32,6 +32,7 @@ import {
 import { useLiveSync } from './hooks/useLiveSync';
 import { LoginModal } from './components/LoginModal';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
+import { useToast } from './components/Toast';
 import { BeobachtungsGrid } from './components/BeobachtungsGrid';
 import { Schulalltag } from './components/Schulalltag';
 import { CardDrawer } from './components/CardDrawer';
@@ -43,6 +44,7 @@ import { TeacherClassReportModal } from './components/TeacherClassReportModal';
 import { TimeoutEscalationModal } from './components/TimeoutEscalationModal';
 
 export function App() {
+  const toast = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState<'schulalltag' | 'bewertung' | 'statistics'>('schulalltag');
@@ -229,7 +231,7 @@ export function App() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      alert(e.message || 'Backup konnte nicht erstellt werden');
+      toast.error(e.message || 'Backup konnte nicht erstellt werden');
     }
   };
 
@@ -245,7 +247,7 @@ export function App() {
       await submitEvaluation(pupilId, selectedClassId, 'SD');
       await loadClassData(selectedClassId);
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Einreichen');
+      toast.error(e.message || 'Fehler beim Einreichen');
     }
   };
 
@@ -255,7 +257,7 @@ export function App() {
       await reopenEvaluation(pupilId, selectedClassId, 'SD');
       await loadClassData(selectedClassId);
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Öffnen');
+      toast.error(e.message || 'Fehler beim Öffnen');
     }
   };
 
@@ -268,7 +270,7 @@ export function App() {
       await batchUpdateItems(pupilId, selectedClassId, 'SD', items);
       await loadClassData(selectedClassId);
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Speichern');
+      toast.error(e.message || 'Fehler beim Speichern');
     }
   };
 
@@ -362,7 +364,7 @@ export function App() {
           <div className="flex items-center p-1 rounded-2xl bg-slate-950/60 border border-slate-800">
             <button
               onClick={() => setActiveTab('schulalltag')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
+              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
                 activeTab === 'schulalltag'
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
                   : 'text-slate-400 hover:text-white'
@@ -373,7 +375,7 @@ export function App() {
             </button>
             <button
               onClick={() => setActiveTab('bewertung')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
+              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
                 activeTab === 'bewertung'
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
                   : 'text-slate-400 hover:text-white'
@@ -384,7 +386,7 @@ export function App() {
             </button>
             <button
               onClick={() => setActiveTab('statistics')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
+              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
                 activeTab === 'statistics'
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
                   : 'text-slate-400 hover:text-white'
@@ -395,9 +397,17 @@ export function App() {
             </button>
           </div>
 
-          {/* Class Selector Tabs (Shown when in Bewertung mode) */}
+          {/*
+            Class selector for the evaluation tab.
+
+            Previously `hidden lg:flex`, which removed class switching entirely on
+            an iPad in portrait (768px) — the main tablet orientation for a teacher
+            holding it to mark work. Now a horizontally scrollable strip on small
+            screens, with 44px targets.
+          */}
           {activeTab === 'bewertung' && (
-            <div className="hidden lg:flex items-center gap-1.5 overflow-x-auto py-1 max-w-xl">
+            <div className="flex lg:max-w-xl items-center gap-1.5 overflow-x-auto py-1
+                            -mx-1 px-1 max-w-full">
               {classes.map((cls) => {
                 const coreSubject = cls.mySubjects?.find((s) => s.isCoreSmile);
                 return (
@@ -406,7 +416,7 @@ export function App() {
                     onClick={() => {
                       setSelectedClassId(cls.id);
                     }}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 ${
+                    className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 flex-shrink-0 ${
                       selectedClassId === cls.id
                         ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -478,7 +488,7 @@ export function App() {
           {activeTab === 'bewertung' && currentClass && (
             <button
               onClick={() => setTeacherReportModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
+              className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-800 text-slate-200 hover:text-white hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
               title="1-Seiten Klassenbericht für Lehrpersonen drucken"
             >
               <Printer className="w-3.5 h-3.5 text-amber-400" />

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { SchoolClass, User } from '../types';
 import { getConferenceSummary, voteConference, voteAllConference } from '../services/api';
+import { useConfirm } from './ConfirmDialog';
 
 interface TeacherVote {
   teacherId: number;
@@ -95,6 +96,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   const [currentPupilIndex, setCurrentPupilIndex] = useState<number>(0);
   const [submittingId, setSubmittingId] = useState<number | null>(null);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'walkthrough' | 'table'>('walkthrough');
 
@@ -243,13 +245,13 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   };
 
   const handleAcceptAllProposals = async () => {
-    if (
-      !window.confirm(
-        `Möchten Sie wirklich alle ${pupils.length} vorgeschlagenen Einstufungen für Klasse ${currentClass?.name} einstimmig (0 Gegenstimmen) annehmen?`
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Alle ${pupils.length} Einstufungen annehmen?`,
+      message: `Alle vorgeschlagenen Einstufungen für Klasse ${currentClass?.name} werden einstimmig (0 Gegenstimmen) bestätigt. Einzelne Entscheidungen lassen sich danach zurücknehmen.`,
+      confirmLabel: 'Alle annehmen',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBatchSubmitting(true);
     setError(null);
     try {
@@ -756,9 +758,9 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                             type="button"
                             onClick={() => handleGegenstimmenChange(p.id, -1)}
                             disabled={votesNo <= 0}
-                            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-sm flex items-center justify-center disabled:opacity-30 transition"
+                            className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 transition"
                           >
-                            -
+                            −
                           </button>
                           <input
                             type="number"
@@ -766,13 +768,13 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                             max={totalTeachers}
                             value={votesNo}
                             onChange={(e) => handleSetGegenstimmen(p.id, parseInt(e.target.value, 10))}
-                            className="w-12 text-center bg-transparent text-sm font-black text-white focus:outline-none"
+                            className="w-12 text-center bg-transparent text-base font-black text-white focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => handleGegenstimmenChange(p.id, 1)}
                             disabled={votesNo >= totalTeachers}
-                            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-sm flex items-center justify-center disabled:opacity-30 transition"
+                            className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-lg flex items-center justify-center disabled:opacity-30 transition"
                           >
                             +
                           </button>
@@ -938,7 +940,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         onChange={(e) =>
                           handleRankChange(pupil.id, e.target.value as 'Lehrling' | 'Geselle' | 'Meister')
                         }
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-amber-400"
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-amber-400"
                       >
                         <option value="Lehrling">🔴 Lehrling</option>
                         <option value="Geselle">🔵 Geselle</option>
@@ -1056,7 +1058,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           <button
             onClick={goToPrevPupil}
             disabled={currentPupilIndex <= 0}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1 transition disabled:opacity-30"
+            className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1 transition disabled:opacity-30"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Vorheriger</span>
@@ -1097,7 +1099,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           <button
             onClick={goToNextPupil}
             disabled={currentPupilIndex >= pupils.length - 1}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1 transition disabled:opacity-30"
+            className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1 transition disabled:opacity-30"
           >
             <span>Nächster</span>
             <ChevronRight className="w-4 h-4" />

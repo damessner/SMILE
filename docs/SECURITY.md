@@ -152,17 +152,23 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   session cookie is `httpOnly` and `SameSite=Strict`, but the token still crosses the
   network in clear text and is interceptable by anyone on a switched network. Set
   `COOKIE_SECURE=true` and put it behind a TLS-terminating proxy when you can.
-- **No automated backup schedule.** `PLAN.md` §7 promises three tiers; only the in-app
-  export exists. `README.md` §8 referenced `python scratch/create_backup.py`, and no
-  `scratch/` directory exists — that documented command cannot be run.
-- **Restore is not implemented.** The in-app backup is export-only. A JSON export is not
-  a substitute for `pg_dump`: it depends on the ORM's field mapping and does not capture
-  schema changes.
+- ~~**No automated backup schedule.**~~ Resolved: hourly encrypted `pg_dump` to Google
+  Drive with tiered retention, `cryptcheck` verification, a restore script, and a weekly
+  unattended restore drill. See [`docs/BACKUP.md`](BACKUP.md). `README.md` §8 still
+  references `python scratch/create_backup.py`, which does not exist — update or delete it.
+- ~~**Restore is not implemented.**~~ Resolved: `restore-from-gdrive.sh` restores into a
+  scratch database by default and refuses to overwrite the live database without
+  `--force`.
 - **Remaining npm advisories.** 4 moderate, all `esbuild` via `drizzle-kit` at build time.
   Production dependencies audit clean (`npm audit --omit=dev` → 0 vulnerabilities).
 - **`PLAN.md` still describes the old stack** (React 18 / Fastify 4 / Node 20, shared
   default passwords). Update it or it will mislead the next reader.
-- **No CI.** Tests run locally via `npm test`.
+- **No CI.** TypeScript tests run locally via `npm test`; the backup shell scripts carry
+  54 tests over three suites run via `bash scripts/test/run-all.sh`. Neither is wired to CI.
+- **Backup caveat: one destination.** One Drive folder holding every copy. A 3-2-1
+  arrangement would want a second, independently encrypted target. The key also lives on
+  the same host as the data, so a full compromise of LXC 115 exposes historical backups
+  as well as live data.
 
 ---
 

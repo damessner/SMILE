@@ -23,6 +23,8 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { SchoolClass, PupilWithData, User } from '../types';
+import { useToast } from './Toast';
+import { useConfirm } from './ConfirmDialog';
 import {
   issueCard,
   revokeCard,
@@ -125,6 +127,15 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   // Quick inline note state per pupil
   const [inlineNotes, setInlineNotes] = useState<Record<number, string>>({});
   const [savingInlineNote, setSavingInlineNote] = useState<number | null>(null);
+
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  /** Keyboard shortcuts act on the pupil whose row is expanded, else the first row. */
+  const targetPupil = useMemo(() => {
+    if (expandedPupilId != null) return pupils.find((p) => p.id === expandedPupilId) ?? null;
+    return pupils[0] ?? null;
+  }, [expandedPupilId, pupils]);
 
   // Load timetable info
   useEffect(() => {
@@ -236,19 +247,34 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const handleConfirmCard = async () => {
     if (!activeCardModal || !currentClass) return;
     setSubmittingCard(true);
+    const target = activeCardModal;
+    const note = cardNote.trim() || undefined;
     try {
-      await issueCard(
-        activeCardModal.pupilId,
-        currentClass.id,
-        activeCardModal.cardType,
-        cardNote.trim() || undefined
-      );
+      const res = await issueCard(target.pupilId, currentClass.id, target.cardType, note);
       await loadClassCards(currentClass.id);
       onRefreshClassData();
       setActiveCardModal(null);
       setCardNote('');
+
+      // Undo window: a mis-tap costs one tap, not a trip through a confirm dialog.
+      const colour = target.cardType === 'green' ? 'Grüne' : 'Gelbe';
+      toast.success(`${colour} Karte für ${target.pupilName} gespeichert.`, {
+        action: {
+          label: 'Rückgängig',
+          onClick: async () => {
+            try {
+              await revokeCard(res.card.id);
+              await loadClassCards(currentClass.id);
+              onRefreshClassData();
+              toast.success('Karte zurückgezogen.');
+            } catch (e: any) {
+              toast.error(e.message || 'Rückgängig fehlgeschlagen.');
+            }
+          },
+        },
+      });
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Vergeben der Karte');
+      toast.error(e.message || 'Fehler beim Vergeben der Karte');
     } finally {
       setSubmittingCard(false);
     }
@@ -273,24 +299,41 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const handleConfirmRedCard = async () => {
     if (!redCardTarget || !currentClass) return;
     if (!redCardNote.trim()) {
-      alert('Bitte geben Sie eine Beschreibung des Vorfalls an.');
+      toast.error('Bitte geben Sie eine Beschreibung des Vorfalls an.');
       return;
     }
 
     setSubmittingRedCard(true);
+    const target = redCardTarget;
+    const note = redCardNote.trim();
     try {
-      await issueCard(
-        redCardTarget.pupilId,
-        currentClass.id,
-        'red',
-        redCardNote.trim()
-      );
+      const res = await issueCard(target.pupilId, currentClass.id, 'red', note);
       await loadClassCards(currentClass.id);
       onRefreshClassData();
       setRedCardTarget(null);
       setRedCardNote('');
+
+      // A red card costs a rank, so it carries the same undo window as the others.
+      toast.success(
+        `Rote Karte für ${target.pupilName}: ${target.currentRank} → ${target.demotedRank}.`,
+        {
+          action: {
+            label: 'Rückgängig',
+            onClick: async () => {
+              try {
+                await revokeCard(res.card.id);
+                await loadClassCards(currentClass.id);
+                onRefreshClassData();
+                toast.success('Rangverlust aufgehoben.');
+              } catch (e: any) {
+                toast.error(e.message || 'Rückgängig fehlgeschlagen.');
+              }
+            },
+          },
+        },
+      );
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Vergeben der Roten Karte');
+      toast.error(e.message || 'Fehler beim Vergeben der Roten Karte');
     } finally {
       setSubmittingRedCard(false);
     }
@@ -309,25 +352,47 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const handleConfirmTimeout = async () => {
     if (!timeoutTarget || !currentClass) return;
     if (!timeoutTask.trim()) {
-      alert('Bitte geben Sie einen Arbeitsauftrag für die Lernwerkstatt an.');
+      toast.error('Bitte geben Sie einen Arbeitsauftrag für die Lernwerkstatt an.');
       return;
     }
 
     setSubmittingTimeout(true);
+    const target = timeoutTarget;
+    const task = timeoutTask.trim();
     try {
-      await sendToTimeout(
-        timeoutTarget.pupilId,
-        currentClass.id,
-        timeoutTask.trim()
-      );
+      const res = await sendToTimeout(target.pupilId, currentClass.id, task);
       await loadClassCards(currentClass.id);
       await loadTimeoutsData();
       onRefreshClassData();
       setTimeoutTarget(null);
       setTimeoutTask('');
-      alert(`Schüler*in wurde ins Time-Out (Lernwerkstatt) geschickt und eine Rote Karte wurde eingetragen.`);
+
+      // Previously this fired a blocking alert() on SUCCESS, which meant a teacher
+      // had to dismiss a modal before carrying on with the lesson.
+      //
+      // Undo has to undo two records: the timeout incident and the red card it
+      // created. If the card revoke fails, say so rather than implying it worked.
+      toast.success(`${target.pupilName} ist im Time-Out. Rote Karte eingetragen.`, {
+        action: {
+          label: 'Rückgängig',
+          onClick: async () => {
+            try {
+              await resolveTimeout(res.incident.id, 'Rückgängig: Time-Out aufgehoben');
+              if (res.redCard?.id) await revokeCard(res.redCard.id);
+              await loadClassCards(currentClass.id);
+              await loadTimeoutsData();
+              onRefreshClassData();
+              toast.success('Time-Out aufgehoben, Rangverlust zurückgenommen.');
+            } catch (e: any) {
+              toast.error(
+                e.message || 'Rückgängig fehlgeschlagen. Bitte in der LW-Übersicht prüfen.',
+              );
+            }
+          },
+        },
+      });
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Erfassen des Time-Outs');
+      toast.error(e.message || 'Fehler beim Erfassen des Time-Outs');
     } finally {
       setSubmittingTimeout(false);
     }
@@ -335,33 +400,44 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
   // Resolve Time-Out in LW
   const handleResolveTimeout = async (id: string, pupilName: string) => {
-    if (!window.confirm(`Möchten Sie ${pupilName} zurück in die Klasse schicken (Arbeitsauftrag erledigt)?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `${pupilName} zurück in die Klasse?`,
+      message: 'Der Arbeitsauftrag wird als erledigt protokolliert.',
+      confirmLabel: 'Zurück schicken',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await resolveTimeout(id, 'Arbeitsauftrag in Lernwerkstatt erledigt');
       await loadTimeoutsData();
       onRefreshClassData();
+      toast.success(`${pupilName} ist zurück in der Klasse.`);
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Zurückschicken');
+      toast.error(e.message || 'Fehler beim Zurückschicken');
     }
   };
 
   // Revoke card
   const handleRevokeCard = async (card: BehaviorCardItem) => {
     const isRed = card.card_type === 'red';
-    const confirmMsg = isRed
-      ? 'Möchten Sie diese Rote Karte wirklich zurückziehen? Der Rangverlust wird dadurch sofort aufgehoben.'
-      : 'Möchten Sie diese Karte wirklich zurückziehen?';
-
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await confirm({
+      title: 'Karte zurückziehen?',
+      message: isRed
+        ? 'Eine Rote Karte kostet sofort einen Rang. Wird sie zurückgezogen, ist der Rangverlust sofort aufgehoben.'
+        : 'Die Karte wird aus der Historie entfernt.',
+      confirmLabel: 'Zurückziehen',
+      tone: isRed ? 'danger' : 'default',
+    });
+    if (!ok) return;
 
     try {
       await revokeCard(card.id);
       if (currentClass) await loadClassCards(currentClass.id);
       onRefreshClassData();
+      toast.success('Karte zurückgezogen.');
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Zurückziehen');
+      toast.error(e.message || 'Fehler beim Zurückziehen');
     }
   };
 
@@ -375,12 +451,80 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       await loadClassCards(currentClass.id);
       onRefreshClassData();
       setInlineNotes((prev) => ({ ...prev, [pupilId]: '' }));
+      toast.success('Notiz gespeichert.');
     } catch (e: any) {
-      alert(e.message || 'Fehler beim Speichern der Notiz');
+      toast.error(e.message || 'Fehler beim Speichern der Notiz');
     } finally {
       setSavingInlineNote(null);
     }
   };
+
+  // --- Keyboard shortcuts ----------------------------------------------------
+  // Teachers using an iPad with a keyboard can record the common actions without
+  // reaching for a 44px target. Keys act on the expanded pupil row, or the first
+  // pupil when nothing is expanded.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Never hijack typing.
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      // A modal is open: the dialog owns the keyboard.
+      if (activeCardModal || redCardTarget || timeoutTarget) return;
+      if (isLwView) return;
+
+      const pupil = targetPupil;
+      if (!pupil) return;
+
+      switch (e.key) {
+        case '1':
+        case 'g':
+        case 'G':
+          e.preventDefault();
+          setExpandedPupilId(pupil.id);
+          setActiveCardModal({ pupilId: pupil.id, pupilName: pupil.fullName, cardType: 'green' });
+          break;
+        case '2':
+        case 'y':
+        case 'Y':
+          e.preventDefault();
+          setExpandedPupilId(pupil.id);
+          setActiveCardModal({ pupilId: pupil.id, pupilName: pupil.fullName, cardType: 'yellow' });
+          break;
+        case '3':
+        case 'r':
+        case 'R':
+          e.preventDefault();
+          setExpandedPupilId(pupil.id);
+          handleOpenRedCardModal(pupil);
+          break;
+        case '4':
+        case 't':
+        case 'T':
+          e.preventDefault();
+          setExpandedPupilId(pupil.id);
+          handleOpenTimeoutModal(pupil);
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    targetPupil,
+    activeCardModal,
+    redCardTarget,
+    timeoutTarget,
+    isLwView,
+  ]);
 
   // Filtered pupils list
   const filteredPupils = useMemo(() => {
@@ -448,7 +592,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {/* Special LW Button */}
             <button
               onClick={() => setIsLwView(true)}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
+              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                 isLwView
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25'
                   : 'bg-slate-800/80 text-amber-300 hover:text-white hover:bg-slate-700 border border-amber-500/30'
@@ -472,7 +616,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   setIsLwView(false);
                   onSelectClass(cls.id);
                 }}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
+                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                   !isLwView && currentClass?.id === cls.id
                     ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
                     : 'bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700'
@@ -507,7 +651,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         onSelectClass(targetCls.id);
                       }
                     }}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition ${
+                    className={`min-h-[40px] px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
                       (isLwView && isThisLW) || (!isLwView && currentClass.name === cName)
                         ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                         : 'bg-slate-800 text-slate-400 hover:text-white border-slate-700'
@@ -548,7 +692,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 </span>
                 <button
                   onClick={loadTimeoutsData}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition"
+                  className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition"
                 >
                   Aktualisieren
                 </button>
@@ -687,7 +831,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
               <button
                 onClick={() => setFilterRank('all')}
-                className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition ${
                   filterRank === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
@@ -695,7 +839,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
               <button
                 onClick={() => setFilterRank('Lehrling')}
-                className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
                   filterRank === 'Lehrling' ? 'bg-rose-500 text-white' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
                 }`}
               >
@@ -704,7 +848,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
               <button
                 onClick={() => setFilterRank('Geselle')}
-                className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
                   filterRank === 'Geselle' ? 'bg-blue-500 text-white' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'
                 }`}
               >
@@ -713,7 +857,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
               <button
                 onClick={() => setFilterRank('Meister')}
-                className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
                   filterRank === 'Meister' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
                 }`}
               >
@@ -874,10 +1018,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          title="Grüne Karte vergeben"
+                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          title="Grüne Karte vergeben  (Tastatur: 1)"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                           <span>Grün</span>
                         </button>
 
@@ -891,10 +1035,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          title="Gelbe Karte vergeben"
+                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          title="Gelbe Karte vergeben  (Tastatur: 2)"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                           <span>Gelb</span>
                         </button>
 
@@ -903,8 +1047,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenRedCardModal(pupil);
                           }}
-                          className="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1 active:scale-95"
-                          title="Rote Karte vergeben (Instant Rank Loss)"
+                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
                         >
                           <span>🟥</span>
                           <span>Rot</span>
@@ -915,14 +1059,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil);
                           }}
-                          className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-xs font-black transition flex items-center gap-1 active:scale-95"
-                          title="Ins Time-Out (Lernwerkstatt) schicken"
+                          className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-xs font-black transition flex items-center gap-1.5 active:scale-95"
+                          title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
-                          <Clock className="w-3 h-3 text-amber-400" />
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
                           <span>TIMEOUT</span>
                         </button>
 
-                        <div className="hidden md:flex pl-1 text-slate-500 hover:text-slate-300">
+                        <div className="hidden md:flex pl-1 min-h-[44px] min-w-[44px] items-center justify-center text-slate-500 hover:text-slate-300">
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </div>
                       </div>
@@ -1044,12 +1188,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveInlineNote(pupil.id);
                             }}
-                            className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            className="flex-1 min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                           />
                           <button
                             onClick={() => handleSaveInlineNote(pupil.id)}
                             disabled={savingInlineNote === pupil.id || !inlineNotes[pupil.id]?.trim()}
-                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition disabled:opacity-40"
+                            className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition disabled:opacity-40"
                           >
                             {savingInlineNote === pupil.id ? '...' : 'Notiz speichern'}
                           </button>

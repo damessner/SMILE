@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Lock, Unlock, Gavel, X, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { getConferenceSummary, lockVoting, conferenceOverride } from '../services/api';
+import { useToast } from './Toast';
 
 interface BeamerModeProps {
   classId: number;
@@ -15,6 +16,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
   const [overrideModal, setOverrideModal] = useState<{ pupilId: number; name: string; currentRank: string } | null>(null);
   const [overrideRank, setOverrideRank] = useState('Geselle');
   const [overrideReason, setOverrideReason] = useState('Beschluss der Klassenkonferenz');
+  const toast = useToast();
 
   const loadData = async () => {
     try {
@@ -39,8 +41,9 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
       const next = !isLocked;
       await lockVoting(classId, next);
       setIsLocked(next);
+      toast.success(next ? 'Abstimmung gesperrt.' : 'Abstimmung freigegeben.');
     } catch (e: any) {
-      alert(e.message || 'Sperrstatus konnte nicht geändert werden');
+      toast.error(e.message || 'Sperrstatus konnte nicht geändert werden');
     }
   };
 
@@ -50,8 +53,9 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
       await conferenceOverride(classId, overrideModal.pupilId, overrideRank, overrideReason);
       setOverrideModal(null);
       await loadData();
+      toast.success('Konferenzbeschluss gespeichert.');
     } catch (e: any) {
-      alert(e.message || 'Konferenzbeschluss fehlgeschlagen');
+      toast.error(e.message || 'Konferenzbeschluss fehlgeschlagen');
     }
   };
 

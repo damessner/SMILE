@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { UserPlus, Edit2, Archive, X, Check, AlertCircle } from 'lucide-react';
 import { addPupil, updatePupil, archivePupil } from '../services/api';
+import { useToast } from './Toast';
+import { useConfirm } from './ConfirmDialog';
 import { PupilWithData, SchoolClass } from '../types';
 
 interface PupilManagerModalProps {
@@ -21,6 +23,8 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
   const [newFullName, setNewFullName] = useState('');
   const [editingPupil, setEditingPupil] = useState<{ id: number; fullName: string; classId: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +35,7 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
       setNewFullName('');
       onPupilsChanged();
     } catch (e: any) {
-      alert(e.message || 'Hinzufügen fehlgeschlagen');
+      toast.error(e.message || 'Hinzufügen fehlgeschlagen');
     } finally {
       setLoading(false);
     }
@@ -44,21 +48,29 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
       await updatePupil(editingPupil.id, editingPupil.fullName, editingPupil.classId);
       setEditingPupil(null);
       onPupilsChanged();
+      toast.success('Schülerdaten gespeichert.');
     } catch (e: any) {
-      alert(e.message || 'Bearbeiten fehlgeschlagen');
+      toast.error(e.message || 'Bearbeiten fehlgeschlagen');
     } finally {
       setLoading(false);
     }
   };
 
   const handleArchive = async (id: number, name: string) => {
-    if (!confirm(`Schüler/in "${name}" wirklich archivieren? (Historische Noten bleiben erhalten)`)) return;
+    const ok = await confirm({
+      title: 'Schüler*in archivieren?',
+      message: `${name} wird aus den aktiven Klassenlisten entfernt. Historische Bewertungen, Karten und Konferenzbeschlüsse bleiben erhalten.`,
+      confirmLabel: 'Archivieren',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setLoading(true);
     try {
       await archivePupil(id);
       onPupilsChanged();
+      toast.success(`${name} archiviert.`);
     } catch (e: any) {
-      alert(e.message || 'Archivieren fehlgeschlagen');
+      toast.error(e.message || 'Archivieren fehlgeschlagen');
     } finally {
       setLoading(false);
     }

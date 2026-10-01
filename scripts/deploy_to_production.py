@@ -30,11 +30,25 @@ os.close(tar_fd)
 
 try:
     print("Creating deployment bundle...")
+    bundle_items = [
+        "package.json",
+        "package-lock.json",
+        "server/package.json",
+        "server/dist",
+        "server/src",
+        "server/drizzle",
+        "client/package.json",
+        "client/dist",
+        "client/src",
+        "scripts",
+        "docs",
+    ]
+
     with tarfile.open(tar_path, "w:gz") as tar:
-        for folder in ["server/dist", "server/src", "client/dist"]:
-            full_path = os.path.join(base_dir, folder)
+        for item in bundle_items:
+            full_path = os.path.join(base_dir, item)
             if os.path.exists(full_path):
-                tar.add(full_path, arcname=folder)
+                tar.add(full_path, arcname=item)
 
     print(f"Connecting to Proxmox host {proxmox_host}...")
     ssh = paramiko.SSHClient()
@@ -50,6 +64,7 @@ try:
     cmds = [
         f"pct push {container_id} {remote_tmp} {remote_tmp}",
         f"pct exec {container_id} -- tar -xzf {remote_tmp} -C /opt/smile --overwrite",
+        f"pct exec {container_id} -- bash -c 'cd /opt/smile && npm install --omit=dev --ignore-scripts'",
         f"pct exec {container_id} -- systemctl restart smile.service",
         f"pct exec {container_id} -- systemctl status smile.service",
     ]

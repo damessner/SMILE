@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Award, AlertTriangle, RotateCcw, Check, X } from 'lucide-react';
 import { issueCard, revokeCard } from '../services/api';
+import { useToast } from './Toast';
 
 interface CardDrawerProps {
   pupilId: number;
@@ -20,6 +21,7 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
   const [note, setNote] = useState('');
   const [undoCardId, setUndoCardId] = useState<string | null>(null);
   const [undoCountdown, setUndoCountdown] = useState<number | null>(null);
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
 
   const handleIssue = async (type: 'green' | 'yellow') => {
@@ -43,8 +45,8 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
           return prev - 1;
         });
       }, 1000);
-    } catch (e) {
-      alert('Karte konnte nicht vergeben werden');
+    } catch (e: any) {
+      toast.error(e.message || 'Karte konnte nicht vergeben werden');
     } finally {
       setLoading(false);
     }
@@ -57,8 +59,9 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
       setUndoCardId(null);
       setUndoCountdown(null);
       onCardUpdated();
-    } catch (e) {
-      alert('Rückgängig machen fehlgeschlagen');
+      toast.success('Karte zurückgezogen.');
+    } catch (e: any) {
+      toast.error(e.message || 'Rückgängig machen fehlgeschlagen');
     }
   };
 

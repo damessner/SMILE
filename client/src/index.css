@@ -6,6 +6,32 @@
     overscroll-behavior-y: none;
     -webkit-tap-highlight-color: transparent;
   }
+
+  /*
+    Respect the OS "reduce motion" setting. The toast entry animation is the only
+    motion in the app that fires on a routine action, and for some pupils and
+    staff a sudden animation is uncomfortable.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Toast entry: rises slightly from the bottom-centre position */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* Custom soft-lock pulse animation */
