@@ -20,6 +20,23 @@ Statt mühsam papierbasierte Bögen auszufüllen, arbeiten alle Lehrkräfte in E
 
 ---
 
+## ⚡ 1-Klick Proxmox Installation (LXC Helper Script)
+
+Erstelle und starte eine vollständige SMILE-Instanz in einem neuen Proxmox LXC-Container mit einem einzigen Befehl direkt in der **Proxmox VE Shell** (Root-Knoten):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/damessner/SMILE/main/install-lxc.sh)"
+```
+
+> 💡 **Automatischer Ablauf:**
+> - 🐧 Erstellt einen unprivilegierten Debian 12 LXC Container (2 Cores, 2 GB RAM, 16 GB Disk, `nesting=1`).
+> - 🐘 Installiert **PostgreSQL 17** und **Node.js 22 LTS**.
+> - 🔐 Erzeugt individuelle kryptographische Secrets & Passwörter in `.env`.
+> - 🚀 Baut Frontend & Backend und richtet den Autostart-Dienst (`smile.service`) ein.
+> - 🔄 *Optional:* Bietet bei Bedarf die Übernahme bestehender Daten aus einem vorherigen Container an.
+
+---
+
 ## 🚀 Kernfunktionen im Überblick
 
 ### 🏫 1. Schulalltag — Minimalistisches Klassenmanagement
