@@ -64,7 +64,7 @@ read -r -p "Enter RAM in MB [default: 2048]: " INPUT_RAM
 RAM="${INPUT_RAM:-2048}"
 
 read -r -p "Enter Disk Size in GB [default: 16]: " INPUT_DISK
-DISK_SIZE="${INPUT_DISK:-16}G"
+DISK_SIZE="${INPUT_DISK:-16}"
 
 # Detect best storage (prefers local-lvm, fallback to local or first available)
 DEF_STORAGE="local-lvm"
@@ -122,7 +122,8 @@ pct create "$CTID" "$TEMPLATE_PATH" \
   --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp,type=veth" \
   --features nesting=1 \
   --unprivileged 1 \
-  --onboot 1
+  --onboot 1 \
+  --cmode shell
 
 ok "LXC Container $CTID created successfully."
 
