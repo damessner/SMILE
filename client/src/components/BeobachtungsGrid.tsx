@@ -515,7 +515,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             {/* Instant Rank Buttons & Reset (For core D/M/E teachers OR when raster is open) */}
             {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
-              <div className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
+              <div data-tour="instant-rank-buttons" className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort-Rang:</span>
                 <button
                   onClick={() => handleInstantRank('Lehrling')}
@@ -607,7 +607,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
         {/* Optional Rank Voting for Non-Core Teachers */}
         {!canAccessRaster && (
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl mb-6">
+          <div data-tour="non-core-voting" className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 mb-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">

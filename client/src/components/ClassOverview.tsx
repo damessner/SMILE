@@ -119,6 +119,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
 
             {/* Start Rating Mode Button */}
             <button
+              data-tour="start-rating-button"
               onClick={() => onStartRating(openPupils[0]?.id || pupils[0]?.id)}
               disabled={isPastDeadline}
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-sm transition active:scale-95 disabled:opacity-40"

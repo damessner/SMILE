@@ -84,6 +84,13 @@ export function App() {
   const [pendingTimeoutCount, setPendingTimeoutCount] = useState(0);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
+  const checkAndOpenTour = (user: User) => {
+    const userKey = `smile_tour_seen_${user.username.toLowerCase()}`;
+    if (!localStorage.getItem(userKey)) {
+      setOnboardingOpen(true);
+    }
+  };
+
   // 1. Check Auth on mount
   //
   // The session lives in an httpOnly cookie, so there is no token in localStorage to
@@ -94,9 +101,7 @@ export function App() {
         setCurrentUser(user);
         if (!user.mustChangePassword) {
           loadClasses(user);
-          if (!localStorage.getItem('smile_onboarding_seen')) {
-            setOnboardingOpen(true);
-          }
+          checkAndOpenTour(user);
         }
       })
       .catch(() => setCurrentUser(null))
@@ -260,6 +265,7 @@ export function App() {
   const handlePasswordChanged = (user: User) => {
     setCurrentUser(user);
     loadClasses(user);
+    checkAndOpenTour(user);
   };
 
   const getActiveSubjectCode = () => {
@@ -374,7 +380,10 @@ export function App() {
       <LoginModal
         onSuccess={(user) => {
           setCurrentUser(user);
-          if (!user.mustChangePassword) loadClasses(user);
+          if (!user.mustChangePassword) {
+            loadClasses(user);
+            checkAndOpenTour(user);
+          }
         }}
       />
     );
@@ -402,7 +411,7 @@ export function App() {
       */}
       <header className="material-bar sticky top-0 z-40 safe-top px-4 md:px-6 py-2.5 md:py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 md:gap-4 min-w-0">
-          <div className="flex items-center gap-2 text-slate-50 font-semibold text-base tracking-tight shrink-0">
+          <div data-tour="welcome-logo" className="flex items-center gap-2 text-slate-50 font-semibold text-base tracking-tight shrink-0">
             <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
               <GraduationCap className="w-4.5 h-4.5" />
             </div>
@@ -410,7 +419,7 @@ export function App() {
           </div>
 
           {/* Segmented control, iOS style: one inset container, selected segment lifts. */}
-          <div className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
+          <div data-tour="nav-tabs" className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
             {(
               [
                 ['schulalltag', 'Schulalltag', Calendar],
@@ -445,7 +454,7 @@ export function App() {
             screens, with 44px targets.
           */}
           {activeTab === 'bewertung' && (
-            <div className="flex lg:max-w-xl items-center gap-1.5 overflow-x-auto py-1
+            <div data-tour="rating-classes" className="flex lg:max-w-xl items-center gap-1.5 overflow-x-auto py-1
                             -mx-1 px-1 max-w-full">
               {classes.map((cls) => {
                 const coreSubject = cls.mySubjects?.find((s) => s.isCoreSmile);
@@ -497,6 +506,7 @@ export function App() {
           {/* Conference Button (For Headmasters MED, SLC, Admin AND Class KVs) */}
           {canAccessConference && (
             <button
+              data-tour="conference-button"
               onClick={() => setConferenceModalOpen(true)}
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-sm transition active:scale-95"
               title="Klassenkonferenz & Notenbeschluss im Vollbildmodus (Schulleitung & Klassenvorstände)"
@@ -541,6 +551,7 @@ export function App() {
 
           {/* Help & Onboarding Tour Button */}
           <button
+            data-tour="help-button"
             onClick={() => setOnboardingOpen(true)}
             className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-amber-400 hover:bg-slate-700 transition border border-slate-700/60"
             title="Einführung & Hilfe (Tour) öffnen"
@@ -730,10 +741,13 @@ export function App() {
         />
       )}
 
-      {/* Interactive Onboarding Tour Modal */}
+      {/* Interactive Spotlight Onboarding Tour */}
       <OnboardingTour
         isOpen={onboardingOpen}
         onClose={() => setOnboardingOpen(false)}
+        currentUser={currentUser}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
       />
     </div>
   );

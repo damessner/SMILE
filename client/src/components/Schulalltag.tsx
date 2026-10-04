@@ -590,7 +590,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
         {/* Class Selection Tabs & LW Pill */}
         <div className="pt-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-2xl">
+          <div data-tour="class-selector" className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-2xl">
             <span className="text-xs font-bold text-slate-400 mr-1 flex-shrink-0">Bereich:</span>
 
             {/* Special LW Button */}
@@ -894,7 +894,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 Keine Schüler gefunden für diese Auswahl.
               </div>
             ) : (
-              filteredPupils.map((pupil) => {
+              filteredPupils.map((pupil, index) => {
                 const isExpanded = expandedPupilId === pupil.id;
                 const { rank, baseRank, hasRedCard, hasRedCardDemotion, pos: positiveTicks } = getPupilRank(pupil);
                 const pupilCards = cards.filter((c) => c.pupil_id === pupil.id);
@@ -905,7 +905,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 const activeTimeoutIncident = activeTimeouts.find((ti) => ti.pupil_id === pupil.id);
 
                 return (
-                  <div key={pupil.id} className="transition-colors">
+                  <div key={pupil.id} data-tour={index === 0 ? 'pupil-row' : undefined} className="transition-colors">
                     {/* Main Compact Row */}
                     <div
                       onClick={() => setExpandedPupilId(isExpanded ? null : pupil.id)}
@@ -1027,7 +1027,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       </div>
 
                       {/* Col 4: Quick Action Buttons & Expand Chevron */}
-                      <div className="col-span-4 flex items-center justify-end gap-1.5 flex-wrap">
+                      <div data-tour={index === 0 ? 'card-actions' : undefined} className="col-span-4 flex items-center justify-end gap-1.5 flex-wrap">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
