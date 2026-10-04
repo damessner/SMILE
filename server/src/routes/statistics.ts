@@ -196,8 +196,10 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const pupilsSummary = classPupils.map((pupil) => {
       const pupilEvals = allEvals.filter((e) => e.pupilId === pupil.id);
+      const coreEvals = pupilEvals.filter((e) => normalizeSubject(e.subjectCode).isCoreSmile);
+      const evalsForCalc = coreEvals.length > 0 ? coreEvals : pupilEvals;
       const counts = summarizeRatings(
-        pupilEvals.map((e) => ({
+        evalsForCalc.map((e) => ({
           evaluationId: e.id,
           items: itemsByEvalId.get(e.id) ?? [],
         })),

@@ -227,7 +227,7 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
   base.exists = true;
   base.isAdmin = user.role === 'admin';
   if (base.isAdmin) {
-    return { ...base, isHeadmaster: true, canRead: true, canRecord: true, canRate: true, canManagePupils: true, canRunConference: true };
+    return { ...base, isHeadmaster: true, isCoreTeacher: true, canRead: true, canRecord: true, canRate: true, canManagePupils: true, canRunConference: true };
   }
 
   const teacher = user.teacherId ? await getTeacher(user.teacherId) : null;
@@ -260,7 +260,7 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
   // Headmasters see and may rate every class; homeroom heads and assigned teachers
   // are scoped to the classes they are actually responsible for.
   if (base.isHeadmaster) {
-    return { ...base, canRead: true, canRecord: true, canRate: true, canRunConference: true };
+    return { ...base, isCoreTeacher: true, canRead: true, canRecord: true, canRate: true, canRunConference: true };
   }
   if (user.role === 'pupil') return base; // pupil logins are not wired up yet
 
@@ -269,7 +269,7 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
     ...base,
     canRead: isResponsible,
     canRecord: isResponsible,
-    canRate: base.isCoreTeacher,
+    canRate: isResponsible,
     canManagePupils: base.isKv,
     /*
       Conference mode is reserved for the Schulleitung (SLC, MED) by school decision.

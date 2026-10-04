@@ -70,7 +70,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRate) {
       return reply.status(403).send({
-        error: 'Sie unterrichten in dieser Klasse kein Hauptfach und dürfen hier nicht bewerten.',
+        error: 'Sie sind in dieser Klasse nicht als Lehrkraft eingeteilt.',
       });
     }
 
@@ -264,8 +264,9 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
-    if (!proposedStatus || !isRank(proposedStatus)) {
-      return badRequest(reply, 'Ein gültiger proposedStatus ist erforderlich.');
+    let finalProposedStatus = proposedStatus;
+    if (!finalProposedStatus || !isRank(finalProposedStatus)) {
+      finalProposedStatus = 'Geselle';
     }
 
     const access = await getClassAccess(user, classId);
@@ -288,7 +289,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         classId,
         subjectCode,
         teacherId: user.teacherId ?? 0,
-        proposedStatus,
+        proposedStatus: finalProposedStatus,
         nextStep: nextStep ?? null,
         comment: comment ?? null,
         isSubmitted: true,
@@ -301,7 +302,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
           isSubmitted: true,
           submittedAt: new Date(),
           submittedByTeacherId: user.teacherId ?? null,
-          proposedStatus,
+          proposedStatus: finalProposedStatus,
           nextStep: nextStep !== undefined ? nextStep : null,
           comment: comment !== undefined ? comment : null,
           updatedAt: new Date(),

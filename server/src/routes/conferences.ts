@@ -14,6 +14,7 @@ import {
   type AuthUser,
 } from '../lib/guards.js';
 import { calculateRank, summarizeRatings, type RatingLike } from '../lib/ranking.js';
+import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 
 /**
@@ -478,7 +479,11 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         };
       });
 
-      const pupilGroups = pupilEvals.map((e) => ({
+      // Automatic threshold rank is determined by the core subjects (D, M, E).
+      // Non-core subject observations are supplementary and for individual teacher notes.
+      const coreEvals = pupilEvals.filter((e) => normalizeSubject(e.subject_code).isCoreSmile);
+      const evalsForCalc = coreEvals.length > 0 ? coreEvals : pupilEvals;
+      const pupilGroups = evalsForCalc.map((e) => ({
         evaluationId: e.id,
         items: itemsByEval.get(e.id) ?? [],
       }));

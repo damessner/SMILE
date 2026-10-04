@@ -333,8 +333,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
   if (!access.canRate) {
     sendTo(client, {
       type: 'ERROR',
-      message:
-        'Zugriff verweigert: Sie unterrichten in dieser Klasse kein Hauptfach (Deutsch, Mathe, Englisch).',
+      message: 'Zugriff verweigert: Sie sind für diese Klasse nicht als Lehrkraft eingeteilt.',
     });
     return;
   }

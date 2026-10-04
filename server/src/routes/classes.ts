@@ -65,7 +65,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
           const subs = normaliseSubjects(
             mine.filter((a) => a.classId === c.id).map((a) => a.subjectName),
           );
-          return { ...c, mySubjects: subs, canAccessRaster: true, isKv: false };
+          return { ...c, mySubjects: subs, canAccessRaster: true, isCoreTeacher: true, canRate: true, isKv: false };
         }),
       );
     }
@@ -84,7 +84,9 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         return {
           ...cls,
           mySubjects: access.subjects,
-          canAccessRaster: access.canRate,
+          canAccessRaster: access.isCoreTeacher,
+          isCoreTeacher: access.isCoreTeacher,
+          canRate: access.canRate,
           isKv: access.isKv,
         };
       }),
@@ -225,7 +227,9 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         name: (await className(cid)) ?? String(cid),
       },
       round,
-      canAccessRaster: access.canRate,
+      canAccessRaster: access.isCoreTeacher,
+      isCoreTeacher: access.isCoreTeacher,
+      canRate: access.canRate,
       isKv: access.isKv,
       mySubjects: access.subjects,
       pupils: pupilsWithData,

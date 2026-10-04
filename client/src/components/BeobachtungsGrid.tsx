@@ -16,6 +16,9 @@ import {
   FolderCheck,
   Printer,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
@@ -34,7 +37,8 @@ interface BeobachtungsGridProps {
     criterionId: string,
     itemKey: string,
     rating: string,
-    expectedVersion: number
+    expectedVersion: number,
+    subjectCode?: string
   ) => void;
   onOpenCardDrawer: (pupilId: number, name: string) => void;
   onOpenKelReport: (pupil: PupilWithData) => void;
@@ -42,7 +46,7 @@ interface BeobachtungsGridProps {
   canAccessRaster?: boolean;
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
   selectedPupilIdProp?: number | null;
-  onSubmitPupil?: (pupilId: number) => Promise<void>;
+  onSubmitPupil?: (pupilId: number, proposedStatus?: string, comment?: string) => Promise<void>;
   onReopenPupil?: (pupilId: number) => Promise<void>;
   onBatchUpdate?: (pupilId: number, items: Array<{ criterionId: string; itemKey: string; rating: string }>) => Promise<void>;
   onOpenReportModal?: () => void;
@@ -75,21 +79,45 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     selectedPupilIdProp || pupils[0]?.id || null
   );
 
+  // Active subject for current teacher
+  const mySubject = mySubjects.length > 0 ? mySubjects[0] : { code: 'SD', name: 'Fach', isCoreSmile: false };
+  const mySubjectCode = mySubject.code;
+
+  // Non-core rating & observation state
+  const [unlockedRasterPupils, setUnlockedRasterPupils] = useState<Set<number>>(new Set());
+  const [showNonCoreModal, setShowNonCoreModal] = useState(false);
+  const [votedRank, setVotedRank] = useState<'Lehrling' | 'Geselle' | 'Meister' | null>(null);
+  const [votedComment, setVotedComment] = useState<string>('');
+  const [isSavingVote, setIsSavingVote] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
   // Divide pupils into open and submitted
-  const openPupils = pupils.filter((p) => !p.evaluations.some((e) => e.isSubmitted));
-  const submittedPupils = pupils.filter((p) => p.evaluations.some((e) => e.isSubmitted));
+  const openPupils = pupils.filter((p) =>
+    canAccessRaster
+      ? !p.evaluations.some((e) => e.isSubmitted)
+      : !p.evaluations.some((e) => e.subjectCode === mySubjectCode && e.isSubmitted)
+  );
+  const submittedPupils = pupils.filter((p) =>
+    canAccessRaster
+      ? p.evaluations.some((e) => e.isSubmitted)
+      : p.evaluations.some((e) => e.subjectCode === mySubjectCode && e.isSubmitted)
+  );
 
   useEffect(() => {
     if (selectedPupilIdProp) {
       setSelectedPupilId(selectedPupilIdProp);
-      const isSub = pupils.find((p) => p.id === selectedPupilIdProp)?.evaluations.some((e) => e.isSubmitted);
+      const isSub = pupils
+        .find((p) => p.id === selectedPupilIdProp)
+        ?.evaluations.some((e) =>
+          canAccessRaster ? e.isSubmitted : (e.subjectCode === mySubjectCode && e.isSubmitted)
+        );
       if (isSub) {
         setFolderTab('bewertet');
       } else {
         setFolderTab('offen');
       }
     }
-  }, [selectedPupilIdProp]);
+  }, [selectedPupilIdProp, canAccessRaster, mySubjectCode]);
 
   // Ensure selectedPupilId is valid in the current tab if possible
   const currentList = folderTab === 'offen' ? openPupils : submittedPupils;
@@ -107,6 +135,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       }
     }
   }, [openPupils.length, submittedPupils.length]);
+
+  // Sync votedRank and comment whenever selected pupil changes
+  useEffect(() => {
+    if (selectedPupil) {
+      const existing = selectedPupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
+      setVotedRank((existing?.proposedStatus as any) || null);
+      setVotedComment(existing?.comment || '');
+      setSaveSuccessMsg(null);
+    }
+  }, [selectedPupil?.id, mySubjectCode]);
 
   // Deadline: 30.10.2026 23:59:59
   const deadline = new Date(2026, 9, 30, 23, 59, 59);
@@ -136,6 +174,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   // Instant Rank Handlers
   const handleInstantRank = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
     if (!selectedPupil) return;
+    setVotedRank(targetRank);
 
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     let count = 0;
@@ -159,7 +198,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       await onBatchUpdate(selectedPupil.id, allCritItems);
     } else {
       for (const it of allCritItems) {
-        onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1);
+        onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, mySubjectCode);
       }
     }
   };
@@ -175,6 +214,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     });
     if (!ok) return;
 
+    setVotedRank(null);
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     for (const crit of criteria) {
       for (const it of crit.items) {
@@ -186,7 +226,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       await onBatchUpdate(selectedPupil.id, allCritItems);
     } else {
       for (const it of allCritItems) {
-        onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1);
+        onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, mySubjectCode);
       }
     }
   };
@@ -204,7 +244,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       await onBatchUpdate(selectedPupil.id, catItems);
     } else {
       for (const it of catItems) {
-        onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1);
+        onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, mySubjectCode);
       }
     }
   };
@@ -216,21 +256,66 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     // Find position in openPupils
     const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
 
+    const { rank } = calculateRank(selectedPupil);
+    const finalRankToSubmit = canAccessRaster ? rank : (votedRank || rank || 'Geselle');
+
     if (onSubmitPupil) {
-      await onSubmitPupil(selectedPupil.id);
+      await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment);
     }
 
     // Advance to next sequential pupil in the open list
     const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
     if (remainingOpen.length > 0) {
-      // Advance to the one right after current, or first remaining
       const nextPupil = openPupils[currIdx + 1] || remainingOpen[0];
       setSelectedPupilId(nextPupil.id);
     } else {
-      // All pupils submitted!
       setFolderTab('bewertet');
       setSelectedPupilId(selectedPupil.id);
     }
+  };
+
+  // Non-core vote submission
+  const handleSaveNonCoreVote = async () => {
+    if (!selectedPupil || !votedRank) return;
+    setIsSavingVote(true);
+    try {
+      if (onSubmitPupil) {
+        await onSubmitPupil(selectedPupil.id, votedRank, votedComment);
+      }
+      setSaveSuccessMsg(`Votum „${votedRank}“ für ${selectedPupil.fullName} erfolgreich gespeichert!`);
+      const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
+      const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
+      if (remainingOpen.length > 0) {
+        const nextPupil = openPupils[currIdx + 1] || remainingOpen[0];
+        setSelectedPupilId(nextPupil.id);
+      } else {
+        setFolderTab('bewertet');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingVote(false);
+    }
+  };
+
+  const handleOpenDetailedRasterClick = () => {
+    if (!selectedPupil) return;
+    setShowNonCoreModal(true);
+  };
+
+  const handleConfirmOpenRaster = () => {
+    if (selectedPupil) {
+      setUnlockedRasterPupils((prev) => new Set(prev).add(selectedPupil.id));
+    }
+    setShowNonCoreModal(false);
+  };
+
+  const handleCloseRaster = (pupilId: number) => {
+    setUnlockedRasterPupils((prev) => {
+      const next = new Set(prev);
+      next.delete(pupilId);
+      return next;
+    });
   };
 
   if (!selectedPupil) {
@@ -242,8 +327,12 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }
 
   const { rank, color: rankColor, pos: positiveTicks } = calculateRank(selectedPupil);
-  const isSubmitted = selectedPupil.evaluations.some((e) => e.isSubmitted);
-  const submittedAt = selectedPupil.evaluations.find((e) => e.submittedAt)?.submittedAt;
+  const isSubmitted = selectedPupil.evaluations.some((e) =>
+    canAccessRaster ? e.isSubmitted : (e.subjectCode === mySubjectCode && e.isSubmitted)
+  );
+  const submittedAt = selectedPupil.evaluations.find((e) =>
+    canAccessRaster ? e.submittedAt : (e.subjectCode === mySubjectCode && e.submittedAt)
+  )?.submittedAt;
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
@@ -424,8 +513,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Instant Rank Buttons & Reset (Only for core D/M/E teachers) */}
-            {canAccessRaster && (
+            {/* Instant Rank Buttons & Reset (For core D/M/E teachers OR when raster is open) */}
+            {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
               <div className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort-Rang:</span>
                 <button
@@ -468,7 +557,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             )}
 
             {/* Submit Ranking Button */}
-            {canAccessRaster && (
+            {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
               <button
                 onClick={handleSubmitPupil}
                 disabled={isLockedByConference || isPastDeadline}
@@ -516,25 +605,197 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           </div>
         </div>
 
-        {/* Conditional View: Light Form vs Full 18-item Beobachtungsraster */}
-        {!canAccessRaster ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-800/20 border border-slate-800 rounded-2xl">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
-              <Info className="w-7 h-7" />
+        {/* Optional Rank Voting for Non-Core Teachers */}
+        {!canAccessRaster && (
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-50 flex flex-wrap items-center gap-2">
+                    <span>Optionales Rang-Voting</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                      {mySubject.name} (Nicht-Hauptfach)
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Sie unterrichten in dieser Klasse kein Hauptfach (D, M, E). Sie haben hier die Möglichkeit, für {selectedPupil.fullName} optional ein Rang-Voting für die Notenkonferenz abzugeben.
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle detailed raster button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (unlockedRasterPupils.has(selectedPupil.id)) {
+                    handleCloseRaster(selectedPupil.id);
+                  } else {
+                    handleOpenDetailedRasterClick();
+                  }
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border self-start sm:self-auto shrink-0 ${
+                  unlockedRasterPupils.has(selectedPupil.id)
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    : 'bg-gradient-to-r from-sky-500/20 to-sky-600/20 hover:from-sky-500/30 hover:to-sky-600/30 text-sky-200 border-sky-500/40 shadow-sm'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4 text-sky-400" />
+                <span>
+                  {unlockedRasterPupils.has(selectedPupil.id)
+                    ? 'Bogen einklappen'
+                    : 'Detaillierten Bewertungsbogen öffnen'}
+                </span>
+                {unlockedRasterPupils.has(selectedPupil.id) ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
-            <h3 className="text-xl font-bold text-slate-50 mb-2">Kein Hauptfach (D, M, E) in dieser Klasse</h3>
-            <p className="text-xs text-slate-400 max-w-lg mb-6 leading-relaxed">
-              Sie unterrichten in dieser Klasse{' '}
-              <span className="text-amber-400 font-bold">
-                {mySubjects.map((s) => s.name).join(', ') || 'ein Nebenfach'}
-              </span>
-              . Das detaillierte 18-Punkte-Beobachtungsraster ist den Fachlehrpersonen der Kernfächer{' '}
-              <b>Deutsch (D / SD)</b>, <b>Mathematik (M / SM)</b> und <b>Englisch (E / SE)</b> vorbehalten.
-            </p>
+
+            {/* 3 Interactive Rank Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+              {[
+                {
+                  rank: 'Lehrling' as const,
+                  label: 'Lehrling',
+                  dot: 'bg-rose-500',
+                  border: 'border-rose-500/30 hover:border-rose-500/60',
+                  active: 'bg-rose-500/20 border-rose-500 text-rose-200 ring-2 ring-rose-500/50',
+                  desc: 'Starke Unterstützung nötig / Basisstufe',
+                },
+                {
+                  rank: 'Geselle' as const,
+                  label: 'Geselle',
+                  dot: 'bg-blue-500',
+                  border: 'border-blue-500/30 hover:border-blue-500/60',
+                  active: 'bg-blue-500/20 border-blue-500 text-blue-200 ring-2 ring-blue-500/50',
+                  desc: 'Solide Leistungen / Regelanforderungen erfüllt',
+                },
+                {
+                  rank: 'Meister' as const,
+                  label: 'Meister',
+                  dot: 'bg-amber-400',
+                  border: 'border-amber-400/30 hover:border-amber-400/60',
+                  active: 'bg-amber-400/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/50',
+                  desc: 'Eigenständig, vorbildlich & Spitzenleistung',
+                },
+              ].map((opt) => {
+                const isSelected = votedRank === opt.rank;
+                return (
+                  <button
+                    key={opt.rank}
+                    type="button"
+                    onClick={() => {
+                      setVotedRank(opt.rank);
+                      setSaveSuccessMsg(null);
+                    }}
+                    disabled={isLockedByConference || isPastDeadline}
+                    className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between min-h-[96px] ${
+                      isSelected
+                        ? opt.active
+                        : `bg-slate-950/60 ${opt.border} text-slate-300`
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-3 h-3 rounded-full ${opt.dot}`} />
+                        <span className="font-bold text-sm text-slate-50">{opt.label}</span>
+                      </div>
+                      {isSelected && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Gewählt
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-400 mt-2 block">
+                      {opt.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Optional Comment Input */}
+            <div className="mb-5">
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                Begründung / Anmerkung für die Konferenz (optional):
+              </label>
+              <textarea
+                value={votedComment}
+                onChange={(e) => {
+                  setVotedComment(e.target.value);
+                  setSaveSuccessMsg(null);
+                }}
+                disabled={isLockedByConference || isPastDeadline}
+                rows={2}
+                placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet zuverlässig in Gruppen..."
+                className="w-full p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none"
+              />
+            </div>
+
+            {/* Save & Feedback Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
+              <div className="text-xs">
+                {saveSuccessMsg ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1.5 animate-fadeIn">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{saveSuccessMsg}</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-400 text-[11px]">
+                    {votedRank ? (
+                      <>Ausgewählter Rang: <strong className="text-amber-400">{votedRank}</strong></>
+                    ) : (
+                      'Wählen Sie einen Rang aus, um Ihr Votum einzureichen.'
+                    )}
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveNonCoreVote}
+                disabled={isLockedByConference || isPastDeadline || !votedRank || isSavingVote}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition active:scale-95 disabled:opacity-40"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{isSavingVote ? 'Speichere...' : 'Rang-Voting speichern & einreichen'}</span>
+              </button>
+            </div>
           </div>
-        ) : (
-          /* Full 18-item Grid */
+        )}
+
+        {/* Detailed 18-Criteria Grid: Visible for Core Teachers OR if Unlocked by Non-Core Teacher */}
+        {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
           <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+            {/* Non-Core Info Banner inside the opened raster */}
+            {!canAccessRaster && (
+              <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-sky-200">
+                <div className="flex items-center gap-2.5">
+                  <ClipboardList className="w-5 h-5 text-sky-400 shrink-0" />
+                  <div>
+                    <span className="font-bold block text-sky-100">
+                      Detaillierter Beobachtungsbogen geöffnet (Für eigene Aufzeichnungen)
+                    </span>
+                    <span className="text-sky-300/80 text-[11px]">
+                      Sie können alle 18 Merkmale mit Smileys bewerten. Diese Daten dienen Ihren persönlichen Notizen.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCloseRaster(selectedPupil.id)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto shrink-0 border border-slate-700"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                  <span>Bogen schließen</span>
+                </button>
+              </div>
+            )}
             {criteria.map((crit) => (
               <div
                 key={crit.id}
@@ -754,6 +1015,57 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           </div>
         )}
       </div>
+
+      {/* Non-Core Observation Sheet Information Pop-Up */}
+      {showNonCoreModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                <Info className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-50">
+                  Hinweis zum Beobachtungsbogen
+                </h3>
+                <p className="text-xs text-amber-400 font-semibold mt-0.5">
+                  Nicht-Hauptfach ({mySubject.name})
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 mb-6">
+              <p className="font-bold text-slate-100 text-sm sm:text-base border-b border-slate-800 pb-2">
+                „Der Beobachtungsbogen in Nicht-Hauptfächern ist nur für die eigenen Aufzeichnungen gedacht.“
+              </p>
+              <p className="text-xs text-slate-400">
+                Die standardmäßige kriterienbasierte Einstufung im SMILE-System erfolgt über die Kernfächer (Deutsch, Mathematik, Englisch).
+              </p>
+              <p className="text-xs text-slate-400">
+                Sie können das 18-Kriterien-Raster hier jedoch gerne vollständig für Ihre persönlichen Aufzeichnungen, Notizen und KEL-Gespräche nutzen.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowNonCoreModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmOpenRaster}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition active:scale-95"
+              >
+                <Check className="w-4 h-4" />
+                <span>Verstanden, Bogen öffnen</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

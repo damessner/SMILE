@@ -13,6 +13,7 @@ import {
   FileText,
   Printer,
   Clock,
+  HelpCircle,
 } from 'lucide-react';
 import { User, SchoolClass, PupilWithData, RubricCriterion } from './types';
 import {
@@ -21,6 +22,7 @@ import {
   getClassPupils,
   getClassRubric,
   getYellowCardAlerts,
+  saveStatus,
   submitEvaluation,
   reopenEvaluation,
   batchUpdateItems,
@@ -43,6 +45,7 @@ import { SchoolStatistics } from './components/SchoolStatistics';
 import { ConferenceVotingModal } from './components/ConferenceVotingModal';
 import { TeacherClassReportModal } from './components/TeacherClassReportModal';
 import { TimeoutEscalationModal } from './components/TimeoutEscalationModal';
+import { OnboardingTour } from './components/OnboardingTour';
 
 export function App() {
   const toast = useToast();
@@ -79,6 +82,7 @@ export function App() {
   const [teacherReportModalOpen, setTeacherReportModalOpen] = useState(false);
   const [timeoutEscalationOpen, setTimeoutEscalationOpen] = useState(false);
   const [pendingTimeoutCount, setPendingTimeoutCount] = useState(0);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   // 1. Check Auth on mount
   //
@@ -88,7 +92,12 @@ export function App() {
     getMe()
       .then((user) => {
         setCurrentUser(user);
-        if (!user.mustChangePassword) loadClasses(user);
+        if (!user.mustChangePassword) {
+          loadClasses(user);
+          if (!localStorage.getItem('smile_onboarding_seen')) {
+            setOnboardingOpen(true);
+          }
+        }
       })
       .catch(() => setCurrentUser(null))
       .finally(() => setLoadingAuth(false));
@@ -253,11 +262,17 @@ export function App() {
     loadClasses(user);
   };
 
-  const handleSubmitPupil = async (pupilId: number) => {
+  const getActiveSubjectCode = () => {
+    return currentClass?.mySubjects?.[0]?.code || 'SD';
+  };
+
+  const handleSubmitPupil = async (pupilId: number, proposedStatus?: string, comment?: string) => {
     if (!selectedClassId) return;
     try {
-      await submitEvaluation(pupilId, selectedClassId, 'SD');
+      const activeSub = getActiveSubjectCode();
+      await submitEvaluation(pupilId, selectedClassId, activeSub, proposedStatus, undefined, comment);
       await loadClassData(selectedClassId);
+      toast.success('Einstufung erfolgreich eingereicht!');
     } catch (e: any) {
       toast.error(e.message || 'Fehler beim Einreichen');
     }
@@ -266,8 +281,10 @@ export function App() {
   const handleReopenEvaluation = async (pupilId: number) => {
     if (!selectedClassId) return;
     try {
-      await reopenEvaluation(pupilId, selectedClassId, 'SD');
+      const activeSub = getActiveSubjectCode();
+      await reopenEvaluation(pupilId, selectedClassId, activeSub);
       await loadClassData(selectedClassId);
+      toast.success('Bewertung wieder geöffnet');
     } catch (e: any) {
       toast.error(e.message || 'Fehler beim Öffnen');
     }
@@ -279,7 +296,8 @@ export function App() {
   ) => {
     if (!selectedClassId) return;
     try {
-      await batchUpdateItems(pupilId, selectedClassId, 'SD', items);
+      const activeSub = getActiveSubjectCode();
+      await batchUpdateItems(pupilId, selectedClassId, activeSub, items);
       await loadClassData(selectedClassId);
     } catch (e: any) {
       toast.error(e.message || 'Fehler beim Speichern');
@@ -521,6 +539,16 @@ export function App() {
           {/* Light / dark theme */}
           <ThemeToggle />
 
+          {/* Help & Onboarding Tour Button */}
+          <button
+            onClick={() => setOnboardingOpen(true)}
+            className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-amber-400 hover:bg-slate-700 transition border border-slate-700/60"
+            title="Einführung & Hilfe (Tour) öffnen"
+            aria-label="Einführung und Tour"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+
           {/* Pupil Manager Button */}
           {currentClass && (
             <button
@@ -701,6 +729,12 @@ export function App() {
           }}
         />
       )}
+
+      {/* Interactive Onboarding Tour Modal */}
+      <OnboardingTour
+        isOpen={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+      />
     </div>
   );
 }

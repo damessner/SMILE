@@ -118,16 +118,14 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
             </div>
 
             {/* Start Rating Mode Button */}
-            {canAccessRaster && (
-              <button
-                onClick={() => onStartRating(openPupils[0]?.id || pupils[0]?.id)}
-                disabled={isPastDeadline}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-sm transition active:scale-95 disabled:opacity-40"
-              >
-                <Play className="w-4 h-4 fill-slate-950" />
-                <span>Bewertungsmodus starten</span>
-              </button>
-            )}
+            <button
+              onClick={() => onStartRating(openPupils[0]?.id || pupils[0]?.id)}
+              disabled={isPastDeadline}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-sm transition active:scale-95 disabled:opacity-40"
+            >
+              <Play className="w-4 h-4 fill-slate-950" />
+              <span>{canAccessRaster ? 'Bewertungsmodus starten' : 'Einstufung starten'}</span>
+            </button>
           </div>
         </div>
 
@@ -327,15 +325,13 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
                     )}
                   </div>
 
-                  {canAccessRaster && (
                     <button
                       onClick={() => onStartRating(pupil.id)}
                       className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
                     >
-                      <span>{isDone ? 'Prüfen' : 'Bewerten'}</span>
+                      <span>{isDone ? 'Prüfen' : canAccessRaster ? 'Bewerten' : 'Einstufen'}</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
-                  )}
                 </div>
               </div>
             );
