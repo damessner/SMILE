@@ -83,3 +83,71 @@ export interface PupilWithData {
   greenCardCount: number;
   yellowCardCount: number;
 }
+
+export interface BehaviorStage {
+  level: number; // -10 to +10
+  title: string;
+  type: 'green' | 'neutral' | 'red';
+  description: string;
+  thresholdLabel: string;
+  defaultGrade: 'Sehr gut' | 'Gut' | 'Zufriedenstellend' | 'Wenig zufriedenstellend';
+}
+
+export interface PupilStageResult {
+  currentStage: number;
+  positiveStage: number;
+  consequenceStage: number;
+  stageInfo: BehaviorStage;
+  behaviorGrade: 'Sehr gut' | 'Gut' | 'Zufriedenstellend' | 'Wenig zufriedenstellend';
+  stats: {
+    greenCount: number;
+    yellowCount: number;
+    redCount: number;
+    timeoutCount: number;
+  };
+}
+
+export interface PupilBehaviorAction {
+  id: string;
+  pupil_id: number;
+  stage_level: number;
+  stage_title: string;
+  status: 'pending' | 'completed' | 'acknowledged';
+  action_date: string;
+  teacher_id: number;
+  teacher_short?: string;
+  teacher_name?: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface PupilBehaviorProfile {
+  pupil: {
+    id: number;
+    fullName: string;
+    classId: number;
+    className: string;
+    currentRank: string;
+  };
+  stages: BehaviorStage[];
+  calculation: PupilStageResult;
+  cards: Array<{
+    id: string;
+    card_type: 'green' | 'yellow' | 'red';
+    note?: string | null;
+    created_at: string;
+    teacher_short?: string;
+    teacher_name?: string;
+  }>;
+  timeouts: Array<{
+    id: string;
+    sent_at: string;
+    task_assignment: string;
+    status: string;
+    resolved_at?: string | null;
+    resolution_note?: string | null;
+    sent_by_short?: string;
+  }>;
+  actions: PupilBehaviorAction[];
+}
+

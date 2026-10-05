@@ -29,6 +29,7 @@ import {
 import { SchoolClass, PupilWithData, User } from '../types';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmDialog';
+import { PupilProfileModal } from './PupilProfileModal';
 import {
   issueCard,
   revokeCard,
@@ -93,6 +94,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRank, setFilterRank] = useState<'all' | 'Lehrling' | 'Geselle' | 'Meister'>('all');
   const [expandedPupilId, setExpandedPupilId] = useState<number | null>(null);
+  const [activeProfilePupilId, setActiveProfilePupilId] = useState<number | null>(null);
 
   // Lernwerkstatt (LW) View Toggle
   const [isLwView, setIsLwView] = useState(false);
@@ -922,15 +924,22 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       {/* Col 1: Pupil Name & Status Indicators */}
                       <div className="col-span-4 flex items-center justify-between md:justify-start gap-2 min-w-0">
                         <div className="flex items-center gap-2 truncate">
-                          {/*
-                            The pupil name is the anchor of the row, so it gets the
-                            only real emphasis in it: 15px at medium weight. Everything
-                            else in the row is deliberately quieter.
-                          */}
-                          <span className="font-medium text-base text-slate-50 truncate select-none">
-                            {pupil.fullName}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveProfilePupilId(pupil.id);
+                            }}
+                            className="font-medium text-base text-slate-50 truncate select-none hover:text-amber-300 hover:underline text-left transition flex items-center gap-2 focus:outline-none"
+                            title="Klicken für Schülerprofil &amp; pädagogische Verhaltenspyramide"
+                          >
+                            <span className="truncate">{pupil.fullName}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 hover:border-amber-400 hover:text-amber-300 transition shrink-0 font-semibold">
+                              Profil
+                            </span>
+                          </button>
                           {activeTimeoutIncident && (
+
                             <span
                               className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse flex-shrink-0"
                               title="Aktuell im Time-Out (Lernwerkstatt)"
@@ -1113,8 +1122,18 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             </span>
                           </div>
 
-                          <div className="text-slate-400 text-xs">
-                            {pupilCards.length === 0 ? 'Keine Karten' : `${pupilCards.length} Verhaltenskarten erfasst`}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setActiveProfilePupilId(pupil.id)}
+                              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-amber-500/20 hover:from-emerald-500/30 hover:via-sky-500/30 hover:to-amber-500/30 border border-amber-500/35 text-amber-200 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Verhaltensprofil &amp; Stufenpyramide</span>
+                            </button>
+                            <div className="text-slate-400 text-xs hidden sm:block">
+                              {pupilCards.length === 0 ? 'Keine Karten' : `${pupilCards.length} Verhaltenskarten erfasst`}
+                            </div>
                           </div>
                         </div>
 
@@ -1486,6 +1505,19 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: Schüler-Verhaltensprofil & Stufenpyramide */}
+      {activeProfilePupilId && (
+        <PupilProfileModal
+          pupilId={activeProfilePupilId}
+          currentUser={currentUser}
+          onClose={() => setActiveProfilePupilId(null)}
+          onRefreshParent={() => {
+            if (currentClass) loadClassCards(currentClass.id);
+            onRefreshClassData();
+          }}
+        />
       )}
     </div>
   );

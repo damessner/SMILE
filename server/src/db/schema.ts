@@ -252,4 +252,21 @@ export const timeoutEscalations = pgTable('timeout_escalations', {
     .on(t.pupilId, t.milestoneCount),
 }));
 
+// 16. Pupil Behavior Stage Actions (Documented actions taken by teachers/staff)
+export const pupilBehaviorActions = pgTable('pupil_behavior_actions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  pupilId: integer('pupil_id').references(() => pupils.id).notNull(),
+  stageLevel: integer('stage_level').notNull(),
+  stageTitle: text('stage_title').notNull(),
+  status: text('status', { enum: ['pending', 'completed', 'acknowledged'] }).default('completed').notNull(),
+  actionDate: timestamp('action_date').defaultNow().notNull(),
+  teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  pupilStageIdx: index('pupil_behavior_actions_pupil_stage_idx').on(t.pupilId, t.stageLevel),
+  actionDateIdx: index('pupil_behavior_actions_date_idx').on(t.actionDate),
+}));
+
+
 

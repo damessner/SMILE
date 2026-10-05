@@ -52,6 +52,25 @@ const migrationsFolder = path.resolve(
 export async function runMigrations(): Promise<void> {
   const { migrate } = await import('drizzle-orm/node-postgres/migrator');
   await migrate(drizzle(getPool(), { schema }), { migrationsFolder });
+
+  // Ensure table pupil_behavior_actions exists
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS pupil_behavior_actions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      pupil_id INTEGER NOT NULL REFERENCES pupils(id),
+      stage_level INTEGER NOT NULL,
+      stage_title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'completed',
+      action_date TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+      teacher_id INTEGER NOT NULL REFERENCES teachers(id),
+      notes TEXT,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS pupil_behavior_actions_pupil_stage_idx
+      ON pupil_behavior_actions (pupil_id, stage_level);
+    CREATE INDEX IF NOT EXISTS pupil_behavior_actions_date_idx
+      ON pupil_behavior_actions (action_date);
+  `);
 }
 
 export async function closePool(): Promise<void> {

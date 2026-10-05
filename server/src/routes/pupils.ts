@@ -1,8 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { sql } from 'drizzle-orm';
-import { db } from '../db/index.js';
-import { auditLogs, pupils, schoolClasses } from '../db/schema.js';
+import { eq, sql } from 'drizzle-orm';
+import { db, getPool } from '../db/index.js';
+import { auditLogs, pupils, pupilBehaviorActions, schoolClasses } from '../db/schema.js';
 import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, parseIdParam, requireAuth } from '../lib/guards.js';
+import { BEHAVIOR_STAGES, computePupilBehaviorStage } from '../lib/behavior-stages.js';
+
 
 /**
  * Pupil roster management.
@@ -153,5 +155,194 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return reply.send({ success: true, message: 'Schüler wurde archiviert', pupil: archived });
+  });
+
+  /**
+   * GET /api/pupils/:id/behavior-profile — get behavioral staging, cards, timeouts, and actions.
+   */
+  fastify.get('/:id/behavior-profile', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    const { id } = request.params as { id: string };
+    const pid = parseIdParam(id, 'id');
+    if (!pid) return badRequest(reply, 'Ungültige Schüler-ID.');
+
+    const pupil = await getPupil(pid);
+    if (!pupil) return reply.status(404).send({ error: 'Schüler nicht gefunden' });
+
+    const access = await getClassAccess(user, pupil.classId);
+    if (!access.canRead) {
+      return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für diese Klasse' });
+    }
+
+    const [classRow] = await db
+      .select({ id: schoolClasses.id, name: schoolClasses.name, grade: schoolClasses.grade })
+      .from(schoolClasses)
+      .where(eq(schoolClasses.id, pupil.classId))
+      .limit(1);
+
+    // Get current rank from final_ranks
+    const rankRows = await getPool().query(
+      `SELECT rank FROM final_ranks WHERE pupil_id = $1 ORDER BY confirmed_at DESC LIMIT 1`,
+      [pid]
+    );
+    const currentRank = rankRows.rows[0]?.rank || 'Geselle';
+
+    // Get active cards
+    const cardRows = await getPool().query(
+      `SELECT bc.id, bc.card_type, bc.note, bc.created_at, bc.teacher_id,
+              t.short_name AS teacher_short, COALESCE(t.full_name, 'Lehrkraft') AS teacher_name
+         FROM behavior_cards bc
+         LEFT JOIN teachers t ON t.id = bc.teacher_id
+        WHERE bc.pupil_id = $1 AND bc.revoked_at IS NULL
+        ORDER BY bc.created_at DESC`,
+      [pid]
+    );
+
+    // Get timeouts
+    const timeoutRows = await getPool().query(
+      `SELECT ti.id, ti.sent_at, ti.task_assignment, ti.status, ti.resolved_at, ti.resolution_note,
+              t.short_name AS sent_by_short
+         FROM timeout_incidents ti
+         LEFT JOIN teachers t ON t.id = ti.sent_by_teacher_id
+        WHERE ti.pupil_id = $1
+        ORDER BY ti.sent_at DESC`,
+      [pid]
+    );
+
+    const greenCount = cardRows.rows.filter((c: any) => c.card_type === 'green').length;
+    const yellowCount = cardRows.rows.filter((c: any) => c.card_type === 'yellow').length;
+    const redCount = cardRows.rows.filter((c: any) => c.card_type === 'red').length;
+    const timeoutCount = timeoutRows.rows.length;
+
+    const calculation = computePupilBehaviorStage(greenCount, yellowCount, redCount, timeoutCount);
+
+    // Get documented actions
+    const actionRows = await getPool().query(
+      `SELECT pba.id, pba.pupil_id, pba.stage_level, pba.stage_title, pba.status,
+              pba.action_date, pba.teacher_id, pba.notes, pba.created_at,
+              t.short_name AS teacher_short, COALESCE(t.full_name, 'Lehrkraft') AS teacher_name
+         FROM pupil_behavior_actions pba
+         LEFT JOIN teachers t ON t.id = pba.teacher_id
+        WHERE pba.pupil_id = $1
+        ORDER BY pba.action_date DESC, pba.created_at DESC`,
+      [pid]
+    );
+
+    return reply.send({
+      pupil: {
+        id: pupil.id,
+        fullName: pupil.fullName,
+        classId: pupil.classId,
+        className: classRow?.name || '',
+        currentRank,
+      },
+      stages: BEHAVIOR_STAGES,
+      calculation,
+      cards: cardRows.rows,
+      timeouts: timeoutRows.rows,
+      actions: actionRows.rows,
+    });
+  });
+
+  /**
+   * POST /api/pupils/:id/behavior-actions — record an action taken for a behavior stage.
+   */
+  fastify.post('/:id/behavior-actions', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    if (!assertPasswordCurrent(user, reply)) return;
+
+    const { id } = request.params as { id: string };
+    const pid = parseIdParam(id, 'id');
+    if (!pid) return badRequest(reply, 'Ungültige Schüler-ID.');
+
+    const pupil = await getPupil(pid);
+    if (!pupil) return reply.status(404).send({ error: 'Schüler nicht gefunden' });
+
+    const access = await getClassAccess(user, pupil.classId);
+    if (!access.canRecord && !access.isKv && !access.isHeadmaster && !access.isAdmin) {
+      return forbid(reply, 'Keine Berechtigung zum Dokumentieren von Verhaltensmaßnahmen für diese Klasse.');
+    }
+
+    const { stageLevel, stageTitle, notes, status } = (request.body ?? {}) as {
+      stageLevel?: number;
+      stageTitle?: string;
+      notes?: string;
+      status?: 'pending' | 'completed' | 'acknowledged';
+    };
+
+    if (stageLevel === undefined || !stageTitle?.trim()) {
+      return badRequest(reply, 'Stufe und Titel der Maßnahme sind erforderlich.');
+    }
+
+    const [action] = await db
+      .insert(pupilBehaviorActions)
+      .values({
+        pupilId: pid,
+        stageLevel,
+        stageTitle: stageTitle.trim(),
+        status: status || 'completed',
+        teacherId: user.teacherId ?? 0,
+        notes: notes?.trim() || null,
+      })
+      .returning();
+
+    await db.insert(auditLogs).values({
+      actorId: user.teacherId ?? null,
+      action: 'BEHAVIOR_STAGE_ACTION_RECORDED',
+      entity: 'pupil',
+      entityId: String(pid),
+      payload: {
+        actionId: action.id,
+        stageLevel,
+        stageTitle,
+        notes: notes?.trim(),
+      },
+    });
+
+    return reply.status(201).send(action);
+  });
+
+  /**
+   * DELETE /api/pupils/:id/behavior-actions/:actionId — revoke/delete an action record.
+   */
+  fastify.delete('/:id/behavior-actions/:actionId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    if (!assertPasswordCurrent(user, reply)) return;
+
+    const { id, actionId } = request.params as { id: string; actionId: string };
+    const pid = parseIdParam(id, 'id');
+    if (!pid) return badRequest(reply, 'Ungültige Schüler-ID.');
+    if (!actionId || !/^[0-9a-f-]{36}$/i.test(actionId)) {
+      return badRequest(reply, 'Ungültige Maßnahmen-ID.');
+    }
+
+    const pupil = await getPupil(pid);
+    if (!pupil) return reply.status(404).send({ error: 'Schüler nicht gefunden' });
+
+    const [existing] = await db
+      .select()
+      .from(pupilBehaviorActions)
+      .where(eq(pupilBehaviorActions.id, actionId))
+      .limit(1);
+
+    if (!existing) return reply.status(404).send({ error: 'Maßnahme nicht gefunden' });
+
+    const access = await getClassAccess(user, pupil.classId);
+    const isAuthor = user.teacherId != null && existing.teacherId === user.teacherId;
+    if (!isAuthor && !access.isKv && !access.isHeadmaster && !access.isAdmin) {
+      return forbid(reply, 'Nur der Ersteller, KV oder Schulleitung darf diese Maßnahme löschen.');
+    }
+
+    await db.delete(pupilBehaviorActions).where(eq(pupilBehaviorActions.id, actionId));
+
+    await db.insert(auditLogs).values({
+      actorId: user.teacherId ?? null,
+      action: 'BEHAVIOR_STAGE_ACTION_DELETED',
+      entity: 'pupil',
+      entityId: String(pid),
+      payload: { actionId, stageLevel: existing.stageLevel, stageTitle: existing.stageTitle },
+    });
+
+    return reply.send({ success: true });
   });
 };

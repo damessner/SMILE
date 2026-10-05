@@ -1,4 +1,7 @@
+import type { PupilBehaviorProfile, PupilBehaviorAction } from '../types';
+
 const API_BASE = '/api';
+
 
 /**
  * The session token lives in an httpOnly, SameSite=Strict cookie set by the server.
@@ -367,5 +370,33 @@ export async function getAuditLog(limit = 100, offset = 0, action?: string) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (action) params.append('action', action);
   const res = await apiFetch(`/backup/audit-log?${params.toString()}`);
+  return unwrap(res);
+}
+
+// --- Behavior Profile & Stages ----------------------------------------------
+
+export async function getPupilBehaviorProfile(pupilId: number): Promise<PupilBehaviorProfile> {
+  const res = await apiFetch(`/pupils/${pupilId}/behavior-profile`);
+  return unwrap(res);
+}
+
+export async function savePupilBehaviorAction(
+  pupilId: number,
+  data: { stageLevel: number; stageTitle: string; notes?: string; status?: string }
+): Promise<PupilBehaviorAction> {
+  const res = await apiFetch(`/pupils/${pupilId}/behavior-actions`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return unwrap(res);
+}
+
+export async function deletePupilBehaviorAction(
+  pupilId: number,
+  actionId: string
+): Promise<{ success: boolean }> {
+  const res = await apiFetch(`/pupils/${pupilId}/behavior-actions/${actionId}`, {
+    method: 'DELETE',
+  });
   return unwrap(res);
 }
