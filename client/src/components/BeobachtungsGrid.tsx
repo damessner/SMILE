@@ -478,25 +478,25 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       </div>
 
       {/* Right Column: Observation Grid for Selected Pupil */}
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col max-h-[84vh] overflow-hidden shadow-lg">
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-col max-h-[86vh] overflow-hidden shadow-lg">
         {/* Pupil Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800 mb-3 shrink-0">
           <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-bold text-slate-50">{selectedPupil.fullName}</h2>
-              <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider border ${rankColor}`}>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-50">{selectedPupil.fullName}</h2>
+              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${rankColor}`}>
                 {rank} ({positiveTicks}/18)
               </span>
               {isSubmitted && (
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                     <span>Eingereicht</span>
                   </span>
                   {onReopenPupil && !isLockedByConference && (
                     <button
                       onClick={() => onReopenPupil(selectedPupil.id)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1"
+                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[10px] font-bold transition flex items-center gap-1"
                       title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
                     >
                       <RotateCcw className="w-3 h-3 text-amber-400" />
@@ -506,7 +506,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 </div>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-400 mt-0.5">
               Beobachtungsraster · 6 Dimensionen à 3 Merkmale
               {submittedAt && (
                 <span className="ml-2 text-slate-500">
@@ -516,19 +516,19 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {/* Instant Rank Buttons & Reset (For core D/M/E teachers OR when raster is open) */}
             {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
-              <div data-tour="instant-rank-buttons" className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
-                <span className="text-[11px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort-Rang:</span>
+              <div data-tour="instant-rank-buttons" className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+                <span className="text-[10px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort:</span>
                 <button
                   type="button"
                   onClick={() => handleInstantRank('Lehrling')}
                   disabled={isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Lehrling ausfüllen (< 8 Punkte)"
-                  className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
+                  className="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
-                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                   <span>Lehrling</span>
                 </button>
                 <button
@@ -536,9 +536,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   onClick={() => handleInstantRank('Geselle')}
                   disabled={isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Geselle ausfüllen (8-13 Punkte)"
-                  className="px-2.5 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
+                  className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
-                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                   <span>Geselle</span>
                 </button>
                 <button
@@ -546,9 +546,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   onClick={() => handleInstantRank('Meister')}
                   disabled={isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Meister ausfüllen (14-18 Punkte)"
-                  className="px-2.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 border border-amber-400/30 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
+                  className="px-2 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 border border-amber-400/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                   <span>Meister</span>
                 </button>
                 <button
@@ -556,9 +556,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   onClick={handleResetAll}
                   disabled={isLockedByConference || isPastDeadline}
                   title="Alle 18 Bewertungen leeren / zurücksetzen"
-                  className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-xs font-bold transition active:scale-95 flex items-center gap-1 ml-1 disabled:opacity-40"
+                  className="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 ml-0.5 disabled:opacity-40"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RotateCcw className="w-3 h-3" />
                   <span>Reset</span>
                 </button>
               </div>
@@ -570,13 +570,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 onClick={handleSubmitPupil}
                 disabled={isLockedByConference || isPastDeadline}
                 title="Ranking einreichen und zum nächsten Schüler wechseln"
-                className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-lg transition active:scale-95 disabled:opacity-40 ${
+                className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95 disabled:opacity-40 ${
                   isSubmitted
                     ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                     : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 shadow-sm'
                 }`}
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>{isSubmitted ? 'Erneut einreichen' : 'Ranking einreichen'}</span>
               </button>
             )}
@@ -585,7 +585,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             {onOpenReportModal && (
               <button
                 onClick={onOpenReportModal}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
                 title="1-Seiten Klassenbericht für Lehrpersonen drucken"
               >
                 <Printer className="w-3.5 h-3.5 text-amber-400" />
@@ -596,7 +596,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             {/* Card Drawer Button */}
             <button
               onClick={() => onOpenCardDrawer(selectedPupil.id, selectedPupil.fullName)}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
             >
               <Award className="w-3.5 h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Karte</span>
@@ -605,7 +605,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             {/* KEL Report Button */}
             <button
               onClick={() => onOpenKelReport(selectedPupil)}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
             >
               <FileText className="w-3.5 h-3.5 text-sky-400" />
               <span className="hidden sm:inline">KEL-Bericht</span>
@@ -613,420 +613,459 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           </div>
         </div>
 
-        {/* Optional Rank Voting for Non-Core Teachers */}
-        {!canAccessRaster && (
-          <div data-tour="non-core-voting" className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl mb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-                  <Award className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-50 flex flex-wrap items-center gap-2">
-                    <span>Optionales Rang-Voting</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
-                      {mySubject.name} (Nicht-Hauptfach)
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Sie unterrichten in dieser Klasse kein Hauptfach (D, M, E). Sie haben hier die Möglichkeit, für {selectedPupil.fullName} optional ein Rang-Voting für die Notenkonferenz abzugeben.
-                  </p>
-                </div>
-              </div>
-
-              {/* Toggle detailed raster button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (unlockedRasterPupils.has(selectedPupil.id)) {
-                    handleCloseRaster(selectedPupil.id);
-                  } else {
-                    handleOpenDetailedRasterClick();
-                  }
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border self-start sm:self-auto shrink-0 ${
-                  unlockedRasterPupils.has(selectedPupil.id)
-                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                    : 'bg-gradient-to-r from-sky-500/20 to-sky-600/20 hover:from-sky-500/30 hover:to-sky-600/30 text-sky-200 border-sky-500/40 shadow-sm'
-                }`}
-              >
-                <ClipboardList className="w-4 h-4 text-sky-400" />
-                <span>
-                  {unlockedRasterPupils.has(selectedPupil.id)
-                    ? 'Bogen einklappen'
-                    : 'Detaillierten Bewertungsbogen öffnen'}
-                </span>
-                {unlockedRasterPupils.has(selectedPupil.id) ? (
-                  <ChevronUp className="w-3.5 h-3.5" />
-                ) : (
-                  <ChevronDown className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </div>
-
-            {/* 3 Interactive Rank Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-              {[
-                {
-                  rank: 'Lehrling' as const,
-                  label: 'Lehrling',
-                  dot: 'bg-rose-500',
-                  border: 'border-rose-500/30 hover:border-rose-500/60',
-                  active: 'bg-rose-500/20 border-rose-500 text-rose-200 ring-2 ring-rose-500/50',
-                  desc: 'Starke Unterstützung nötig / Basisstufe',
-                },
-                {
-                  rank: 'Geselle' as const,
-                  label: 'Geselle',
-                  dot: 'bg-blue-500',
-                  border: 'border-blue-500/30 hover:border-blue-500/60',
-                  active: 'bg-blue-500/20 border-blue-500 text-blue-200 ring-2 ring-blue-500/50',
-                  desc: 'Solide Leistungen / Regelanforderungen erfüllt',
-                },
-                {
-                  rank: 'Meister' as const,
-                  label: 'Meister',
-                  dot: 'bg-amber-400',
-                  border: 'border-amber-400/30 hover:border-amber-400/60',
-                  active: 'bg-amber-400/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/50',
-                  desc: 'Eigenständig, vorbildlich & Spitzenleistung',
-                },
-              ].map((opt) => {
-                const isSelected = votedRank === opt.rank;
-                return (
-                  <button
-                    key={opt.rank}
-                    type="button"
-                    onClick={() => {
-                      setVotedRank(opt.rank);
-                      setSaveSuccessMsg(null);
-                    }}
-                    disabled={isLockedByConference || isPastDeadline}
-                    className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between min-h-[96px] ${
-                      isSelected
-                        ? opt.active
-                        : `bg-slate-950/60 ${opt.border} text-slate-300`
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-full ${opt.dot}`} />
-                        <span className="font-bold text-sm text-slate-50">{opt.label}</span>
-                      </div>
-                      {isSelected && (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Gewählt
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[11px] text-slate-400 mt-2 block">
-                      {opt.desc}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Optional Comment Input */}
-            <div className="mb-5">
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Begründung / Anmerkung für die Konferenz (optional):
-              </label>
-              <textarea
-                value={votedComment}
-                onChange={(e) => {
-                  setVotedComment(e.target.value);
-                  setSaveSuccessMsg(null);
-                }}
-                disabled={isLockedByConference || isPastDeadline}
-                rows={2}
-                placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet zuverlässig in Gruppen..."
-                className="w-full p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none"
-              />
-            </div>
-
-            {/* Save & Feedback Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
-              <div className="text-xs">
-                {saveSuccessMsg ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-1.5 animate-fadeIn">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{saveSuccessMsg}</span>
-                  </span>
-                ) : (
-                  <span className="text-slate-400 text-[11px]">
-                    {votedRank ? (
-                      <>Ausgewählter Rang: <strong className="text-amber-400">{votedRank}</strong></>
-                    ) : (
-                      'Wählen Sie einen Rang aus, um Ihr Votum einzureichen.'
-                    )}
-                  </span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSaveNonCoreVote}
-                disabled={isLockedByConference || isPastDeadline || !votedRank || isSavingVote}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition active:scale-95 disabled:opacity-40"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{isSavingVote ? 'Speichere...' : 'Rang-Voting speichern & einreichen'}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Detailed 18-Criteria Grid: Visible for Core Teachers OR if Unlocked by Non-Core Teacher */}
-        {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
-          <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-            {/* Non-Core Info Banner inside the opened raster */}
-            {!canAccessRaster && (
-              <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-sky-200">
-                <div className="flex items-center gap-2.5">
-                  <ClipboardList className="w-5 h-5 text-sky-400 shrink-0" />
+        {/* Single, unified scroll container for the Right Column Body */}
+        <div className="flex-1 overflow-y-auto pr-1.5 space-y-3.5">
+          {/* Optional Rank Voting for Non-Core Teachers (Folded State) */}
+          {!canAccessRaster && !unlockedRasterPupils.has(selectedPupil.id) && (
+            <div data-tour="non-core-voting" className="bg-slate-950/70 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                    <Award className="w-5 h-5" />
+                  </div>
                   <div>
-                    <span className="font-bold block text-sky-100">
-                      Detaillierter Beobachtungsbogen geöffnet (Für eigene Aufzeichnungen)
-                    </span>
-                    <span className="text-sky-300/80 text-[11px]">
-                      Sie können alle 18 Merkmale mit Smileys bewerten. Diese Daten dienen Ihren persönlichen Notizen.
-                    </span>
+                    <h3 className="text-base font-bold text-slate-50 flex flex-wrap items-center gap-2">
+                      <span>Optionales Rang-Voting</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                        {mySubject.name} (Nicht-Hauptfach)
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Sie unterrichten in dieser Klasse kein Hauptfach (D, M, E). Sie haben hier die Möglichkeit, für {selectedPupil.fullName} optional ein Rang-Voting für die Notenkonferenz abzugeben oder den detaillierten Bogen für eigene Aufzeichnungen zu öffnen.
+                    </p>
                   </div>
                 </div>
+
                 <button
                   type="button"
-                  onClick={() => handleCloseRaster(selectedPupil.id)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto shrink-0 border border-slate-700"
+                  onClick={handleOpenDetailedRasterClick}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border bg-gradient-to-r from-sky-500/20 to-sky-600/20 hover:from-sky-500/30 hover:to-sky-600/30 text-sky-200 border-sky-500/40 shadow-sm shrink-0 active:scale-95"
                 >
-                  <ChevronUp className="w-3.5 h-3.5" />
-                  <span>Bogen schließen</span>
+                  <ClipboardList className="w-4 h-4 text-sky-400" />
+                  <span>Detaillierten Bewertungsbogen öffnen</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
                 </button>
               </div>
-            )}
-            {criteria.map((crit) => (
-              <div
-                key={crit.id}
-                className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-5 shadow-sm"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border-b border-slate-800/80 pb-3">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-50 flex items-center gap-2">
-                      <span>{crit.name}</span>
-                    </h3>
-                  </div>
 
-                  {/* Category Quick Fill Buttons */}
-                  <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
-                    <span className="text-[10px] text-slate-500 uppercase font-bold px-1.5 hidden sm:inline">Kategorie:</span>
+              {/* 3 Interactive Rank Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  {
+                    rank: 'Lehrling' as const,
+                    label: 'Lehrling',
+                    dot: 'bg-rose-500',
+                    border: 'border-rose-500/30 hover:border-rose-500/60',
+                    active: 'bg-rose-500/20 border-rose-500 text-rose-200 ring-2 ring-rose-500/50',
+                    desc: 'Starke Unterstützung nötig / Basisstufe',
+                  },
+                  {
+                    rank: 'Geselle' as const,
+                    label: 'Geselle',
+                    dot: 'bg-blue-500',
+                    border: 'border-blue-500/30 hover:border-blue-500/60',
+                    active: 'bg-blue-500/20 border-blue-500 text-blue-200 ring-2 ring-blue-500/50',
+                    desc: 'Solide Leistungen / Regelanforderungen erfüllt',
+                  },
+                  {
+                    rank: 'Meister' as const,
+                    label: 'Meister',
+                    dot: 'bg-amber-400',
+                    border: 'border-amber-400/30 hover:border-amber-400/60',
+                    active: 'bg-amber-400/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/50',
+                    desc: 'Eigenständig, vorbildlich & Spitzenleistung',
+                  },
+                ].map((opt) => {
+                  const isSelected = votedRank === opt.rank;
+                  return (
                     <button
+                      key={opt.rank}
                       type="button"
+                      onClick={() => {
+                        setVotedRank(opt.rank);
+                        setSaveSuccessMsg(null);
+                      }}
                       disabled={isLockedByConference || isPastDeadline}
-                      onClick={() => handleQuickFillCategory(crit, 'crown')}
-                      title="Alle Merkmale dieser Kategorie mit Krone füllen"
-                      className="pressable focus-ring min-h-[36px] min-w-[36px] rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
+                      className={`p-3.5 rounded-2xl border text-left transition flex flex-col justify-between min-h-[88px] ${
+                        isSelected
+                          ? opt.active
+                          : `bg-slate-900/60 ${opt.border} text-slate-300`
+                      }`}
                     >
-                      <Crown className="w-4 h-4" aria-hidden="true" />
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${opt.dot}`} />
+                          <span className="font-bold text-sm text-slate-50">{opt.label}</span>
+                        </div>
+                        {isSelected && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Gewählt
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-slate-400 mt-2 block">
+                        {opt.desc}
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      disabled={isLockedByConference || isPastDeadline}
-                      onClick={() => handleQuickFillCategory(crit, 'smile')}
-                      title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen"
-                      className="w-7 h-7 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
-                    >
-                      😊
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isLockedByConference || isPastDeadline}
-                      onClick={() => handleQuickFillCategory(crit, 'struggle')}
-                      title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen"
-                      className="w-7 h-7 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
-                    >
-                      😖
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isLockedByConference || isPastDeadline}
-                      onClick={() => handleQuickFillCategory(crit, 'sad')}
-                      title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen"
-                      className="w-7 h-7 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
-                    >
-                      😢
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isLockedByConference || isPastDeadline}
-                      onClick={() => handleQuickFillCategory(crit, 'newstart')}
-                      title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen"
-                      className="w-7 h-7 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
-                    >
-                      🔄
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isLockedByConference || isPastDeadline}
-                      onClick={() => handleQuickFillCategory(crit, '')}
-                      title="Kategorie leeren"
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  );
+                })}
+              </div>
+
+              {/* Optional Comment Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Begründung / Anmerkung für die Konferenz (optional):
+                </label>
+                <textarea
+                  value={votedComment}
+                  onChange={(e) => {
+                    setVotedComment(e.target.value);
+                    setSaveSuccessMsg(null);
+                  }}
+                  disabled={isLockedByConference || isPastDeadline}
+                  rows={2}
+                  placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet zuverlässig in Gruppen..."
+                  className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none"
+                />
+              </div>
+
+              {/* Save & Feedback Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+                <div className="text-xs">
+                  {saveSuccessMsg ? (
+                    <span className="text-emerald-400 font-bold flex items-center gap-1.5 animate-fadeIn">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{saveSuccessMsg}</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-[11px]">
+                      {votedRank ? (
+                        <>Ausgewählter Rang: <strong className="text-amber-400">{votedRank}</strong></>
+                      ) : (
+                        'Wählen Sie einen Rang aus, um Ihr Votum einzureichen.'
+                      )}
+                    </span>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {crit.items.map((it) => {
-                    const itemData = getItemData(selectedPupil, it.key);
-                    const currentRating = itemData?.rating;
-                    const currentVersion = itemData?.version || 1;
+                <button
+                  type="button"
+                  onClick={handleSaveNonCoreVote}
+                  disabled={isLockedByConference || isPastDeadline || !votedRank || isSavingVote}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-md shadow-emerald-500/20 transition active:scale-95 disabled:opacity-40"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSavingVote ? 'Speichere...' : 'Rang-Voting speichern & einreichen'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
-                    // Soft lock check
-                    const lockKey = `${selectedPupil.id}_${it.key}`;
-                    const softLock = softLocks.get(lockKey);
+          {/* Unfolded Non-Core Control Header: Slim, clean top bar */}
+          {!canAccessRaster && unlockedRasterPupils.has(selectedPupil.id) && (
+            <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-200">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span className="font-bold text-sky-100 text-xs">
+                    Beobachtungsbogen ({mySubject.name})
+                  </span>
+                  <span className="text-sky-300/80 text-[11px]">
+                    · Für persönliche Aufzeichnungen
+                  </span>
+                </div>
 
-                    // 5 Smileys buttons
-                    const ratingButtons = [
-                      {
-                        val: 'crown',
-                        label: (
-                          // Crowned smiley = "Meister". The five faces are the
-                          // SMILE rating scale itself, not decoration, so they are kept
-                          // as-is; only the deliberate negative-space stacking that
-                          // made this look accidental was fixed.
-                          <div className="flex flex-col items-center justify-center leading-none gap-0.5">
-                            <span className="text-[11px] leading-none">👑</span>
-                            <span className="text-lg leading-none">😊</span>
-                          </div>
-                        ),
-                        activeBg: 'bg-amber-400 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-amber-300 ring-2 ring-amber-400/40',
-                        title: 'Hervorragend (Krone)',
-                      },
-                      {
-                        val: 'smile',
-                        label: <span className="text-2xl leading-none">😊</span>,
-                        activeBg: 'bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-emerald-300 ring-2 ring-emerald-500/40',
-                        title: 'Gut (😊)',
-                      },
-                      {
-                        val: 'struggle',
-                        label: <span className="text-2xl leading-none">😖</span>,
-                        activeBg: 'bg-amber-500 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-amber-300 ring-2 ring-amber-500/40',
-                        title: 'Mit Mühe (😖)',
-                      },
-                      {
-                        val: 'sad',
-                        label: <span className="text-2xl leading-none">😢</span>,
-                        activeBg: 'bg-rose-500 text-slate-50 font-bold shadow-lg shadow-sm scale-105 border-2 border-rose-300 ring-2 ring-rose-500/40',
-                        title: 'Traurig (😢)',
-                      },
-                      {
-                        val: 'newstart',
-                        label: <span className="text-2xl leading-none">🔄</span>,
-                        activeBg: 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sm scale-105 border-2 border-sky-300 ring-2 ring-sky-500/40',
-                        title: 'Neustart (🔄)',
-                      },
-                    ];
-
+                {/* Quick non-core rank vote pills */}
+                <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-sky-500/30">
+                  <span className="text-[10px] text-slate-400 font-bold px-1 hidden sm:inline">Voting:</span>
+                  {(['Lehrling', 'Geselle', 'Meister'] as const).map((r) => {
+                    const isSelected = votedRank === r;
                     return (
-                      <div
-                        key={it.key}
-                        className={`bg-slate-900 border rounded-2xl p-4 flex flex-col justify-between transition min-h-[160px] ${
-                          softLock
-                            ? 'border-amber-400/50 bg-amber-500/5'
-                            : 'border-slate-800/80 hover:border-slate-700'
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => {
+                          setVotedRank(r);
+                          setSaveSuccessMsg(null);
+                        }}
+                        disabled={isLockedByConference || isPastDeadline}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
+                          isSelected
+                            ? r === 'Lehrling'
+                              ? 'bg-rose-500 text-slate-50'
+                              : r === 'Geselle'
+                              ? 'bg-blue-500 text-slate-50'
+                              : 'bg-amber-400 text-slate-950'
+                            : 'text-slate-400 hover:text-slate-200'
                         }`}
                       >
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                              {it.key}
-                            </span>
-                            {softLock && (
-                              <span className="text-[10px] text-amber-400 animate-pulse font-bold flex items-center gap-1">
-                                <span>✏️</span>
-                                <span>{softLock.teacherShort || softLock.teacherName} tippt...</span>
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            r === 'Lehrling' ? 'bg-rose-400' : r === 'Geselle' ? 'bg-blue-400' : 'bg-amber-300'
+                          }`}
+                        />
+                        <span>{r}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {votedRank && (
+                  <button
+                    type="button"
+                    onClick={handleSaveNonCoreVote}
+                    disabled={isLockedByConference || isPastDeadline || isSavingVote}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center gap-1 shadow-sm"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isSavingVote ? 'Speichere...' : 'Votum speichern'}</span>
+                  </button>
+                )}
+
+                {saveSuccessMsg && (
+                  <span className="text-emerald-400 text-[11px] font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{saveSuccessMsg}</span>
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleCloseRaster(selectedPupil.id)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700 shrink-0"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Bogen einklappen</span>
+              </button>
+            </div>
+          )}
+
+          {/* Detailed 18-Criteria Grid: Visible for Core Teachers OR if Unlocked by Non-Core Teacher */}
+          {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
+            <div className="space-y-3">
+              {criteria.map((crit) => (
+                <div
+                  key={crit.id}
+                  className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 sm:p-3.5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-800/60">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                        <span>{crit.name}</span>
+                      </h3>
+                    </div>
+
+                    {/* Category Quick Fill Buttons */}
+                    <div className="flex items-center gap-1 bg-slate-900 border border-slate-800/90 p-0.5 rounded-lg">
+                      <span className="text-[9px] text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
+                      <button
+                        type="button"
+                        disabled={isLockedByConference || isPastDeadline}
+                        onClick={() => handleQuickFillCategory(crit, 'crown')}
+                        title="Alle Merkmale dieser Kategorie mit Krone (👑) füllen"
+                        className="pressable focus-ring w-6 h-6 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
+                      >
+                        <Crown className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLockedByConference || isPastDeadline}
+                        onClick={() => handleQuickFillCategory(crit, 'smile')}
+                        title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen"
+                        className="w-6 h-6 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                      >
+                        😊
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLockedByConference || isPastDeadline}
+                        onClick={() => handleQuickFillCategory(crit, 'struggle')}
+                        title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen"
+                        className="w-6 h-6 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                      >
+                        😖
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLockedByConference || isPastDeadline}
+                        onClick={() => handleQuickFillCategory(crit, 'sad')}
+                        title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen"
+                        className="w-6 h-6 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                      >
+                        😢
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLockedByConference || isPastDeadline}
+                        onClick={() => handleQuickFillCategory(crit, 'newstart')}
+                        title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen"
+                        className="w-6 h-6 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                      >
+                        🔄
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLockedByConference || isPastDeadline}
+                        onClick={() => handleQuickFillCategory(crit, '')}
+                        title="Kategorie leeren"
+                        className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-2.5">
+                    {crit.items.map((it) => {
+                      const itemData = getItemData(selectedPupil, it.key);
+                      const currentRating = itemData?.rating;
+                      const currentVersion = itemData?.version || 1;
+
+                      // Soft lock check
+                      const lockKey = `${selectedPupil.id}_${it.key}`;
+                      const softLock = softLocks.get(lockKey);
+
+                      // 5 Smileys buttons
+                      const ratingButtons = [
+                        {
+                          val: 'crown',
+                          label: (
+                            <div className="flex flex-col items-center justify-center leading-none gap-0.5">
+                              <span className="text-[9px] leading-none">👑</span>
+                              <span className="text-sm sm:text-base leading-none">😊</span>
+                            </div>
+                          ),
+                          activeBg: 'bg-amber-400 text-slate-950 font-bold shadow-md scale-105 border-2 border-amber-300 ring-2 ring-amber-400/40',
+                          title: 'Hervorragend (Krone)',
+                        },
+                        {
+                          val: 'smile',
+                          label: <span className="text-lg leading-none">😊</span>,
+                          activeBg: 'bg-emerald-500 text-slate-950 font-bold shadow-md scale-105 border-2 border-emerald-300 ring-2 ring-emerald-500/40',
+                          title: 'Gut (😊)',
+                        },
+                        {
+                          val: 'struggle',
+                          label: <span className="text-lg leading-none">😖</span>,
+                          activeBg: 'bg-amber-500 text-slate-950 font-bold shadow-md scale-105 border-2 border-amber-300 ring-2 ring-amber-500/40',
+                          title: 'Mit Mühe (😖)',
+                        },
+                        {
+                          val: 'sad',
+                          label: <span className="text-lg leading-none">😢</span>,
+                          activeBg: 'bg-rose-500 text-slate-50 font-bold shadow-md scale-105 border-2 border-rose-300 ring-2 ring-rose-500/40',
+                          title: 'Traurig (😢)',
+                        },
+                        {
+                          val: 'newstart',
+                          label: <span className="text-lg leading-none">🔄</span>,
+                          activeBg: 'bg-sky-500 text-slate-950 font-bold shadow-md scale-105 border-2 border-sky-300 ring-2 ring-sky-500/40',
+                          title: 'Neustart (🔄)',
+                        },
+                      ];
+
+                      return (
+                        <div
+                          key={it.key}
+                          className={`bg-slate-900 border rounded-xl p-2.5 sm:p-3 flex flex-col justify-between transition ${
+                            softLock
+                              ? 'border-amber-400/50 bg-amber-500/5'
+                              : 'border-slate-800/80 hover:border-slate-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                {it.key}
                               </span>
-                            )}
+                              {softLock && (
+                                <span className="text-[10px] text-amber-400 animate-pulse font-bold flex items-center gap-1">
+                                  <span>✏️</span>
+                                  <span>{softLock.teacherShort || softLock.teacherName} tippt...</span>
+                                </span>
+                              )}
+                            </div>
+                            <p
+                              className="text-[11px] sm:text-xs text-slate-300 font-medium leading-snug mb-2 line-clamp-2 hover:line-clamp-none transition-all cursor-default"
+                              title={it.desc || it.label}
+                            >
+                              {it.desc || it.label}
+                            </p>
                           </div>
-                          <p className="text-xs text-slate-300 font-medium leading-relaxed mb-4">
-                            {it.desc || it.label}
-                          </p>
-                        </div>
 
-                        {/* Smileys Row */}
-                        <div className="flex items-center justify-between gap-1 pt-2 border-t border-slate-800/60">
-                          {ratingButtons.map((btn) => {
-                            const isActive =
-                              currentRating === btn.val ||
-                              (btn.val === 'crown' && currentRating === '++') ||
-                              (btn.val === 'smile' && currentRating === '+') ||
-                              (btn.val === 'struggle' && (currentRating === 'strain' || currentRating === 'o')) ||
-                              (btn.val === 'sad' && currentRating === '-') ||
-                              (btn.val === 'newstart' && currentRating === 'restart');
+                          {/* Smileys Row */}
+                          <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/60">
+                            {ratingButtons.map((btn) => {
+                              const isActive =
+                                currentRating === btn.val ||
+                                (btn.val === 'crown' && currentRating === '++') ||
+                                (btn.val === 'smile' && currentRating === '+') ||
+                                (btn.val === 'struggle' && (currentRating === 'strain' || currentRating === 'o')) ||
+                                (btn.val === 'sad' && currentRating === '-') ||
+                                (btn.val === 'newstart' && currentRating === 'restart');
 
-                            return (
+                              return (
+                                <button
+                                  key={btn.val}
+                                  type="button"
+                                  disabled={isLockedByConference || !!softLock || isPastDeadline}
+                                  title={btn.title}
+                                  onFocus={() => onSendFocus(selectedPupil.id, it.key)}
+                                  onBlur={() => onSendBlur(selectedPupil.id, it.key)}
+                                  onClick={() => {
+                                    // Tapping the active button deselects it to blank!
+                                    const nextVal = isActive ? '' : btn.val;
+                                    onRate(
+                                      selectedPupil.id,
+                                      crit.id,
+                                      it.key,
+                                      nextVal,
+                                      currentVersion,
+                                      mySubjectCode
+                                    );
+                                  }}
+                                  className={`w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
+                                    isActive
+                                      ? btn.activeBg
+                                      : 'bg-slate-800/80 hover:bg-slate-700/80 hover:scale-105 border border-slate-700/60 text-slate-300'
+                                  }`}
+                                >
+                                  {btn.label}
+                                </button>
+                              );
+                            })}
+
+                            {/* Reset / Deselect Button (Explicit Blank) */}
+                            {currentRating && currentRating !== 'n.b.' && currentRating !== '' && (
                               <button
-                                key={btn.val}
                                 type="button"
                                 disabled={isLockedByConference || !!softLock || isPastDeadline}
-                                title={btn.title}
-                                onFocus={() => onSendFocus(selectedPupil.id, it.key)}
-                                onBlur={() => onSendBlur(selectedPupil.id, it.key)}
+                                title="Bewertung löschen (Leer)"
                                 onClick={() => {
-                                  // Tapping the active button deselects it to blank!
-                                  const nextVal = isActive ? '' : btn.val;
                                   onRate(
                                     selectedPupil.id,
                                     crit.id,
                                     it.key,
-                                    nextVal,
+                                    '',
                                     currentVersion,
                                     mySubjectCode
                                   );
                                 }}
-                                className={`w-11 h-11 rounded-2xl flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
-                                  isActive
-                                    ? btn.activeBg
-                                    : 'bg-slate-800/80 hover:bg-slate-700/80 hover:scale-105 border border-slate-700/60 text-slate-300'
-                                }`}
+                                className="w-6 h-6 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
                               >
-                                {btn.label}
+                                ✕
                               </button>
-                            );
-                          })}
-
-                          {/* Reset / Deselect Button (Explicit Blank) */}
-                          {currentRating && currentRating !== 'n.b.' && currentRating !== '' && (
-                            <button
-                              type="button"
-                              disabled={isLockedByConference || !!softLock || isPastDeadline}
-                              title="Bewertung löschen (Leer)"
-                              onClick={() => {
-                                onRate(
-                                  selectedPupil.id,
-                                  crit.id,
-                                  it.key,
-                                  '',
-                                  currentVersion,
-                                  mySubjectCode
-                                );
-                              }}
-                              className="w-7 h-7 rounded-xl bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-xs font-bold transition ml-0.5"
-                            >
-                              ✕
-                            </button>
-                          )}
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Non-Core Observation Sheet Information Pop-Up */}
