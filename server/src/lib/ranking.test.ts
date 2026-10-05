@@ -22,7 +22,7 @@ describe('rating classification', () => {
   });
 
   it('does not count neutral, negative or non-response as positive', () => {
-    for (const r of ['-', 'o', 'strain', 'sad', 'restart', 'n.b.', '', null, undefined]) {
+    for (const r of ['-', 'o', 'strain', 'struggle', 'sad', 'restart', 'newstart', 'n.b.', '', null, undefined]) {
       expect(isPositiveRating(r)).toBe(false);
     }
   });

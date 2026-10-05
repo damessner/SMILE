@@ -152,6 +152,10 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Helper to extract rating and version for a specific item
   const getItemData = (pupil: PupilWithData, itemKey: string) => {
+    const myEval = pupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
+    const myMatch = myEval?.items?.find((i) => i.itemKey === itemKey);
+    if (myMatch) return myMatch;
+
     for (const ev of pupil.evaluations) {
       const match = ev.items?.find((i) => i.itemKey === itemKey);
       if (match) return match;
@@ -518,8 +522,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               <div data-tour="instant-rank-buttons" className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort-Rang:</span>
                 <button
+                  type="button"
                   onClick={() => handleInstantRank('Lehrling')}
-                  disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                  disabled={isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Lehrling ausfüllen (< 8 Punkte)"
                   className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
@@ -527,8 +532,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   <span>Lehrling</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleInstantRank('Geselle')}
-                  disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                  disabled={isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Geselle ausfüllen (8-13 Punkte)"
                   className="px-2.5 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
@@ -536,8 +542,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   <span>Geselle</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleInstantRank('Meister')}
-                  disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                  disabled={isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Meister ausfüllen (14-18 Punkte)"
                   className="px-2.5 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 border border-amber-400/30 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
@@ -545,8 +552,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   <span>Meister</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleResetAll}
-                  disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                  disabled={isLockedByConference || isPastDeadline}
                   title="Alle 18 Bewertungen leeren / zurücksetzen"
                   className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-xs font-bold transition active:scale-95 flex items-center gap-1 ml-1 disabled:opacity-40"
                 >
@@ -813,7 +821,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     <span className="text-[10px] text-slate-500 uppercase font-bold px-1.5 hidden sm:inline">Kategorie:</span>
                     <button
                       type="button"
-                      disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                      disabled={isLockedByConference || isPastDeadline}
                       onClick={() => handleQuickFillCategory(crit, 'crown')}
                       title="Alle Merkmale dieser Kategorie mit Krone füllen"
                       className="pressable focus-ring min-h-[36px] min-w-[36px] rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
@@ -822,7 +830,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </button>
                     <button
                       type="button"
-                      disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                      disabled={isLockedByConference || isPastDeadline}
                       onClick={() => handleQuickFillCategory(crit, 'smile')}
                       title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen"
                       className="w-7 h-7 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -831,7 +839,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </button>
                     <button
                       type="button"
-                      disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                      disabled={isLockedByConference || isPastDeadline}
                       onClick={() => handleQuickFillCategory(crit, 'struggle')}
                       title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen"
                       className="w-7 h-7 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -840,7 +848,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </button>
                     <button
                       type="button"
-                      disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                      disabled={isLockedByConference || isPastDeadline}
                       onClick={() => handleQuickFillCategory(crit, 'sad')}
                       title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen"
                       className="w-7 h-7 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -849,7 +857,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </button>
                     <button
                       type="button"
-                      disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                      disabled={isLockedByConference || isPastDeadline}
                       onClick={() => handleQuickFillCategory(crit, 'newstart')}
                       title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen"
                       className="w-7 h-7 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -858,7 +866,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </button>
                     <button
                       type="button"
-                      disabled={isLockedByConference || isPastDeadline || isSubmitted}
+                      disabled={isLockedByConference || isPastDeadline}
                       onClick={() => handleQuickFillCategory(crit, '')}
                       title="Kategorie leeren"
                       className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -954,13 +962,15 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                               currentRating === btn.val ||
                               (btn.val === 'crown' && currentRating === '++') ||
                               (btn.val === 'smile' && currentRating === '+') ||
-                              (btn.val === 'struggle' && currentRating === 'o') ||
-                              (btn.val === 'sad' && currentRating === '-');
+                              (btn.val === 'struggle' && (currentRating === 'strain' || currentRating === 'o')) ||
+                              (btn.val === 'sad' && currentRating === '-') ||
+                              (btn.val === 'newstart' && currentRating === 'restart');
 
                             return (
                               <button
                                 key={btn.val}
-                                disabled={isLockedByConference || !!softLock || isPastDeadline || isSubmitted}
+                                type="button"
+                                disabled={isLockedByConference || !!softLock || isPastDeadline}
                                 title={btn.title}
                                 onFocus={() => onSendFocus(selectedPupil.id, it.key)}
                                 onBlur={() => onSendBlur(selectedPupil.id, it.key)}
@@ -972,7 +982,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                     crit.id,
                                     it.key,
                                     nextVal,
-                                    currentVersion
+                                    currentVersion,
+                                    mySubjectCode
                                   );
                                 }}
                                 className={`w-11 h-11 rounded-2xl flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
@@ -989,7 +1000,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                           {/* Reset / Deselect Button (Explicit Blank) */}
                           {currentRating && currentRating !== 'n.b.' && currentRating !== '' && (
                             <button
-                              disabled={isLockedByConference || !!softLock || isPastDeadline || isSubmitted}
+                              type="button"
+                              disabled={isLockedByConference || !!softLock || isPastDeadline}
                               title="Bewertung löschen (Leer)"
                               onClick={() => {
                                 onRate(
@@ -997,7 +1009,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                   crit.id,
                                   it.key,
                                   '',
-                                  currentVersion
+                                  currentVersion,
+                                  mySubjectCode
                                 );
                               }}
                               className="w-7 h-7 rounded-xl bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-xs font-bold transition ml-0.5"

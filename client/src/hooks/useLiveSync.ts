@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { User } from '../types';
+import { batchUpdateItems } from '../services/api';
 
 export interface SoftLock {
   pupilId: number;
@@ -185,6 +186,10 @@ export function useLiveSync(
             },
           })
         );
+      } else if (classId) {
+        batchUpdateItems(pupilId, classId, subjectCode, [
+          { criterionId, itemKey, rating },
+        ]).catch((err) => console.error('HTTP rating fallback error:', err));
       }
     },
     [classId]

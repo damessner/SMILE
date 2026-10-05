@@ -487,7 +487,21 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
-const ALLOWED_RATINGS = new Set(['crown', 'smile', 'strain', 'sad', 'restart', '+', '++', '-', 'o', 'n.b.', '']);
+const ALLOWED_RATINGS = new Set([
+  'crown',
+  'smile',
+  'strain',
+  'struggle',
+  'sad',
+  'restart',
+  'newstart',
+  '+',
+  '++',
+  '-',
+  'o',
+  'n.b.',
+  '',
+]);
 
 /** Exported for tests. */
 export { getOpenRound, ALLOWED_RATINGS };

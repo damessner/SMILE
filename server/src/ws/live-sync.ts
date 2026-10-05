@@ -77,7 +77,21 @@ interface RubricIndex {
   loadedAt: number;
 }
 
-const VALID_RATINGS = new Set(['crown', 'smile', 'strain', 'sad', 'restart', '+', '++', '-', 'o', 'n.b.', '']);
+const VALID_RATINGS = new Set([
+  'crown',
+  'smile',
+  'strain',
+  'struggle',
+  'sad',
+  'restart',
+  'newstart',
+  '+',
+  '++',
+  '-',
+  'o',
+  'n.b.',
+  '',
+]);
 
 let rubricCache: RubricIndex | null = null;
 const RUBRIC_CACHE_TTL_MS = 60_000;

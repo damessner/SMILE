@@ -85,12 +85,14 @@ export const renderSmiley = (rating: string) => {
     case '+':
       return <span className="text-lg leading-none" title="Gut (😊)">😊</span>;
     case 'struggle':
+    case 'strain':
     case 'o':
       return <span className="text-lg leading-none" title="Mit Mühe (😖)">😖</span>;
     case 'sad':
     case '-':
       return <span className="text-lg leading-none" title="Traurig (😢)">😢</span>;
     case 'newstart':
+    case 'restart':
       return <span className="text-lg leading-none" title="Neustart (🔄)">🔄</span>;
     default:
       return <span className="text-slate-600 text-xs italic">—</span>;
