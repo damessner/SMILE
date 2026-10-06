@@ -73,6 +73,99 @@ export function isValidRating(index: RubricIndex, rating: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Batch write validation — the single gate every HTTP batch of ratings passes.
+// ---------------------------------------------------------------------------
+
+/**
+ * One rating as a client sends it. `criterionId` is deliberately absent: it is
+ * derived from `itemKey` server-side, so there is nothing for a client to claim.
+ */
+export interface BatchItemInput {
+  itemKey: string;
+  rating: string;
+}
+
+export interface ValidatedBatchItem {
+  itemKey: string;
+  rating: string;
+  /** Derived from the rubric, never taken from the request body. */
+  criterionId: string;
+}
+
+export type BatchValidation =
+  | { ok: true; items: ValidatedBatchItem[] }
+  | { ok: false; error: string };
+
+/** One German message for every rejected item, matching the existing HTTP tone. */
+const REJECTED_ITEM_ERROR = 'Unbekanntes Beobachtungsmerkmal oder ungültiger Bewertungswert.';
+
+/**
+ * Validate a whole batch of ratings against the rubric before anything is written.
+ *
+ * This is the fix for the forgery that made ranks forgeable: the HTTP path used to
+ * check only that `itemKey` was present and then wrote the client's own
+ * `criterionId`, so 200 invented keys rated `'++'` became 200 positive ratings —
+ * an automatic Meister. Now every key must exist in the rubric and the criterion is
+ * derived here, which is what the WebSocket path already did.
+ *
+ * Rejection is all-or-nothing. Returning the valid items and dropping the forged
+ * ones would silently look like a successful save, so the first problem fails the
+ * request.
+ *
+ * Pure — no database — so the forgery case is unit-testable. The caller supplies
+ * the index via `loadRubricIndex`.
+ *
+ * Checks run in order: shape, size, cap, then each item's key and rating. The first
+ * failure determines the message.
+ */
+export function validateBatchItems(
+  inputs: unknown,
+  index: RubricIndex,
+  maxItems: number,
+): BatchValidation {
+  if (!Array.isArray(inputs) || inputs.length === 0) {
+    return { ok: false, error: 'Es wurden keine Bewertungen übermittelt.' };
+  }
+  if (inputs.length > maxItems) {
+    return { ok: false, error: 'Zu viele Bewertungen auf einmal.' };
+  }
+
+  const items: ValidatedBatchItem[] = [];
+
+  for (const raw of inputs) {
+    // `inputs` is untrusted JSON. A non-string is distinguished from `''`, because
+    // `''` is itself a legal rating (clearing a cell) while a missing rating is not.
+    const itemKey = typeof (raw as BatchItemInput)?.itemKey === 'string'
+      ? (raw as BatchItemInput).itemKey
+      : null;
+    const rating = typeof (raw as BatchItemInput)?.rating === 'string'
+      ? (raw as BatchItemInput).rating
+      : null;
+
+    // An empty key is rejected by this check rather than left to the lookup below,
+    // so a blank key in the rubric data cannot become a writable target. The
+    // WebSocket path screens a falsy key in its own guard; this path must not
+    // depend on that guard, nor on rubric data never containing a blank key.
+    if (itemKey === null || itemKey === '') {
+      return { ok: false, error: REJECTED_ITEM_ERROR };
+    }
+
+    const criterionId = resolveCriterionId(index, itemKey);
+    if (criterionId === null) {
+      return { ok: false, error: REJECTED_ITEM_ERROR };
+    }
+
+    if (rating === null || !isValidRating(index, rating)) {
+      return { ok: false, error: REJECTED_ITEM_ERROR };
+    }
+
+    items.push({ itemKey, rating, criterionId });
+  }
+
+  return { ok: true, items };
+}
+
+// ---------------------------------------------------------------------------
 // Loading — one query per minute at most, not one per write.
 // ---------------------------------------------------------------------------
 

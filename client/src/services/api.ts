@@ -248,6 +248,11 @@ export async function reopenEvaluation(pupilId: number, classId: number, subject
   return unwrap(res);
 }
 
+/**
+ * `criterionId` is still sent so an older server understands the payload, but the
+ * server ignores it and derives the criterion from `itemKey` — accepting the
+ * client-supplied value is what made ranks forgeable.
+ */
 export async function batchUpdateItems(
   pupilId: number,
   classId: number,

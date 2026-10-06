@@ -19,8 +19,18 @@ import {
   requireAuth,
 } from '../lib/guards.js';
 import { isRank } from '../lib/ranking.js';
+import { isValidRating, loadRubricIndex, validateBatchItems } from '../lib/rubric.js';
 import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+
+/**
+ * Ceiling on the number of ratings one batch request may carry.
+ *
+ * The real raster has 18 items, so this is far above any legitimate UI write. It
+ * exists to bound the work one request can ask for, not as the integrity check —
+ * that is the rubric lookup inside `validateBatchItems`.
+ */
+const MAX_BATCH_ITEMS = 200;
 
 /**
  * Deterministically pick the open observation round.
@@ -64,7 +74,11 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'classId und subjectCode sind erforderlich.');
     }
     const canonicalSubject = normalizeSubject(subjectCode).code;
-    if (!ALLOWED_RATINGS.has(defaultRating)) {
+    // The rating allowlist lives in lib/rubric.ts so this route and the WebSocket
+    // path cannot drift apart. `defaultRating` is a rating, not an item key, so it
+    // is checked against the allowlist only.
+    const rubricIndex = await loadRubricIndex();
+    if (!isValidRating(rubricIndex, defaultRating)) {
       return badRequest(reply, 'Unbekannter Standardwert.');
     }
 
@@ -416,21 +430,21 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       pupilId?: number;
       classId?: number;
       subjectCode?: string;
-      items?: Array<{ criterionId: string; itemKey: string; rating: string }>;
+      // Deliberately untyped beyond "unknown": the body is untrusted and
+      // `validateBatchItems` narrows it. A client may still send `criterionId`,
+      // but it is ignored — the criterion is derived from `itemKey`.
+      items?: unknown;
     };
 
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
     const canonicalSubject = normalizeSubject(subjectCode).code;
-    if (!Array.isArray(items) || items.length === 0) {
-      return badRequest(reply, 'Es wurden keine Bewertungen übermittelt.');
-    }
-    if (items.length > 200) return badRequest(reply, 'Zu viele Bewertungen auf einmal.');
 
-    for (const it of items) {
-      if (!it?.itemKey || !ALLOWED_RATINGS.has(it.rating)) {
-        return badRequest(reply, 'Unbekanntes Beobachtungsmerkmal oder ungültiger Bewertungswert.');
-      }
-    }
+    // Every item key is looked up in the rubric and its criterion derived
+    // server-side. The client-supplied `criterionId` is ignored, so a batch of
+    // fabricated keys can no longer inflate a pupil's positive rating count.
+    const rubricIndex = await loadRubricIndex();
+    const validation = validateBatchItems(items, rubricIndex, MAX_BATCH_ITEMS);
+    if (!validation.ok) return badRequest(reply, validation.error);
 
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
@@ -462,7 +476,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
       const out: Array<typeof evaluationItems.$inferSelect> = [];
 
-      for (const it of items) {
+      for (const it of validation.items) {
         const [row] = await tx
           .insert(evaluationItems)
           .values({
@@ -505,21 +519,5 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
-const ALLOWED_RATINGS = new Set([
-  'crown',
-  'smile',
-  'strain',
-  'struggle',
-  'sad',
-  'restart',
-  'newstart',
-  '+',
-  '++',
-  '-',
-  'o',
-  'n.b.',
-  '',
-]);
-
 /** Exported for tests. */
-export { getOpenRound, ALLOWED_RATINGS };
+export { getOpenRound };
