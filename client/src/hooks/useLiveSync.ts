@@ -113,6 +113,21 @@ export function useLiveSync(
             break;
           }
 
+          case 'CARD_ISSUED':
+          case 'CARD_REVOKED':
+          case 'BATCH_ITEMS_UPDATED':
+          case 'BATCH_DEFAULTS_APPLIED':
+          case 'PUPIL_RANKING_SUBMITTED':
+          case 'PUPIL_RANKING_REOPENED':
+          case 'STATUS_UPDATED':
+          case 'TIMEOUT_CREATED':
+          case 'TIMEOUT_RESOLVED':
+          case 'FINAL_RANK_LOCKED':
+          case 'FINAL_RANK_REVOKED': {
+            onRatingUpdated?.(msg);
+            break;
+          }
+
           case 'ERROR': {
             console.warn('Live sync error:', msg.message);
             break;
@@ -169,7 +184,7 @@ export function useLiveSync(
       itemKey: string,
       rating: string,
       expectedVersion: number,
-      subjectCode: string = 'SD'
+      subjectCode: string = 'D'
     ) => {
       if (wsRef.current?.readyState === WebSocket.OPEN && classId) {
         wsRef.current.send(

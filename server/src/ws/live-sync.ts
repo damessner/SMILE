@@ -321,8 +321,8 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     ? Number(payload.expectedVersion)
     : 1;
   const subjectCode = typeof payload?.subjectCode === 'string' && payload.subjectCode
-    ? payload.subjectCode
-    : 'SD';
+    ? normalizeSubject(payload.subjectCode).code
+    : 'D';
 
   if (!Number.isFinite(classId) || !Number.isFinite(pupilId) || !itemKey || rating === null) {
     sendTo(client, { type: 'ERROR', message: 'Unvollständige Bewertung.' });
@@ -474,6 +474,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
       version: newItem.version,
       updatedBy: client.teacherName,
       updatedAt: newItem.updatedAt,
+      subjectCode: evalRecord.subjectCode,
     });
     return;
   }
@@ -520,6 +521,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     version: updated.version,
     updatedBy: client.teacherName,
     updatedAt: updated.updated_at,
+    subjectCode: evalRecord.subjectCode,
   });
 }
 

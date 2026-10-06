@@ -239,7 +239,10 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
 
   if (user.teacherId) {
     const assignments = await db
-      .select({ subjectName: teachingAssignments.subjectName })
+      .select({
+        subjectName: teachingAssignments.subjectName,
+        subjectCode: teachingAssignments.subjectCode,
+      })
       .from(teachingAssignments)
       .where(
         and(
@@ -250,7 +253,7 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
     base.teaches = assignments.length > 0;
     base.subjects = Array.from(
       new Map(assignments.map((a) => {
-        const n = normalizeSubject(a.subjectName);
+        const n = normalizeSubject(a.subjectCode || a.subjectName);
         return [n.code, n];
       })).values(),
     );

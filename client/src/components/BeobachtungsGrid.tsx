@@ -54,6 +54,18 @@ interface BeobachtungsGridProps {
   onOpenReportModal?: () => void;
 }
 
+const isSubjectMatch = (codeA?: string, codeB?: string): boolean => {
+  if (!codeA || !codeB) return false;
+  if (codeA === codeB) return true;
+  const a = codeA.trim().toUpperCase();
+  const b = codeB.trim().toUpperCase();
+  if (a === b) return true;
+  if ((a === 'D' && b === 'SD') || (a === 'SD' && b === 'D')) return true;
+  if ((a === 'E' && b === 'SE') || (a === 'SE' && b === 'E')) return true;
+  if ((a === 'M' && b === 'SM') || (a === 'SM' && b === 'M')) return true;
+  return false;
+};
+
 export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   pupils,
   criteria,
@@ -83,7 +95,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Active subject for current teacher (with support for switching if teacher has multiple subjects, or '__ALL__' for unified batch rating)
   const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>(
-    mySubjects.length > 1 ? '__ALL__' : (mySubjects[0]?.code || 'SD')
+    mySubjects.length > 1 ? '__ALL__' : (mySubjects[0]?.code || 'D')
   );
 
   useEffect(() => {
@@ -99,7 +111,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }, [mySubjects]);
 
   const isAllSubjectsMode = mySubjects.length > 1 && selectedSubjectCode === '__ALL__';
-  const primarySubject = mySubjects[0] || { code: 'SD', name: 'Fach', isCoreSmile: false };
+  const primarySubject = mySubjects[0] || { code: 'D', name: 'Fach', isCoreSmile: true };
   const mySubject = isAllSubjectsMode
     ? {
         code: '__ALL__',
@@ -165,14 +177,10 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const isPupilSubmittedForSubject = (p: PupilWithData) => {
     if (isAllSubjectsMode) {
       return mySubjects.length > 0 && mySubjects.every((s) =>
-        p.evaluations.some((e) => e.subjectCode === s.code && e.isSubmitted)
+        p.evaluations.some((e) => isSubjectMatch(e.subjectCode, s.code) && e.isSubmitted)
       );
     }
-    return p.evaluations.some((e) =>
-      effectiveCanAccessRaster
-        ? (e.subjectCode === mySubjectCode ? e.isSubmitted : e.isSubmitted)
-        : (e.subjectCode === mySubjectCode && e.isSubmitted)
-    );
+    return p.evaluations.some((e) => isSubjectMatch(e.subjectCode, mySubjectCode) && e.isSubmitted);
   };
 
   const openPupils = pupils.filter((p) => !isPupilSubmittedForSubject(p));
@@ -183,18 +191,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       setSelectedPupilId(selectedPupilIdProp);
       const isSub = pupils
         .find((p) => p.id === selectedPupilIdProp)
-        ?.evaluations.some((e) =>
-          effectiveCanAccessRaster
-            ? (e.subjectCode === mySubjectCode ? e.isSubmitted : e.isSubmitted)
-            : (e.subjectCode === mySubjectCode && e.isSubmitted)
-        );
+        ?.evaluations.some((e) => isSubjectMatch(e.subjectCode, mySubjectCode) && e.isSubmitted);
       if (isSub) {
         setFolderTab('bewertet');
       } else {
         setFolderTab('offen');
       }
     }
-  }, [selectedPupilIdProp, effectiveCanAccessRaster, mySubjectCode]);
+  }, [selectedPupilIdProp, mySubjectCode]);
 
   // Ensure selectedPupilId is valid in the current tab if possible
   const currentList = folderTab === 'offen' ? openPupils : submittedPupils;
@@ -217,7 +221,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   useEffect(() => {
     if (selectedPupil) {
       const lookupCode = isAllSubjectsMode ? primarySubject.code : mySubjectCode;
-      const existing = selectedPupil.evaluations.find((e) => e.subjectCode === lookupCode);
+      const existing = selectedPupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, lookupCode));
       setVotedRank((existing?.proposedStatus as any) || null);
       setVotedComment(existing?.comment || '');
       setSaveSuccessMsg(null);
@@ -232,7 +236,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const getItemData = (pupil: PupilWithData, itemKey: string) => {
     const lookupCodes = isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode];
     for (const code of lookupCodes) {
-      const myEval = pupil.evaluations.find((e) => e.subjectCode === code);
+      const myEval = pupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, code));
       const myMatch = myEval?.items?.find((i) => i.itemKey === itemKey);
       if (myMatch) return myMatch;
     }
@@ -247,10 +251,17 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const isPositiveRating = (r?: string) =>
     r === 'crown' || r === 'smile' || r === '++' || r === '+';
 
-  // Compute live rank
+  // Compute live rank strictly from the 18 criteria items displayed in this grid
   const calculateRank = (pupil: PupilWithData) => {
-    const allItems = pupil.evaluations.flatMap((e) => e.items || []);
-    const pos = allItems.filter((i) => isPositiveRating(i.rating)).length;
+    let pos = 0;
+    for (const crit of criteria) {
+      for (const it of crit.items) {
+        const itemData = getItemData(pupil, it.key);
+        if (isPositiveRating(itemData?.rating)) {
+          pos++;
+        }
+      }
+    }
     if (pos >= 14) return { rank: 'Meister', color: 'bg-amber-400/20 text-amber-300 border-amber-400/40', barColor: 'bg-amber-400', pos };
     if (pos >= 8) return { rank: 'Geselle', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', barColor: 'bg-blue-500', pos };
     return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
@@ -495,13 +506,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }
 
   const { rank, color: rankColor, pos: positiveTicks } = calculateRank(selectedPupil);
-  const myEval = selectedPupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
+  const myEval = selectedPupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, mySubjectCode));
   const isSubmitted = isAllSubjectsMode
-    ? mySubjects.length > 0 && mySubjects.every((s) => selectedPupil.evaluations.some((e) => e.subjectCode === s.code && e.isSubmitted))
-    : (myEval?.isSubmitted ?? (effectiveCanAccessRaster && selectedPupil.evaluations.some((e) => e.isSubmitted)));
+    ? mySubjects.length > 0 && mySubjects.every((s) => selectedPupil.evaluations.some((e) => isSubjectMatch(e.subjectCode, s.code) && e.isSubmitted))
+    : Boolean(myEval?.isSubmitted);
   const submittedAt = isAllSubjectsMode
-    ? selectedPupil.evaluations.find((e) => mySubjects.some((s) => s.code === e.subjectCode) && e.isSubmitted)?.submittedAt
-    : (myEval?.submittedAt ?? (effectiveCanAccessRaster ? selectedPupil.evaluations.find((e) => e.submittedAt)?.submittedAt : undefined));
+    ? selectedPupil.evaluations.find((e) => mySubjects.some((s) => isSubjectMatch(s.code, e.subjectCode)) && e.isSubmitted)?.submittedAt
+    : myEval?.submittedAt;
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">

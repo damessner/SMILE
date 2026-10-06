@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   assessmentRubrics,
@@ -19,6 +19,7 @@ import {
   requireAuth,
 } from '../lib/guards.js';
 import { isRank } from '../lib/ranking.js';
+import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 
 /**
@@ -62,6 +63,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!classId || !subjectCode) {
       return badRequest(reply, 'classId und subjectCode sind erforderlich.');
     }
+    const canonicalSubject = normalizeSubject(subjectCode).code;
     if (!ALLOWED_RATINGS.has(defaultRating)) {
       return badRequest(reply, 'Unbekannter Standardwert.');
     }
@@ -115,7 +117,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
             roundId: round.id,
             pupilId: pupil.id,
             classId,
-            subjectCode,
+            subjectCode: canonicalSubject,
             teacherId: user.teacherId ?? 0,
           })
           .onConflictDoUpdate({
@@ -154,13 +156,13 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         action: 'BATCH_DEFAULT_APPLIED',
         entity: 'class',
         entityId: String(classId),
-        payload: { subjectCode, defaultRating, items: touched },
+        payload: { subjectCode: canonicalSubject, defaultRating, items: touched },
       });
     });
 
     broadcastToClass(classId, {
       type: 'BATCH_DEFAULTS_APPLIED',
-      subjectCode,
+      subjectCode: canonicalSubject,
       defaultRating,
       appliedBy: user.teacherId ?? null,
     });
@@ -178,7 +180,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const { pupilId, classId, subjectCode, proposedStatus, nextStep, comment } =
+    const { pupilId, classId, subjectCode = 'D', proposedStatus, nextStep, comment } =
       (request.body ?? {}) as {
         pupilId?: number;
         classId?: number;
@@ -188,9 +190,10 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         comment?: string;
       };
 
-    if (!pupilId || !classId || !subjectCode) {
-      return badRequest(reply, 'pupilId, classId und subjectCode sind erforderlich.');
+    if (!pupilId || !classId) {
+      return badRequest(reply, 'pupilId und classId sind erforderlich.');
     }
+    const canonicalSubject = normalizeSubject(subjectCode).code;
     if (proposedStatus !== undefined && proposedStatus !== null && !isRank(proposedStatus)) {
       return badRequest(reply, 'proposedStatus muss ein gültiger Rang sein.');
     }
@@ -220,7 +223,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         roundId: round.id,
         pupilId,
         classId,
-        subjectCode,
+        subjectCode: canonicalSubject,
         teacherId: user.teacherId ?? 0,
         proposedStatus: proposedStatus ?? null,
         nextStep: nextStep ?? null,
@@ -235,7 +238,8 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     broadcastToClass(classId, {
       type: 'STATUS_UPDATED',
       pupilId,
-      subjectCode,
+      classId,
+      subjectCode: canonicalSubject,
       proposedStatus: evaluation.proposedStatus,
       nextStep: evaluation.nextStep,
       comment: evaluation.comment,
@@ -255,7 +259,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       );
     }
 
-    const { pupilId, classId, subjectCode = 'SD', proposedStatus, nextStep, comment } =
+    const { pupilId, classId, subjectCode = 'D', proposedStatus, nextStep, comment } =
       (request.body ?? {}) as {
         pupilId?: number;
         classId?: number;
@@ -266,6 +270,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
+    const canonicalSubject = normalizeSubject(subjectCode).code;
     let finalProposedStatus = proposedStatus;
     if (!finalProposedStatus || !isRank(finalProposedStatus)) {
       finalProposedStatus = 'Geselle';
@@ -299,7 +304,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         roundId: round.id,
         pupilId,
         classId,
-        subjectCode,
+        subjectCode: canonicalSubject,
         teacherId: user.teacherId ?? 0,
         proposedStatus: finalProposedStatus,
         nextStep: nextStep ?? null,
@@ -319,14 +324,14 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       action: 'PUPIL_RANKING_SUBMITTED',
       entity: 'pupil',
       entityId: String(pupilId),
-      payload: { classId, subjectCode, proposedStatus },
+      payload: { classId, subjectCode: canonicalSubject, proposedStatus },
     });
 
     broadcastToClass(classId, {
       type: 'PUPIL_RANKING_SUBMITTED',
       pupilId,
       classId,
-      subjectCode,
+      subjectCode: canonicalSubject,
       proposedStatus: evaluation.proposedStatus,
       submittedBy: user.teacherId ?? null,
       submittedAt: evaluation.submittedAt,
@@ -343,12 +348,13 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, `Abgabefrist (${config.submissionDeadline.toISOString().slice(0, 10)}) ist abgelaufen.`);
     }
 
-    const { pupilId, classId, subjectCode = 'SD' } = (request.body ?? {}) as {
+    const { pupilId, classId, subjectCode = 'D' } = (request.body ?? {}) as {
       pupilId?: number;
       classId?: number;
       subjectCode?: string;
     };
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
+    const canonicalSubject = normalizeSubject(subjectCode).code;
 
     const access = await getClassAccess(user, classId);
     if (!access.canRate) {
@@ -369,7 +375,12 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
           eq(evaluations.roundId, round.id),
           eq(evaluations.pupilId, pupilId),
           eq(evaluations.classId, classId),
-          eq(evaluations.subjectCode, subjectCode),
+          or(
+            eq(evaluations.subjectCode, canonicalSubject),
+            canonicalSubject === 'D' ? eq(evaluations.subjectCode, 'SD') : sql`false`,
+            canonicalSubject === 'E' ? eq(evaluations.subjectCode, 'SE') : sql`false`,
+            canonicalSubject === 'M' ? eq(evaluations.subjectCode, 'SM') : sql`false`,
+          ),
         ),
       )
       .returning();
@@ -381,10 +392,10 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       action: 'PUPIL_RANKING_REOPENED',
       entity: 'pupil',
       entityId: String(pupilId),
-      payload: { classId, subjectCode },
+      payload: { classId, subjectCode: canonicalSubject },
     });
 
-    broadcastToClass(classId, { type: 'PUPIL_RANKING_REOPENED', pupilId, subjectCode });
+    broadcastToClass(classId, { type: 'PUPIL_RANKING_REOPENED', pupilId, subjectCode: canonicalSubject });
 
     return reply.send({ success: true, evaluation });
   });
@@ -401,7 +412,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!assertPasswordCurrent(user, reply)) return;
     if (deadlinePassed()) return badRequest(reply, 'Abgabefrist ist abgelaufen.');
 
-    const { pupilId, classId, subjectCode = 'SD', items } = (request.body ?? {}) as {
+    const { pupilId, classId, subjectCode = 'D', items } = (request.body ?? {}) as {
       pupilId?: number;
       classId?: number;
       subjectCode?: string;
@@ -409,6 +420,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
+    const canonicalSubject = normalizeSubject(subjectCode).code;
     if (!Array.isArray(items) || items.length === 0) {
       return badRequest(reply, 'Es wurden keine Bewertungen übermittelt.');
     }
@@ -439,7 +451,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
           roundId: round.id,
           pupilId,
           classId,
-          subjectCode,
+          subjectCode: canonicalSubject,
           teacherId: user.teacherId ?? 0,
         })
         .onConflictDoUpdate({
@@ -484,6 +496,8 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     broadcastToClass(classId, {
       type: 'BATCH_ITEMS_UPDATED',
       pupilId,
+      classId,
+      subjectCode: canonicalSubject,
       items: updatedItems,
     });
 

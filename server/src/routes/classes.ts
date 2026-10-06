@@ -95,7 +95,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send(
         realClasses.map((c) => {
           const subs = normaliseSubjects(
-            mine.filter((a) => a.classId === c.id).map((a) => a.subjectName),
+            mine.filter((a) => a.classId === c.id).map((a) => a.subjectCode || a.subjectName),
           );
           return {
             ...c,
@@ -260,6 +260,35 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       };
     });
 
+    // Look up teacher's timetable lesson hours for this class and subjects
+    const userHoursMap = new Map<string, number>();
+    if (user.teacherId) {
+      try {
+        const hoursRes = await getPool().query<{
+          class_id: number;
+          subject_code: string;
+          hours: number;
+        }>(
+          `SELECT class_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
+             FROM timetable_lessons
+            WHERE teacher_id = $1 AND class_id = $2
+            GROUP BY class_id, UPPER(TRIM(subject_code))`,
+          [user.teacherId, cid],
+        );
+        for (const h of hoursRes.rows) {
+          const norm = normalizeSubject(h.subject_code).code;
+          userHoursMap.set(norm, (userHoursMap.get(norm) || 0) + h.hours);
+        }
+      } catch (err) {
+        fastify.log.warn({ err }, 'Failed to query timetable lessons for class pupils');
+      }
+    }
+
+    const mySubjectsWithHours = access.subjects.map((s) => ({
+      ...s,
+      hours: userHoursMap.get(s.code) || 0,
+    }));
+
     return reply.send({
       class: {
         id: access.classId,
@@ -270,7 +299,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       isCoreTeacher: access.isCoreTeacher,
       canRate: access.canRate,
       isKv: access.isKv,
-      mySubjects: access.subjects,
+      mySubjects: mySubjectsWithHours,
       pupils: pupilsWithData,
     });
   });

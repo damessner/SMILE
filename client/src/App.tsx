@@ -191,8 +191,23 @@ export function App() {
 
   // Live Sync Callback
   const handleRatingUpdated = useCallback((data: any) => {
-    if (data.type === 'CARD_ISSUED' || data.type === 'CARD_REVOKED') {
+    if (
+      data.type === 'CARD_ISSUED' ||
+      data.type === 'CARD_REVOKED' ||
+      data.type === 'BATCH_ITEMS_UPDATED' ||
+      data.type === 'BATCH_DEFAULTS_APPLIED' ||
+      data.type === 'PUPIL_RANKING_SUBMITTED' ||
+      data.type === 'PUPIL_RANKING_REOPENED' ||
+      data.type === 'STATUS_UPDATED' ||
+      data.type === 'TIMEOUT_CREATED' ||
+      data.type === 'TIMEOUT_RESOLVED' ||
+      data.type === 'FINAL_RANK_LOCKED' ||
+      data.type === 'FINAL_RANK_REVOKED'
+    ) {
       if (selectedClassId) loadClassData(selectedClassId);
+      if (data.type === 'CARD_ISSUED' || data.type === 'CARD_REVOKED') {
+        getYellowCardAlerts().then(setYellowAlerts).catch(console.error);
+      }
       return;
     }
 
@@ -209,7 +224,7 @@ export function App() {
             roundId: '',
             pupilId: data.pupilId,
             classId: selectedClassId || 0,
-            subjectCode: 'SD',
+            subjectCode: data.subjectCode || 'D',
             teacherId: 0,
             items: [],
           };
@@ -288,7 +303,7 @@ export function App() {
   };
 
   const getActiveSubjectCode = () => {
-    return currentClass?.mySubjects?.[0]?.code || 'SD';
+    return currentClass?.mySubjects?.[0]?.code || 'D';
   };
 
   const handleSubmitPupil = async (
