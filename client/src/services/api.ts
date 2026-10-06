@@ -225,6 +225,33 @@ export async function saveStatus(
   return unwrap(res);
 }
 
+/**
+ * Autosave for the conference comment alone - no rank, no next step.
+ *
+ * `/evaluations/status` is the one write route that does not enforce
+ * `config.submissionDeadline`, and that asymmetry is deliberate: a teacher may
+ * still annotate a justification for the Notenkonferenz after the ratings are
+ * closed. Every field beyond `comment` must gain a deadline check (roadmap
+ * Phase D) - do not widen this payload.
+ *
+ * `keepalive` because this write can be the last thing a closing tab does: the
+ * grid flushes the pending comment on unmount, and without it the browser may
+ * abort the in-flight request together with the document. The body is a few
+ * hundred bytes, well under keepalive's 64 KiB cap. Residual: a comment typed
+ * inside the debounce window is still best-effort if the tab is closed outright,
+ * because closing the page never runs a React cleanup.
+ */
+export async function saveEvaluationComment(
+  pupilId: number, classId: number, subjectCode: string, comment: string,
+): Promise<void> {
+  const res = await apiFetch('/evaluations/status', {
+    method: 'POST',
+    body: JSON.stringify({ pupilId, classId, subjectCode, comment }),
+    keepalive: true,
+  });
+  if (!res.ok) throw new Error(`Kommentar konnte nicht gespeichert werden (${res.status}).`);
+}
+
 export async function submitEvaluation(
   pupilId: number,
   classId: number,

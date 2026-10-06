@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Crown,
   ClipboardList,
@@ -24,8 +24,13 @@ import {
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
 import { findItemForSubjects, isPupilFullySubmitted, isSubjectMatch, itemVersionForSubject } from '../lib/pupilItems';
+import { saveEvaluationComment } from '../services/api';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
 import { useConfirm } from './ConfirmDialog';
+import { useToast } from './Toast';
+
+/** Debounce window for the conference comment autosave. */
+const COMMENT_SAVE_DEBOUNCE_MS = 800;
 
 interface BeobachtungsGridProps {
   pupils: PupilWithData[];
@@ -55,6 +60,24 @@ interface BeobachtungsGridProps {
   onOpenReportModal?: () => void;
 }
 
+/**
+ * A conference comment waiting to be persisted, captured against the pupil and
+ * subjects it was typed for - not against the pupil currently on screen.
+ */
+interface PendingComment {
+  pupilId: number;
+  classId: number;
+  subjectCodes: string[];
+  /** What the box holds right now. Empty only when `clearRequested` is set. */
+  comment: string;
+  /**
+   * The teacher emptied the box. At a flush boundary this deletes the stored
+   * justification; on a keystroke it does nothing, so a half-finished
+   * Ctrl+A cannot wipe data the server still holds.
+   */
+  clearRequested: boolean;
+}
+
 export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   pupils,
   criteria,
@@ -76,6 +99,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   onOpenReportModal,
 }) => {
   const confirm = useConfirm();
+  const toast = useToast();
   // Folder tabs: "offen" (unsubmitted) vs "bewertet" (submitted)
   const [folderTab, setFolderTab] = useState<'offen' | 'bewertet'>('offen');
   const [selectedPupilId, setSelectedPupilId] = useState<number | null>(
@@ -206,6 +230,15 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     }
   }, [openPupils.length, submittedPupils.length]);
 
+  // What the server holds for the scope on screen, as far as this tab knows.
+  //
+  // A deletion is only ever written over a justification that is actually
+  // stored: emptying a box that has nothing stored must not turn into a write,
+  // and the teacher's own keystrokes must never delete what they have not yet
+  // managed to save. Seeded by the re-sync effect below, updated after every
+  // successful write.
+  const lastStoredCommentRef = useRef('');
+
   // Sync votedRank and comment whenever selected pupil changes
   useEffect(() => {
     if (selectedPupil) {
@@ -213,6 +246,20 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       const existing = selectedPupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, lookupCode));
       setVotedRank((existing?.proposedStatus as any) || null);
       setVotedComment(existing?.comment || '');
+      // A write lands on every subject in scope, so the box can be backed by any
+      // of them - not only by the one it happens to display. Reading `existing`
+      // alone made the scope look empty whenever the displayed subject held
+      // nothing, and emptying the box then silently dropped the justification
+      // that a sibling subject still had.
+      //
+      // `targetSubjectCodes` is deliberately not a dependency: it is a fresh
+      // array every render, and the effect would re-seed on every keystroke.
+      lastStoredCommentRef.current =
+        existing?.comment ||
+        selectedPupil.evaluations.find(
+          (e) => targetSubjectCodes.includes(e.subjectCode) && !!e.comment,
+        )?.comment ||
+        '';
       setSaveSuccessMsg(null);
     }
   }, [selectedPupil?.id, mySubjectCode, isAllSubjectsMode, primarySubject.code]);
@@ -251,13 +298,181 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
   };
 
+  // A comment write can outlive the grid: the flush it belongs to is issued
+  // moments before the tree goes away and resolves afterwards.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Auto-save feedback helper
+  //
+  // Reachable from an unmounted tree: the flush effect's cleanup issues the
+  // write and the component is gone before the write resolves. React 19 drops
+  // such a `setState` without complaining, so the guard is not about a warning:
+  // it keeps the 350ms badge timer - which outlives the component whether or
+  // not its `setState` lands - from being scheduled at all, and stops the
+  // closure from holding this state alive that long.
   const markSaved = () => {
+    if (!isMountedRef.current) return;
     setIsSaving(true);
     setTimeout(() => {
+      if (!isMountedRef.current) return;
       setIsSaving(false);
       setLastSavedTime(new Date());
     }, 350);
+  };
+
+  // --- Conference comment autosave ---
+  //
+  // The comment is the justification attached to the Notenkonferenz decision,
+  // so it must reach the server, not just animate a badge. `onBlur` used to call
+  // `markSaved()` alone: the teacher saw "Gesichert 14:22:07" and the text was
+  // gone as soon as they selected the next pupil.
+  //
+  // The pending text lives in a ref, not state, because `handleCommentChange`
+  // runs on every keystroke while the flush is a single deferred write - state
+  // would race with it, and only one comment can be in flight at a time.
+  const pendingCommentRef = useRef<PendingComment | null>(null);
+  const commentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Subjects a comment write may touch; Gesamt mode writes to each of them. */
+  const commentSubjectCodes = targetSubjectCodes.filter((c) => c !== '__ALL__');
+
+  /**
+   * Identifies the pupil and subject set a pending comment belongs to. A
+   * string, not `commentSubjectCodes`: that array is rebuilt on every render,
+   * and the effect keyed on it would flush on every keystroke.
+   */
+  const commentScopeKey = selectedPupil
+    ? `${selectedPupil.id}:${selectedPupil.classId}:${commentSubjectCodes.join(',')}`
+    : '';
+
+  const clearCommentTimer = useCallback(() => {
+    if (commentTimerRef.current !== null) {
+      clearTimeout(commentTimerRef.current);
+      commentTimerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Persist whatever is pending, then let the badge follow the server's answer:
+   * `markSaved()` only on success, an error toast otherwise. Safe to call when
+   * nothing is pending - every caller (blur, debounce, scope change, unmount)
+   * may fire after another already flushed.
+   */
+  const flushComment = useCallback(async () => {
+    clearCommentTimer();
+    const pending = pendingCommentRef.current;
+    if (!pending) return;
+    // Claim it before the first `await`: a keystroke or a second caller can
+    // then start a fresh pending while this write is in flight, and the failure
+    // path below only restores this one if nobody else took the slot.
+    pendingCommentRef.current = null;
+
+    if (pending.comment.trim() === '') {
+      // Whitespace is not a justification: overwriting a stored comment with it
+      // loses data, and writing '' for it deletes a justification nobody asked
+      // to delete. A genuinely empty box is the one exception, and only over a
+      // justification the server actually holds - an empty box with nothing
+      // stored issues no write at all.
+      //
+      // The ref still describes the pending's own scope here: React runs every
+      // cleanup before any effect body, and a scope-change flush is itself a
+      // cleanup, so the re-sync above has not re-seeded it yet.
+      if (pending.comment !== '' || !pending.clearRequested) return;
+      if (lastStoredCommentRef.current.trim() === '') return;
+    }
+
+    try {
+      for (const subjectCode of pending.subjectCodes) {
+        await saveEvaluationComment(pending.pupilId, pending.classId, subjectCode, pending.comment);
+      }
+      // The pending is only settled once every subject write resolved. In Gesamt
+      // mode a rejected subject leaves the comment half-written, and the retry
+      // has to re-send all of them - re-sending a subject that already took is
+      // an idempotent overwrite of the same text.
+      lastStoredCommentRef.current = pending.comment;
+      markSaved();
+    } catch (err) {
+      // "Bitte erneut versuchen" has to be followable: the teacher only has to
+      // leave the box again. Skip the restore if a newer keystroke already
+      // claimed the slot - that text is newer and must not be overwritten.
+      // Nothing is rescheduled here on purpose: the restored pending is not a
+      // pending *debounce*, it is waiting for a deliberate boundary, so it must
+      // not start a retry timer of its own.
+      if (pendingCommentRef.current === null) pendingCommentRef.current = pending;
+      console.error(err);
+      toast.error('Kommentar konnte nicht gespeichert werden. Bitte erneut versuchen.');
+    }
+  }, [clearCommentTimer, toast]);
+
+  const scheduleCommentFlush = useCallback(() => {
+    clearCommentTimer();
+    commentTimerRef.current = setTimeout(() => {
+      commentTimerRef.current = null;
+      void flushComment();
+    }, COMMENT_SAVE_DEBOUNCE_MS);
+  }, [clearCommentTimer, flushComment]);
+
+  // A teacher who types the justification and immediately clicks the next pupil
+  // never gets a blur - the textarea is replaced. This cleanup runs before any
+  // effect body, so it beats the re-sync above that loads the next scope's
+  // `votedComment`, and it reads the ref because state would already be mid-swap.
+  // Keyed on the whole scope, not just the pupil: switching subject re-syncs the
+  // box just as destructively, and it is this key alone that keeps the next
+  // keystroke from overwriting a pending comment for the scope on its way out.
+  // Also the only flush on unmount.
+  //
+  // `flushComment` is deliberately not a dependency: it is rebuilt whenever the
+  // toast object changes, and a cleanup that runs mid-keystroke would cancel the
+  // debounce the keystroke just scheduled.
+  useEffect(() => {
+    return () => {
+      void flushComment();
+    };
+  }, [commentScopeKey]);
+
+  const handleCommentChange = (value: string) => {
+    setVotedComment(value);
+    setSaveSuccessMsg(null);
+
+    if (!selectedPupil) {
+      pendingCommentRef.current = null;
+      return;
+    }
+
+    const scope = {
+      pupilId: selectedPupil.id,
+      classId: selectedPupil.classId,
+      // Gesamt mode writes to each subject in scope; `__ALL__` is not a
+      // subject the server could store the comment under.
+      subjectCodes: commentSubjectCodes,
+    };
+    // The pending mirrors what the box holds, and the box decides what that
+    // means: a justification to write, a deletion to write, or nothing at all.
+    // Only the first case becomes new text - a clear never overwrites what has
+    // not reached the server yet, it is carried as an explicit intent that a
+    // later retyping simply drops. What the deletion is *written over* is
+    // decided in `flushComment`, which is where the server's copy is known.
+    // The guard here only avoids scheduling a flush that provably cannot write.
+    //
+    // Keyed on the stored copy alone, never on the outgoing pending: a pending
+    // restored by a failed write is still in this ref when the next scope's box
+    // is touched, and letting it stand in for "something is stored" would
+    // overwrite that unsaved text with a deletion aimed at the wrong pupil.
+    const deletesStored = value === '' && lastStoredCommentRef.current.trim() !== '';
+    pendingCommentRef.current =
+      value.trim() !== ''
+        ? { ...scope, comment: value, clearRequested: false }
+        : deletesStored
+          ? { ...scope, comment: '', clearRequested: true }
+          : null;
+
+    if (pendingCommentRef.current) scheduleCommentFlush();
   };
 
   // Auto-dismiss submit toast after 4.5 seconds
@@ -1028,14 +1243,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               </div>
               <textarea
                 value={votedComment}
-                onChange={(e) => {
-                  setVotedComment(e.target.value);
-                  setSaveSuccessMsg(null);
-                }}
+                onChange={(e) => handleCommentChange(e.target.value)}
                 onBlur={() => {
-                  if (votedComment.trim()) {
-                    markSaved();
-                  }
+                  void flushComment();
                 }}
                 disabled={isLockedByConference || isPastDeadline}
                 rows={2}
@@ -1146,10 +1356,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 </label>
                 <textarea
                   value={votedComment}
-                  onChange={(e) => {
-                    setVotedComment(e.target.value);
-                    setSaveSuccessMsg(null);
-                  }}
+                  onChange={(e) => handleCommentChange(e.target.value)}
                   disabled={isLockedByConference || isPastDeadline}
                   rows={2}
                   placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet zuverlässig in Gruppen..."
