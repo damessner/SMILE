@@ -23,6 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
+import { findItemForSubjects, isSubjectMatch, itemVersionForSubject } from '../lib/pupilItems';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
 import { useConfirm } from './ConfirmDialog';
 
@@ -53,18 +54,6 @@ interface BeobachtungsGridProps {
   onBatchUpdate?: (pupilId: number, items: Array<{ criterionId: string; itemKey: string; rating: string }>, subjectCode?: string) => Promise<void>;
   onOpenReportModal?: () => void;
 }
-
-const isSubjectMatch = (codeA?: string, codeB?: string): boolean => {
-  if (!codeA || !codeB) return false;
-  if (codeA === codeB) return true;
-  const a = codeA.trim().toUpperCase();
-  const b = codeB.trim().toUpperCase();
-  if (a === b) return true;
-  if ((a === 'D' && b === 'SD') || (a === 'SD' && b === 'D')) return true;
-  if ((a === 'E' && b === 'SE') || (a === 'SE' && b === 'E')) return true;
-  if ((a === 'M' && b === 'SM') || (a === 'SM' && b === 'M')) return true;
-  return false;
-};
 
 export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   pupils,
@@ -232,21 +221,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const deadline = new Date(2026, 9, 30, 23, 59, 59);
   const isPastDeadline = new Date() > deadline;
 
-  // Helper to extract rating and version for a specific item
-  const getItemData = (pupil: PupilWithData, itemKey: string) => {
-    const lookupCodes = isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode];
-    for (const code of lookupCodes) {
-      const myEval = pupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, code));
-      const myMatch = myEval?.items?.find((i) => i.itemKey === itemKey);
-      if (myMatch) return myMatch;
-    }
-
-    for (const ev of pupil.evaluations) {
-      const match = ev.items?.find((i) => i.itemKey === itemKey);
-      if (match) return match;
-    }
-    return null;
-  };
+  // Helper to extract rating and version for a specific item.
+  // Scoped to the subjects in view: a pupil with no evaluation for the active
+  // subject renders empty, and never another subject's ratings - which would
+  // also be submitted as this subject's rank and sent with a foreign version.
+  const getItemData = (pupil: PupilWithData, itemKey: string) =>
+    findItemForSubjects(
+      pupil.evaluations,
+      isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode],
+      itemKey
+    );
 
   const isPositiveRating = (r?: string) =>
     r === 'crown' || r === 'smile' || r === '++' || r === '+';
@@ -1362,9 +1346,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-2.5">
                     {crit.items.map((it) => {
+                      // The rating shown here comes from the merged view of the subjects in scope, but
+                      // a write must carry the version of the subject it targets. In Gesamt mode each
+                      // subject's row has its own version, so sending one subject's version for all
+                      // of them makes the server's `UPDATE ... WHERE version = $4` match zero rows -
+                      // a conflict on cells nobody touched. Hence itemVersionForSubject below.
                       const itemData = getItemData(selectedPupil, it.key);
                       const currentRating = itemData?.rating;
-                      const currentVersion = itemData?.version || 1;
 
                       // Soft lock check
                       const lockKey = `${selectedPupil.id}_${it.key}`;
@@ -1466,7 +1454,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                         crit.id,
                                         it.key,
                                         nextVal,
-                                        currentVersion,
+                                        itemVersionForSubject(selectedPupil.evaluations, subCode, it.key),
                                         subCode
                                       );
                                     }
@@ -1496,7 +1484,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                       crit.id,
                                       it.key,
                                       '',
-                                      currentVersion,
+                                      itemVersionForSubject(selectedPupil.evaluations, subCode, it.key),
                                       subCode
                                     );
                                   }
