@@ -1,15 +1,14 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import {
-  assessmentRubrics,
   evaluationItems,
   evaluations,
   observationRounds,
-  rubricCriteria,
   teachingAssignments,
 } from '../db/schema.js';
 import { config } from '../config.js';
 import { getClassAccess, findPupilInClass, type AuthUser } from '../lib/guards.js';
+import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterionId } from '../lib/rubric.js';
 import { normalizeSubject } from '../utils/subject.js';
 
 /** Minimal shape we rely on; `ws` satisfies this. */
@@ -64,64 +63,6 @@ export function broadcastToClass(
     if (client.ws === excludeClient) continue;
     sendTo(client, message);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Rubric validation cache — keeps clients from writing arbitrary item keys.
-// ---------------------------------------------------------------------------
-
-interface RubricIndex {
-  /** itemKey -> criterionId */
-  keyToCriterion: Map<string, string>;
-  validRatings: Set<string>;
-  loadedAt: number;
-}
-
-const VALID_RATINGS = new Set([
-  'crown',
-  'smile',
-  'strain',
-  'struggle',
-  'sad',
-  'restart',
-  'newstart',
-  '+',
-  '++',
-  '-',
-  'o',
-  'n.b.',
-  '',
-]);
-
-let rubricCache: RubricIndex | null = null;
-const RUBRIC_CACHE_TTL_MS = 60_000;
-
-async function getRubricIndex(): Promise<RubricIndex> {
-  if (rubricCache && Date.now() - rubricCache.loadedAt < RUBRIC_CACHE_TTL_MS) return rubricCache;
-
-  const [rubric] = await db
-    .select()
-    .from(assessmentRubrics)
-    .where(eq(assessmentRubrics.isDefault, true))
-    .limit(1);
-
-  const keyToCriterion = new Map<string, string>();
-  if (rubric) {
-    const criteria = await db
-      .select()
-      .from(rubricCriteria)
-      .where(eq(rubricCriteria.rubricId, rubric.id));
-
-    for (const c of criteria) {
-      const items = Array.isArray(c.items) ? (c.items as Array<{ key?: string }>) : [];
-      for (const item of items) {
-        if (item?.key) keyToCriterion.set(item.key, c.id);
-      }
-    }
-  }
-
-  rubricCache = { keyToCriterion, validRatings: VALID_RATINGS, loadedAt: Date.now() };
-  return rubricCache;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,13 +313,13 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     return;
   }
 
-  const rubric = await getRubricIndex();
-  const criterionId = rubric.keyToCriterion.get(itemKey);
+  const rubric = await loadRubricIndex();
+  const criterionId = resolveCriterionId(rubric, itemKey);
   if (!criterionId) {
     sendTo(client, { type: 'ERROR', message: 'Unbekanntes Beobachtungsmerkmal.' });
     return;
   }
-  if (!rubric.validRatings.has(rating)) {
+  if (!isValidRating(rubric, rating)) {
     sendTo(client, { type: 'ERROR', message: 'Unbekannter Bewertungswert.' });
     return;
   }
@@ -576,5 +517,5 @@ export function getRoomSizes(): Record<number, number> {
 export function resetLiveSyncForTests(): void {
   classRooms.clear();
   allClients.clear();
-  rubricCache = null;
+  invalidateRubricCache();
 }
