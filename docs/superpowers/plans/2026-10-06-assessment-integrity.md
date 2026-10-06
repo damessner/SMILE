@@ -429,6 +429,15 @@ Deutsch showed as ticked while their Mathematik evaluation was still open."
 
 Create `client/src/components/BeobachtungsGrid.test.tsx`. Mock `../services/api` with `vi.mock`, render `BeobachtungsGrid` with a single pupil who has no submitted evaluation, and assert:
 
+**Call-site coverage — carried in from Task 5's review as a required part of this task.** Task 5 converted four unscoped `e.isSubmitted` reads to scoped ones, but no client test rendered a component, so those call sites had zero coverage: reverting any one of them left the suite green, which means the task's actual deliverable was one careless edit away from silent regression. Since this task already builds the render harness, it must close that gap. Add, at minimum:
+
+- A pupil with `D` submitted and **no `M` evaluation**, rendered in single-subject `M` mode: the roster shows **no** "Eingereicht" tick, and the pupil appears in the *offen* list rather than the *ranked* one. This pins `BeobachtungsGrid.tsx:676`.
+- A pupil with `D` submitted and `M` open, rendered in Gesamt (all-subjects) mode: also **not** ticked, because `codes.length > 0 && codes.every(...)` requires both subjects. This is the exact defect class the phase exists to close.
+
+Wrap every `render()` in `<ToastProvider>` (see the harness note below).
+
+Then the comment-autosave assertions:
+
 - Typing into the comment textarea and blurring calls `saveEvaluationComment` with the typed text.
 - `saveEvaluationComment` rejecting leaves the "Gesichert" badge **not** shown, and surfaces an `error` toast. **This is the assertion that would have caught the original bug.**
 - Switching `selectedPupilId` prop within the debounce window still flushes the pending comment before the switch. **Review Focus #2.**
