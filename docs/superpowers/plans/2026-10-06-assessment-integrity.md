@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Node `>= 22.0.0`, ESM. All relative imports use the `.js` extension.
+- Node `>= 22.0.0`, ESM. **In `server/src`,** all relative imports use the `.js` extension — that is the Node ESM loader's requirement. **`client/src` uses extensionless relative imports** (62 existing imports, zero with `.js`), because Vite resolves them. Match whichever tree you are editing; do not "fix" the other one.
 - `npm test` runs **both** workspaces (`server` and `client`) as of Task 1. Use `npm.cmd test` on PowerShell — `npm.ps1` is blocked by execution policy on this machine. To run one workspace: `npm.cmd run test --workspace=server`.
 - **Known false-alarm on this machine:** `npm.cmd install` exits 1 because `scripts/verify-env.mjs` rejects the two gitignored `backup_*.zip` pupil-data archives sitting in the repo root. This is pre-existing and unrelated to any task here (roadmap item C8). Dependencies install correctly despite the non-zero exit — do not chase it.
 - `npm run typecheck --workspaces` must end with 0 errors. This is a gate on every task.
@@ -300,7 +300,9 @@ criterion is now derived server-side, as the WebSocket path already did."
 - Produces:
   - `export function isSubjectMatch(a: string, b: string): boolean` — moved out of the component, unchanged behaviour, now covering the full alias table from `server/src/utils/subject.ts` rather than only `SD/SE/SM`.
   - `export function findItemForSubjects<T extends { itemKey: string }>(evaluations: Array<{ subjectCode: string; items?: T[] }>, codes: string[], itemKey: string): T | null` — searches only `codes`. No cross-subject fallback. Returns the first match in `codes` order. Generic in the item type so callers keep `rating` and `version` in the inferred type.
-  - `export function hasSubmittedForSubject(evaluations: Array<{ subjectCode: string; isSubmitted: boolean }>, code: string): boolean`
+  - `export function hasSubmittedForSubject(evaluations: Array<{ subjectCode: string; isSubmitted?: boolean }>, code: string): boolean`
+
+  `isSubmitted` is optional because `Evaluation.isSubmitted?: boolean` at `client/src/types.ts:60` is optional under `strict`. Declaring it required makes `Evaluation[]` non-assignable to the parameter (TS2353), which Task 5 needs at four call sites.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -366,7 +368,7 @@ Four sites read `e.isSubmitted` without subject scope, contradicting Invariant 4
 
 **Interfaces:**
 - Consumes: `hasSubmittedForSubject` from Task 4.
-- Produces: `export function isPupilFullySubmitted(evaluations: Array<{ subjectCode: string; isSubmitted: boolean }>, codes: string[]): boolean` — true only when every code in `codes` has a submitted evaluation.
+- Produces: `export function isPupilFullySubmitted(evaluations: Array<{ subjectCode: string; isSubmitted?: boolean }>, codes: string[]): boolean` — true only when every code in `codes` has a submitted evaluation. `isSubmitted` is optional for the same `types.ts:60` reason as Task 4.
 
 - [ ] **Step 1: Write the failing tests**
 
