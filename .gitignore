@@ -72,3 +72,5 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+# Superpowers SDD workspaces (ledger, briefs, review packages)
+.superpowers/
