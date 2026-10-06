@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - Node `>= 22.0.0`, ESM. All relative imports use the `.js` extension.
-- `npm test` runs the server workspace only. On PowerShell use `npm.cmd test` — `npm.ps1` is blocked by execution policy on this machine.
+- `npm test` runs **both** workspaces (`server` and `client`) as of Task 1. Use `npm.cmd test` on PowerShell — `npm.ps1` is blocked by execution policy on this machine. To run one workspace: `npm.cmd run test --workspace=server`.
+- **Known false-alarm on this machine:** `npm.cmd install` exits 1 because `scripts/verify-env.mjs` rejects the two gitignored `backup_*.zip` pupil-data archives sitting in the repo root. This is pre-existing and unrelated to any task here (roadmap item C8). Dependencies install correctly despite the non-zero exit — do not chase it.
 - `npm run typecheck --workspaces` must end with 0 errors. This is a gate on every task.
 - Server tests live at `server/src/**/*.test.ts`. The `include` glob is set in `server/vitest.config.ts`; do not widen it.
 - **Tests must import the code under test.** `server/src/lib/access-rules.test.ts`, `server/src/ws/auth.test.ts` and the first 90 lines of `server/src/ws/live-sync.test.ts` currently re-implement the logic inline and assert against the copy. Never copy that pattern. If a test cannot import the function, the function needs extracting first.
@@ -21,6 +22,8 @@
 - Preserve existing code comments that are accurate. Delete any comment that describes a design the code does not implement.
 - One logical change per commit. Never mix a bugfix with a rename or a reformat.
 - No new runtime dependencies on the server. The client test harness (Task 1) adds devDependencies only.
+- **The smoke test in Task 1 is `client/src/test/harness.test.tsx`, not `.ts`.** The plan originally named `.ts` while its own test body is JSX; esbuild cannot parse JSX in a `.ts` file. The `include` glob already lists `.test.tsx`.
+- `client/vitest.config.ts` does not merge `client/vite.config.ts`. If a later task needs a `resolve.alias`, add it to both — the two configs drift otherwise.
 
 ## Review Focus
 
@@ -66,12 +69,13 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
-    globals: true,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['./src/test/setup.ts'],
   },
 });
 ```
+
+Do **not** set `globals: true` — the existing server tests import `describe`/`it`/`expect` from `vitest` explicitly, and matching that convention keeps both workspaces reading the same way.
 
 - [ ] **Step 3: Create `client/src/test/setup.ts`**
 
@@ -238,9 +242,11 @@ Order the checks so the first failure determines the message: array → non-empt
 Run: `npm.cmd run test --workspace=server -- rubric.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Wire it into the route**
+- [ ] **Step 5: Wire it into both routes that validate ratings**
 
-In `server/src/routes/evaluations.ts`, inside the `/batch-items` handler after the existing body checks, replace the loop at `:429-433` with:
+In `server/src/routes/evaluations.ts`:
+
+**`/batch-items`** — after the existing body checks, replace the loop at `:429-433` with:
 
 ```ts
 const rubric = await loadRubricIndex();
@@ -248,7 +254,18 @@ const validation = validateBatchItems(items, rubric, 200);
 if (!validation.ok) return badRequest(reply, validation.error);
 ```
 
-Then change the insert loop at `:465-491` to iterate `validation.items` and take `criterionId` from the validated object. Delete the now-unused `ALLOWED_RATINGS` set at `:508-522` and its `export` at `:525`, then update `server/src/index.test.ts` if it imports it (it does not today).
+Then change the insert loop at `:465-491` to iterate `validation.items` and take `criterionId` from the validated object.
+
+**`/batch-default`** — `ALLOWED_RATINGS` is *also* used at `:67` to validate `defaultRating`. Replace that check with the shared module, so there is genuinely one allowlist rather than two:
+
+```ts
+const rubric = await loadRubricIndex();
+if (!isValidRating(rubric, defaultRating)) {
+  return badRequest(reply, 'Unbekannter Standardwert.');
+}
+```
+
+Only after both call sites are converted, delete the `ALLOWED_RATINGS` set at `:508-522` and its export at `:525`. Grep for `ALLOWED_RATINGS` first and confirm zero references remain.
 
 - [ ] **Step 6: Verify**
 
@@ -282,7 +299,6 @@ criterion is now derived server-side, as the WebSocket path already did."
 - Consumes: the `isSubjectMatch` helper currently at `BeobachtungsGrid.tsx:57-67`.
 - Produces:
   - `export function isSubjectMatch(a: string, b: string): boolean` — moved out of the component, unchanged behaviour, now covering the full alias table from `server/src/utils/subject.ts` rather than only `SD/SE/SM`.
-  - `export interface SubjectItemSource { subjectCode: string; items?: Array<{ itemKey: string }> }`
   - `export function findItemForSubjects<T extends { itemKey: string }>(evaluations: Array<{ subjectCode: string; items?: T[] }>, codes: string[], itemKey: string): T | null` — searches only `codes`. No cross-subject fallback. Returns the first match in `codes` order. Generic in the item type so callers keep `rating` and `version` in the inferred type.
   - `export function hasSubmittedForSubject(evaluations: Array<{ subjectCode: string; isSubmitted: boolean }>, code: string): boolean`
 
@@ -370,11 +386,12 @@ Expected: FAIL — not exported.
 
 Implement `isPupilFullySubmitted` as `codes.length > 0 && codes.every(c => hasSubmittedForSubject(evaluations, c))`.
 
-Then replace each of the four unscoped reads:
+Then replace each of the four unscoped reads. Note `ClassOverview` has **no** single-subject mode — it is a multi-subject overview holding a `mySubjects` array — so both of its sites scope across all of `mySubjects`, not across one code:
+
 - `BeobachtungsGrid.tsx:692` — `const pDone = isPupilFullySubmitted(p.evaluations, isAllSubjectsMode ? mySubjects.map(s => s.code) : [mySubjectCode]);`
-- `ClassOverview.tsx:67` — same substitution, using that file's active-subject variable.
-- `ClassOverview.tsx:71` — replace the unscoped `.find(e => e.isSubmitted)` with `.find(e => isSubjectMatch(e.subjectCode, code) && e.isSubmitted)`.
-- `TeacherClassReportModal.tsx:41` — same substitution.
+- `ClassOverview.tsx:67` — `return isPupilFullySubmitted(p.evaluations, mySubjects.map(s => s.code));`
+- `ClassOverview.tsx:71` — replace the unscoped `.find(e => e.isSubmitted)` with `.find(e => mySubjects.some(s => isSubjectMatch(s.code, e.subjectCode)) && e.isSubmitted)`. This drives the Open/Ranked folder split at `:77`, so an unscoped read here misfiles pupils into the wrong folder.
+- `TeacherClassReportModal.tsx:41` — same substitution, using that file's subject set.
 
 - [ ] **Step 4: Verify**
 
