@@ -80,21 +80,33 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     selectedPupilIdProp || pupils[0]?.id || null
   );
 
-  // Active subject for current teacher (with support for switching if teacher has multiple subjects)
+  // Active subject for current teacher (with support for switching if teacher has multiple subjects, or '__ALL__' for unified batch rating)
   const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>(
-    mySubjects[0]?.code || 'SD'
+    mySubjects.length > 1 ? '__ALL__' : (mySubjects[0]?.code || 'SD')
   );
 
   useEffect(() => {
-    if (mySubjects.length > 0 && !mySubjects.some((s) => s.code === selectedSubjectCode)) {
-      setSelectedSubjectCode(mySubjects[0].code);
+    if (mySubjects.length > 1) {
+      if (selectedSubjectCode !== '__ALL__' && !mySubjects.some((s) => s.code === selectedSubjectCode)) {
+        setSelectedSubjectCode('__ALL__');
+      }
+    } else if (mySubjects.length === 1) {
+      if (selectedSubjectCode === '__ALL__' || !mySubjects.some((s) => s.code === selectedSubjectCode)) {
+        setSelectedSubjectCode(mySubjects[0].code);
+      }
     }
   }, [mySubjects]);
 
-  const mySubject =
-    mySubjects.find((s) => s.code === selectedSubjectCode) ||
-    mySubjects[0] ||
-    { code: 'SD', name: 'Fach', isCoreSmile: false };
+  const isAllSubjectsMode = mySubjects.length > 1 && selectedSubjectCode === '__ALL__';
+  const primarySubject = mySubjects[0] || { code: 'SD', name: 'Fach', isCoreSmile: false };
+  const mySubject = isAllSubjectsMode
+    ? {
+        code: '__ALL__',
+        name: `Gesamt (${mySubjects.map((s) => s.code).join(' + ')})`,
+        isCoreSmile: mySubjects.some((s) => s.isCoreSmile),
+      }
+    : (mySubjects.find((s) => s.code === selectedSubjectCode) || primarySubject);
+
   const mySubjectCode = mySubject.code;
   const isSubjectCore = mySubject.isCoreSmile || (canAccessRaster && mySubjects.length === 0);
   const effectiveCanAccessRaster = isSubjectCore;
@@ -107,13 +119,24 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const [isSavingVote, setIsSavingVote] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // Target subjects for write operations (all subjects in Gesamt mode, or the selected individual subject)
+  const targetSubjectCodes = isAllSubjectsMode
+    ? mySubjects.map((s) => s.code)
+    : [mySubjectCode];
+
   // Divide pupils into open and submitted for the currently active subject
-  const isPupilSubmittedForSubject = (p: PupilWithData) =>
-    p.evaluations.some((e) =>
+  const isPupilSubmittedForSubject = (p: PupilWithData) => {
+    if (isAllSubjectsMode) {
+      return mySubjects.length > 0 && mySubjects.every((s) =>
+        p.evaluations.some((e) => e.subjectCode === s.code && e.isSubmitted)
+      );
+    }
+    return p.evaluations.some((e) =>
       effectiveCanAccessRaster
         ? (e.subjectCode === mySubjectCode ? e.isSubmitted : e.isSubmitted)
         : (e.subjectCode === mySubjectCode && e.isSubmitted)
     );
+  };
 
   const openPupils = pupils.filter((p) => !isPupilSubmittedForSubject(p));
   const submittedPupils = pupils.filter((p) => isPupilSubmittedForSubject(p));
@@ -156,12 +179,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   // Sync votedRank and comment whenever selected pupil changes
   useEffect(() => {
     if (selectedPupil) {
-      const existing = selectedPupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
+      const lookupCode = isAllSubjectsMode ? primarySubject.code : mySubjectCode;
+      const existing = selectedPupil.evaluations.find((e) => e.subjectCode === lookupCode);
       setVotedRank((existing?.proposedStatus as any) || null);
       setVotedComment(existing?.comment || '');
       setSaveSuccessMsg(null);
     }
-  }, [selectedPupil?.id, mySubjectCode]);
+  }, [selectedPupil?.id, mySubjectCode, isAllSubjectsMode, primarySubject.code]);
 
   // Deadline: 30.10.2026 23:59:59
   const deadline = new Date(2026, 9, 30, 23, 59, 59);
@@ -169,9 +193,12 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Helper to extract rating and version for a specific item
   const getItemData = (pupil: PupilWithData, itemKey: string) => {
-    const myEval = pupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
-    const myMatch = myEval?.items?.find((i) => i.itemKey === itemKey);
-    if (myMatch) return myMatch;
+    const lookupCodes = isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode];
+    for (const code of lookupCodes) {
+      const myEval = pupil.evaluations.find((e) => e.subjectCode === code);
+      const myMatch = myEval?.items?.find((i) => i.itemKey === itemKey);
+      if (myMatch) return myMatch;
+    }
 
     for (const ev of pupil.evaluations) {
       const match = ev.items?.find((i) => i.itemKey === itemKey);
@@ -215,11 +242,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       }
     }
 
-    if (onBatchUpdate) {
-      await onBatchUpdate(selectedPupil.id, allCritItems, mySubjectCode);
-    } else {
-      for (const it of allCritItems) {
-        onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, mySubjectCode);
+    for (const subCode of targetSubjectCodes) {
+      if (onBatchUpdate) {
+        await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
+      } else {
+        for (const it of allCritItems) {
+          onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
+        }
       }
     }
   };
@@ -229,7 +258,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     if (!selectedPupil) return;
     const ok = await confirm({
       title: 'Alle Bewertungen leeren?',
-      message: `Alle 18 Merkmale für ${selectedPupil.fullName} werden zurückgesetzt.`,
+      message: isAllSubjectsMode
+        ? `Alle 18 Merkmale für ${selectedPupil.fullName} werden in ALLEN deinen Fächern (${mySubjects.map((s) => s.code).join(', ')}) zurückgesetzt.`
+        : `Alle 18 Merkmale für ${selectedPupil.fullName} in ${mySubject.name} werden zurückgesetzt.`,
       confirmLabel: 'Zurücksetzen',
       tone: 'danger',
     });
@@ -243,11 +274,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       }
     }
 
-    if (onBatchUpdate) {
-      await onBatchUpdate(selectedPupil.id, allCritItems, mySubjectCode);
-    } else {
-      for (const it of allCritItems) {
-        onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, mySubjectCode);
+    for (const subCode of targetSubjectCodes) {
+      if (onBatchUpdate) {
+        await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
+      } else {
+        for (const it of allCritItems) {
+          onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, subCode);
+        }
       }
     }
   };
@@ -261,11 +294,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       rating,
     }));
 
-    if (onBatchUpdate) {
-      await onBatchUpdate(selectedPupil.id, catItems, mySubjectCode);
-    } else {
-      for (const it of catItems) {
-        onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, mySubjectCode);
+    for (const subCode of targetSubjectCodes) {
+      if (onBatchUpdate) {
+        await onBatchUpdate(selectedPupil.id, catItems, subCode);
+      } else {
+        for (const it of catItems) {
+          onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
+        }
       }
     }
   };
@@ -281,7 +316,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     const finalRankToSubmit = effectiveCanAccessRaster ? rank : (votedRank || rank || 'Geselle');
 
     if (onSubmitPupil) {
-      await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment, mySubjectCode);
+      for (const subCode of targetSubjectCodes) {
+        await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment, subCode);
+      }
     }
 
     // Advance to next sequential pupil in the open list
@@ -301,9 +338,15 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     setIsSavingVote(true);
     try {
       if (onSubmitPupil) {
-        await onSubmitPupil(selectedPupil.id, votedRank, votedComment, mySubjectCode);
+        for (const subCode of targetSubjectCodes) {
+          await onSubmitPupil(selectedPupil.id, votedRank, votedComment, subCode);
+        }
       }
-      setSaveSuccessMsg(`Votum „${votedRank}“ für ${selectedPupil.fullName} erfolgreich gespeichert!`);
+      setSaveSuccessMsg(
+        isAllSubjectsMode
+          ? `Votum „${votedRank}“ für ${selectedPupil.fullName} in allen Fächern (${mySubjects.map((s) => s.code).join(', ')}) gespeichert!`
+          : `Votum „${votedRank}“ für ${selectedPupil.fullName} erfolgreich gespeichert!`
+      );
       const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
       const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
       if (remainingOpen.length > 0) {
@@ -316,6 +359,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       console.error(err);
     } finally {
       setIsSavingVote(false);
+    }
+  };
+
+  const handleReopenPupil = async () => {
+    if (!onReopenPupil || !selectedPupil) return;
+    for (const subCode of targetSubjectCodes) {
+      await onReopenPupil(selectedPupil.id, subCode);
     }
   };
 
@@ -349,8 +399,12 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   const { rank, color: rankColor, pos: positiveTicks } = calculateRank(selectedPupil);
   const myEval = selectedPupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
-  const isSubmitted = myEval?.isSubmitted ?? (effectiveCanAccessRaster && selectedPupil.evaluations.some((e) => e.isSubmitted));
-  const submittedAt = myEval?.submittedAt ?? (effectiveCanAccessRaster ? selectedPupil.evaluations.find((e) => e.submittedAt)?.submittedAt : undefined);
+  const isSubmitted = isAllSubjectsMode
+    ? mySubjects.length > 0 && mySubjects.every((s) => selectedPupil.evaluations.some((e) => e.subjectCode === s.code && e.isSubmitted))
+    : (myEval?.isSubmitted ?? (effectiveCanAccessRaster && selectedPupil.evaluations.some((e) => e.isSubmitted)));
+  const submittedAt = isAllSubjectsMode
+    ? selectedPupil.evaluations.find((e) => mySubjects.some((s) => s.code === e.subjectCode) && e.isSubmitted)?.submittedAt
+    : (myEval?.submittedAt ?? (effectiveCanAccessRaster ? selectedPupil.evaluations.find((e) => e.submittedAt)?.submittedAt : undefined));
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
@@ -377,19 +431,21 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <div
               className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold ${
-                mySubject.isCoreSmile
+                isAllSubjectsMode
+                  ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                  : mySubject.isCoreSmile
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                   : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" />
+              {isAllSubjectsMode ? <Sparkles className="w-3.5 h-3.5" /> : <BookOpen className="w-3.5 h-3.5" />}
             </div>
             <div className="min-w-0">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block leading-tight">
-                Mein Fach ({mySubject.isCoreSmile ? 'Hauptfach' : 'Nicht-Hauptfach'})
+                {isAllSubjectsMode ? 'Modus' : `Fach (${mySubject.isCoreSmile ? 'Hauptfach' : 'Nicht-Hauptfach'})`}
               </span>
               <span className="text-xs font-bold text-slate-100 truncate block leading-tight mt-0.5">
-                {mySubject.name} <span className="text-slate-400 font-mono text-[10px]">[{mySubject.code}]</span>
+                {isAllSubjectsMode ? '🌟 Gesamtbewertung' : `${mySubject.name} [${mySubject.code}]`}
               </span>
             </div>
           </div>
@@ -399,9 +455,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             <select
               value={selectedSubjectCode}
               onChange={(e) => setSelectedSubjectCode(e.target.value)}
-              className="bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg px-2 py-1 outline-none focus:border-amber-400 cursor-pointer shrink-0"
-              title="Fach wechseln"
+              className={`border text-xs font-bold rounded-lg px-2 py-1 outline-none cursor-pointer shrink-0 transition ${
+                isAllSubjectsMode
+                  ? 'bg-amber-500/20 text-amber-200 border-amber-400/60 focus:border-amber-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-200 focus:border-amber-400'
+              }`}
+              title="Fach wechseln oder Gesamtbewertung wählen"
             >
+              <option value="__ALL__">
+                🌟 Gesamt ({mySubjects.map((s) => s.code).join(' + ')})
+              </option>
               {mySubjects.map((s) => (
                 <option key={s.code} value={s.code}>
                   {s.code} ({s.name})
@@ -544,15 +607,23 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               {/* Prominent Subject Badge */}
               <div
                 className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-sm ${
-                  mySubject.isCoreSmile
+                  isAllSubjectsMode
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : mySubject.isCoreSmile
                     ? 'bg-amber-400/15 text-amber-300 border-amber-400/30'
                     : 'bg-sky-400/15 text-sky-300 border-sky-400/30'
                 }`}
-                title={`Aktuelles Bewertungsfach: ${mySubject.name} (${mySubject.code})`}
+                title={
+                  isAllSubjectsMode
+                    ? `Gesamtbewertung für alle deine Fächer: ${mySubjects.map((s) => s.code).join(', ')}`
+                    : `Aktuelles Bewertungsfach: ${mySubject.name} (${mySubject.code})`
+                }
               >
-                <BookOpen className="w-3.5 h-3.5 opacity-80" />
-                <span>{mySubject.name}</span>
-                <span className="font-mono text-[10px] opacity-75">[{mySubject.code}]</span>
+                {isAllSubjectsMode ? <Sparkles className="w-3.5 h-3.5 text-amber-400" /> : <BookOpen className="w-3.5 h-3.5 opacity-80" />}
+                <span>{isAllSubjectsMode ? '🌟 Gesamtbewertung' : mySubject.name}</span>
+                <span className="font-mono text-[10px] opacity-75">
+                  [{isAllSubjectsMode ? mySubjects.map((s) => s.code).join(' + ') : mySubject.code}]
+                </span>
               </div>
 
               {isSubmitted && (
@@ -563,7 +634,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   </span>
                   {onReopenPupil && !isLockedByConference && (
                     <button
-                      onClick={() => onReopenPupil(selectedPupil.id, mySubjectCode)}
+                      onClick={handleReopenPupil}
                       className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[10px] font-bold transition flex items-center gap-1"
                       title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
                     >
@@ -605,7 +676,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   type="button"
                   onClick={() => handleInstantRank('Geselle')}
                   disabled={isLockedByConference || isPastDeadline}
-                  title="Kriterien für Rang Geselle ausfüllen (8-13 Punkte)"
+                  title="Kriterien für Rang Geselle ausfüllen (8–13 Punkte)"
                   className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
@@ -615,7 +686,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   type="button"
                   onClick={() => handleInstantRank('Meister')}
                   disabled={isLockedByConference || isPastDeadline}
-                  title="Kriterien für Rang Meister ausfüllen (14-18 Punkte)"
+                  title="Kriterien für Rang Meister ausfüllen (≥ 14 Punkte)"
                   className="px-2 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 border border-amber-400/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -685,6 +756,66 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
         {/* Single, unified scroll container for the Right Column Body */}
         <div className="flex-1 overflow-y-auto pr-1.5 space-y-3.5">
+          {/* Multi-subject Banner */}
+          {isAllSubjectsMode && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-xs text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  <strong>Gesamtbewertung aktiv:</strong> Eingaben, Einstufungen und Kriterien werden automatisch für <strong>alle deine Fächer ({mySubjects.map((s) => s.code).join(', ')})</strong> synchron übernommen.
+                </span>
+              </div>
+              <span className="text-[11px] text-amber-400/80 font-medium shrink-0">
+                Tipp: Für fachspezifische Abweichungen links ein Einzelfach wählen.
+              </span>
+            </div>
+          )}
+
+          {!isAllSubjectsMode && mySubjects.length > 1 && (
+            <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-3 text-xs text-sky-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>
+                  <strong>Einzelfach-Modus ({mySubject.name} [{mySubject.code}]):</strong> Änderungen und Notizen gelten hier nur für dieses Fach.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedSubjectCode('__ALL__')}
+                className="text-[11px] font-bold text-sky-300 hover:text-white underline underline-offset-2 shrink-0 self-start sm:self-auto"
+              >
+                Zurück zur Gesamtbewertung
+              </button>
+            </div>
+          )}
+
+          {/* Teacher Observation Comment Box (for conference & KEL) when raster is active */}
+          {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
+            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 flex flex-col gap-1.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Anmerkung / Begründung für Konferenz & KEL (optional):</span>
+                </label>
+                {isAllSubjectsMode && (
+                  <span className="text-[10px] text-amber-400/80 font-medium">
+                    Gilt für alle deine Fächer ({mySubjects.map((s) => s.code).join(', ')})
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={votedComment}
+                onChange={(e) => {
+                  setVotedComment(e.target.value);
+                  setSaveSuccessMsg(null);
+                }}
+                disabled={isLockedByConference || isPastDeadline}
+                rows={2}
+                placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet verlässlich in Gruppen..."
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none transition"
+              />
+            </div>
+          )}
           {/* Optional Rank Voting for Non-Core Teachers (Folded State) */}
           {!effectiveCanAccessRaster && !unlockedRasterPupils.has(selectedPupil.id) && (
             <div data-tour="non-core-voting" className="bg-slate-950/70 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
@@ -1085,14 +1216,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                   onClick={() => {
                                     // Tapping the active button deselects it to blank!
                                     const nextVal = isActive ? '' : btn.val;
-                                    onRate(
-                                      selectedPupil.id,
-                                      crit.id,
-                                      it.key,
-                                      nextVal,
-                                      currentVersion,
-                                      mySubjectCode
-                                    );
+                                    for (const subCode of targetSubjectCodes) {
+                                      onRate(
+                                        selectedPupil.id,
+                                        crit.id,
+                                        it.key,
+                                        nextVal,
+                                        currentVersion,
+                                        subCode
+                                      );
+                                    }
                                   }}
                                   className={`w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
                                     isActive
@@ -1112,14 +1245,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                 disabled={isLockedByConference || !!softLock || isPastDeadline}
                                 title="Bewertung löschen (Leer)"
                                 onClick={() => {
-                                  onRate(
-                                    selectedPupil.id,
-                                    crit.id,
-                                    it.key,
-                                    '',
-                                    currentVersion,
-                                    mySubjectCode
-                                  );
+                                  for (const subCode of targetSubjectCodes) {
+                                    onRate(
+                                      selectedPupil.id,
+                                      crit.id,
+                                      it.key,
+                                      '',
+                                      currentVersion,
+                                      subCode
+                                    );
+                                  }
                                 }}
                                 className="w-6 h-6 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
                               >
