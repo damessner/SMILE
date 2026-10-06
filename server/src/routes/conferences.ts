@@ -13,7 +13,7 @@ import {
   requireAuth,
   type AuthUser,
 } from '../lib/guards.js';
-import { calculateRank, summarizeRatings, type RatingLike } from '../lib/ranking.js';
+import { calculateRank, demote, summarizeRatings, type RatingLike } from '../lib/ranking.js';
 import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 
@@ -439,6 +439,38 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       confirmedRanks = confirmedRes.rows;
     }
 
+    // Query teaching hours from timetable_lessons for this class
+    const hoursRes = await getPool().query<{
+      teacher_id: number;
+      subject_code: string;
+      hours: number;
+    }>(
+      `SELECT teacher_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
+         FROM timetable_lessons
+        WHERE class_id = $1
+        GROUP BY teacher_id, UPPER(TRIM(subject_code))`,
+      [cid],
+    );
+    const hoursMap = new Map<string, number>();
+    for (const h of hoursRes.rows) {
+      hoursMap.set(`${h.teacher_id}_${h.subject_code}`, h.hours);
+    }
+
+    const teacherTotalHoursRes = await getPool().query<{
+      teacher_id: number;
+      total_hours: number;
+    }>(
+      `SELECT teacher_id, COUNT(*)::int as total_hours
+         FROM timetable_lessons
+        WHERE class_id = $1
+        GROUP BY teacher_id`,
+      [cid],
+    );
+    const teacherTotalHoursMap = new Map<number, number>();
+    for (const th of teacherTotalHoursRes.rows) {
+      teacherTotalHoursMap.set(th.teacher_id, th.total_hours);
+    }
+
     const itemsByEval = new Map<string, Array<RatingLike & { item_key: string }>>();
     for (const it of items) {
       const list = itemsByEval.get(it.evaluation_id) ?? [];
@@ -461,9 +493,47 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
             createdAt: c.created_at,
           }));
 
+      // Count how many teachers submitted for each core subject (D, M, E) for this pupil
+      const coreTeacherCounts: Record<string, number> = { D: 0, M: 0, E: 0 };
+      pupilEvals.forEach((e) => {
+        const norm = normalizeSubject(e.subject_code);
+        if (norm.isCoreSmile && norm.code in coreTeacherCounts) {
+          coreTeacherCounts[norm.code] = (coreTeacherCounts[norm.code] || 0) + 1;
+        }
+      });
+
       const teacherVotes = pupilEvals.map((e) => {
         const evalItems = itemsByEval.get(e.id) ?? [];
         const summaryCounts = summarizeRatings([{ evaluationId: e.id, items: evalItems }]);
+        const normSub = normalizeSubject(e.subject_code);
+        const subCodeUpper = e.subject_code.trim().toUpperCase();
+
+        // 1. Look up weekly hours from timetable_lessons
+        let hours = (e.teacher_id ? hoursMap.get(`${e.teacher_id}_${subCodeUpper}`) : undefined);
+        if (!hours && e.teacher_id) {
+          hours = hoursMap.get(`${e.teacher_id}_${normSub.code}`);
+        }
+        if (!hours && e.teacher_id) {
+          hours = teacherTotalHoursMap.get(e.teacher_id);
+        }
+        if (!hours) {
+          hours = normSub.isCoreSmile ? 4 : 2;
+        }
+
+        // 2. Weighting & Team-Teaching rule:
+        // Core subjects (D, M, E) have double weight because two teachers give votes.
+        // If only 1 teacher from the team submitted for this pupil, double their hours so the
+        // core subject retains its full 2-teacher weight (e.g. 4 * 2 = 8h).
+        // If both teachers submitted, each contributes their own hours (e.g. 4 + 4 = 8h).
+        let weight = hours;
+        const isTeamTeaching = normSub.isCoreSmile;
+        if (isTeamTeaching) {
+          const teacherCountForThisCoreSub = coreTeacherCounts[normSub.code] || 1;
+          if (teacherCountForThisCoreSub === 1) {
+            weight = hours * 2;
+          }
+        }
+
         return {
           teacherId: e.teacher_id,
           teacherShort: e.teacher_short,
@@ -476,8 +546,37 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           submittedAt: e.submitted_at || null,
           positiveCount: summaryCounts.positiveCount,
           totalRated: summaryCounts.totalRated,
+          hours,
+          weight,
+          isTeamTeaching,
         };
       });
+
+      // Calculate hours-weighted statistics
+      let hoursLehrling = 0;
+      let hoursGeselle = 0;
+      let hoursMeister = 0;
+
+      for (const tv of teacherVotes) {
+        if (tv.proposedStatus === 'Meister') hoursMeister += tv.weight;
+        else if (tv.proposedStatus === 'Geselle') hoursGeselle += tv.weight;
+        else if (tv.proposedStatus === 'Lehrling') hoursLehrling += tv.weight;
+      }
+
+      const totalVotedHours = hoursLehrling + hoursGeselle + hoursMeister;
+      const pctLehrling = totalVotedHours > 0 ? Math.round((hoursLehrling / totalVotedHours) * 100) : 0;
+      const pctGeselle = totalVotedHours > 0 ? Math.round((hoursGeselle / totalVotedHours) * 100) : 0;
+      const pctMeister = totalVotedHours > 0 ? Math.round((hoursMeister / totalVotedHours) * 100) : 0;
+
+      // Determine hours-weighted majority rank:
+      let suggestedRankByHours: 'Lehrling' | 'Geselle' | 'Meister' = 'Geselle';
+      if (hoursMeister >= hoursGeselle && hoursMeister >= hoursLehrling && hoursMeister > 0) {
+        suggestedRankByHours = 'Meister';
+      } else if (hoursLehrling > hoursGeselle && hoursLehrling > hoursMeister) {
+        suggestedRankByHours = 'Lehrling';
+      } else {
+        suggestedRankByHours = 'Geselle';
+      }
 
       // Automatic threshold rank is determined by the core subjects (D, M, E).
       // Non-core subject observations are supplementary and for individual teacher notes.
@@ -490,6 +589,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       const counts = summarizeRatings(pupilGroups);
       const redCards = mapCards('red');
       const outcome = calculateRank(counts.scoreForThreshold, redCards.length > 0);
+      const weightedRank = redCards.length > 0 ? demote(suggestedRankByHours) : suggestedRankByHours;
 
       const confirmed = confirmedRanks.find((r) => r.pupil_id === p.id);
 
@@ -500,6 +600,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         totalRated: counts.totalRated,
         baseRank: outcome.baseRank,
         calculatedRank: outcome.finalRank,
+        weightedRank,
         hasRedCardDemotion: outcome.hasRedCardDemotion,
         finalRank: confirmed?.rank || outcome.finalRank,
         isConfirmed: !!confirmed,
@@ -514,6 +615,15 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           Lehrling: teacherVotes.filter((tv) => tv.proposedStatus === 'Lehrling').length,
           Geselle: teacherVotes.filter((tv) => tv.proposedStatus === 'Geselle').length,
           Meister: teacherVotes.filter((tv) => tv.proposedStatus === 'Meister').length,
+          hoursLehrling,
+          hoursGeselle,
+          hoursMeister,
+          totalVotedHours,
+          pctLehrling,
+          pctGeselle,
+          pctMeister,
+          suggestedRankByHours,
+          weightedRank,
         },
         cards: {
           green: mapCards('green'),

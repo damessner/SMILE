@@ -34,6 +34,9 @@ interface TeacherVote {
   submittedAt?: string | null;
   positiveCount: number;
   totalRated: number;
+  hours?: number;
+  weight?: number;
+  isTeamTeaching?: boolean;
 }
 
 interface CardItem {
@@ -51,6 +54,7 @@ interface ConferencePupil {
   totalRated: number;
   baseRank: 'Lehrling' | 'Geselle' | 'Meister';
   calculatedRank: 'Lehrling' | 'Geselle' | 'Meister';
+  weightedRank?: 'Lehrling' | 'Geselle' | 'Meister';
   hasRedCardDemotion: boolean;
   finalRank: 'Lehrling' | 'Geselle' | 'Meister';
   isConfirmed: boolean;
@@ -65,6 +69,15 @@ interface ConferencePupil {
     Lehrling: number;
     Geselle: number;
     Meister: number;
+    hoursLehrling?: number;
+    hoursGeselle?: number;
+    hoursMeister?: number;
+    totalVotedHours?: number;
+    pctLehrling?: number;
+    pctGeselle?: number;
+    pctMeister?: number;
+    suggestedRankByHours?: 'Lehrling' | 'Geselle' | 'Meister';
+    weightedRank?: 'Lehrling' | 'Geselle' | 'Meister';
   };
   cards: {
     green: CardItem[];
@@ -516,22 +529,62 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Positive Criteria Progress Bar */}
-                  <div className="mt-4 pt-3 border-t border-slate-800/80">
-                    <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-                      <span>
-                        Positive Merkmale: <strong className="text-slate-50 text-sm">{p.positiveCount}</strong> / 18
-                      </span>
-                      <span>
-                        Vorschlag Algorithmus: <strong className="text-amber-300 font-bold">{p.calculatedRank}</strong>
-                      </span>
+                  {/* Positive Criteria Progress Bar & Hours-Weighted Breakdown */}
+                  <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                        <span>
+                          Positive Merkmale (Raster): <strong className="text-slate-50 text-sm">{p.positiveCount}</strong> / 18
+                        </span>
+                        <span>
+                          Vorschlag nach Raster: <strong className="text-amber-300 font-bold">{p.calculatedRank}</strong>
+                        </span>
+                      </div>
+                      <div className="w-full h-3.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
+                        <div
+                          style={{ width: `${Math.min(100, Math.round((p.positiveCount / 18) * 100))}%` }}
+                          className={`h-full ${barColor} transition-all duration-300 rounded-full`}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full h-3.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
-                      <div
-                        style={{ width: `${Math.min(100, Math.round((p.positiveCount / 18) * 100))}%` }}
-                        className={`h-full ${barColor} transition-all duration-300 rounded-full`}
-                      />
-                    </div>
+
+                    {/* Hours-Weighted Breakdown Bar */}
+                    {p.voteStats?.totalVotedHours ? (
+                      <div className="pt-2.5 border-t border-slate-800/60">
+                        <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 mb-1.5 gap-2">
+                          <span className="flex items-center gap-1.5 text-slate-300 font-medium">
+                            <span>⚖️</span>
+                            <span>Gewichtung nach Unterrichtsstunden ({p.voteStats.totalVotedHours} Wochenstunden):</span>
+                          </span>
+                          <span>
+                            Vorschlag nach Stunden: <strong className="text-amber-300 font-bold">{p.voteStats.weightedRank || p.weightedRank || p.calculatedRank}</strong>
+                          </span>
+                        </div>
+                        {/* Segmented color bar of voted hours */}
+                        <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
+                          <div
+                            style={{ width: `${p.voteStats.pctMeister || 0}%` }}
+                            className="h-full bg-amber-400 transition-all duration-300"
+                            title={`Meister: ${p.voteStats.hoursMeister}h (${p.voteStats.pctMeister}%)`}
+                          />
+                          <div
+                            style={{ width: `${p.voteStats.pctGeselle || 0}%` }}
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            title={`Geselle: ${p.voteStats.hoursGeselle}h (${p.voteStats.pctGeselle}%)`}
+                          />
+                          <div
+                            style={{ width: `${p.voteStats.pctLehrling || 0}%` }}
+                            className="h-full bg-rose-500 transition-all duration-300"
+                            title={`Lehrling: ${p.voteStats.hoursLehrling}h (${p.voteStats.pctLehrling}%)`}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mt-1">
+                          <span className="text-amber-300">👑 Meister: {p.voteStats.hoursMeister || 0}h ({p.voteStats.pctMeister || 0}%)</span>
+                          <span className="text-blue-300">🔵 Geselle: {p.voteStats.hoursGeselle || 0}h ({p.voteStats.pctGeselle || 0}%)</span>
+                          <span className="text-rose-300">🔴 Lehrling: {p.voteStats.hoursLehrling || 0}h ({p.voteStats.pctLehrling || 0}%)</span>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -541,20 +594,20 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     <div className="flex items-center gap-2">
                       <FileText className="w-4 h-4 text-amber-400" />
                       <h3 className="font-bold text-slate-50 text-sm uppercase tracking-wider">
-                        Lehrer-Votings &amp; Vorschläge ({p.teacherVotes?.length || 0} Rückmeldungen)
+                        Lehrer-Votings &amp; Vorschläge ({p.teacherVotes?.length || 0} Rückmeldungen · {p.voteStats?.totalVotedHours || 0}h gewichtet)
                       </h3>
                     </div>
 
                     {/* Quick proposals summary tally */}
-                    <div className="flex items-center gap-2 text-xs font-bold">
-                      <span className="px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                        {p.voteStats?.Meister || 0}x Meister
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                      <span className="px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30" title={`${p.voteStats?.hoursMeister || 0} Wochenstunden für Meister`}>
+                        {p.voteStats?.hoursMeister !== undefined ? `${p.voteStats.hoursMeister}h` : `${p.voteStats?.Meister || 0}x`} Meister
                       </span>
-                      <span className="px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                        {p.voteStats?.Geselle || 0}x Geselle
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30" title={`${p.voteStats?.hoursGeselle || 0} Wochenstunden für Geselle`}>
+                        {p.voteStats?.hoursGeselle !== undefined ? `${p.voteStats.hoursGeselle}h` : `${p.voteStats?.Geselle || 0}x`} Geselle
                       </span>
-                      <span className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                        {p.voteStats?.Lehrling || 0}x Lehrling
+                      <span className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30" title={`${p.voteStats?.hoursLehrling || 0} Wochenstunden für Lehrling`}>
+                        {p.voteStats?.hoursLehrling !== undefined ? `${p.voteStats.hoursLehrling}h` : `${p.voteStats?.Lehrling || 0}x`} Lehrling
                       </span>
                     </div>
                   </div>
@@ -581,6 +634,20 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                                 }`}
                               >
                                 {tv.proposedStatus || 'Ausstehend'}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400 mb-1.5">
+                              <span className="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 font-bold text-amber-300">
+                                ⏱️ {tv.hours ?? 2}h / Woche
+                              </span>
+                              {tv.isTeamTeaching && (
+                                <span className="px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-semibold" title="Hauptfach Team-Teaching (D, M, E)">
+                                  Team-Teaching
+                                </span>
+                              )}
+                              <span className="text-slate-400">
+                                (Gewicht: {tv.weight ?? tv.hours ?? 2})
                               </span>
                             </div>
 
@@ -725,8 +792,18 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   <div className="flex flex-wrap items-center gap-6">
                     {/* Rank Selection */}
                     <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-1.5">
-                        Festgelegter Rang
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-1.5 flex flex-wrap items-center gap-2">
+                        <span>Festgelegter Rang</span>
+                        {(p.voteStats?.weightedRank || p.weightedRank) && (p.voteStats?.weightedRank || p.weightedRank) !== cur.rank && isAuthorized && (
+                          <button
+                            type="button"
+                            onClick={() => handleRankChange(p.id, (p.voteStats?.weightedRank || p.weightedRank)!)}
+                            className="text-[9px] px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer"
+                            title="Vorschlag nach Unterrichtsstunden übernehmen"
+                          >
+                            <span>⚖️ Stunden-Vorschlag ({(p.voteStats?.weightedRank || p.weightedRank)}) übernehmen</span>
+                          </button>
+                        )}
                       </div>
                       {isAuthorized ? (
                         <select
