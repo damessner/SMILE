@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  BookOpen,
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
@@ -46,9 +47,9 @@ interface BeobachtungsGridProps {
   canAccessRaster?: boolean;
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
   selectedPupilIdProp?: number | null;
-  onSubmitPupil?: (pupilId: number, proposedStatus?: string, comment?: string) => Promise<void>;
-  onReopenPupil?: (pupilId: number) => Promise<void>;
-  onBatchUpdate?: (pupilId: number, items: Array<{ criterionId: string; itemKey: string; rating: string }>) => Promise<void>;
+  onSubmitPupil?: (pupilId: number, proposedStatus?: string, comment?: string, subjectCode?: string) => Promise<void>;
+  onReopenPupil?: (pupilId: number, subjectCode?: string) => Promise<void>;
+  onBatchUpdate?: (pupilId: number, items: Array<{ criterionId: string; itemKey: string; rating: string }>, subjectCode?: string) => Promise<void>;
   onOpenReportModal?: () => void;
 }
 
@@ -79,9 +80,24 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     selectedPupilIdProp || pupils[0]?.id || null
   );
 
-  // Active subject for current teacher
-  const mySubject = mySubjects.length > 0 ? mySubjects[0] : { code: 'SD', name: 'Fach', isCoreSmile: false };
+  // Active subject for current teacher (with support for switching if teacher has multiple subjects)
+  const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>(
+    mySubjects[0]?.code || 'SD'
+  );
+
+  useEffect(() => {
+    if (mySubjects.length > 0 && !mySubjects.some((s) => s.code === selectedSubjectCode)) {
+      setSelectedSubjectCode(mySubjects[0].code);
+    }
+  }, [mySubjects]);
+
+  const mySubject =
+    mySubjects.find((s) => s.code === selectedSubjectCode) ||
+    mySubjects[0] ||
+    { code: 'SD', name: 'Fach', isCoreSmile: false };
   const mySubjectCode = mySubject.code;
+  const isSubjectCore = mySubject.isCoreSmile || (canAccessRaster && mySubjects.length === 0);
+  const effectiveCanAccessRaster = isSubjectCore;
 
   // Non-core rating & observation state
   const [unlockedRasterPupils, setUnlockedRasterPupils] = useState<Set<number>>(new Set());
@@ -91,17 +107,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const [isSavingVote, setIsSavingVote] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
-  // Divide pupils into open and submitted
-  const openPupils = pupils.filter((p) =>
-    canAccessRaster
-      ? !p.evaluations.some((e) => e.isSubmitted)
-      : !p.evaluations.some((e) => e.subjectCode === mySubjectCode && e.isSubmitted)
-  );
-  const submittedPupils = pupils.filter((p) =>
-    canAccessRaster
-      ? p.evaluations.some((e) => e.isSubmitted)
-      : p.evaluations.some((e) => e.subjectCode === mySubjectCode && e.isSubmitted)
-  );
+  // Divide pupils into open and submitted for the currently active subject
+  const isPupilSubmittedForSubject = (p: PupilWithData) =>
+    p.evaluations.some((e) =>
+      effectiveCanAccessRaster
+        ? (e.subjectCode === mySubjectCode ? e.isSubmitted : e.isSubmitted)
+        : (e.subjectCode === mySubjectCode && e.isSubmitted)
+    );
+
+  const openPupils = pupils.filter((p) => !isPupilSubmittedForSubject(p));
+  const submittedPupils = pupils.filter((p) => isPupilSubmittedForSubject(p));
 
   useEffect(() => {
     if (selectedPupilIdProp) {
@@ -109,7 +124,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       const isSub = pupils
         .find((p) => p.id === selectedPupilIdProp)
         ?.evaluations.some((e) =>
-          canAccessRaster ? e.isSubmitted : (e.subjectCode === mySubjectCode && e.isSubmitted)
+          effectiveCanAccessRaster
+            ? (e.subjectCode === mySubjectCode ? e.isSubmitted : e.isSubmitted)
+            : (e.subjectCode === mySubjectCode && e.isSubmitted)
         );
       if (isSub) {
         setFolderTab('bewertet');
@@ -117,7 +134,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         setFolderTab('offen');
       }
     }
-  }, [selectedPupilIdProp, canAccessRaster, mySubjectCode]);
+  }, [selectedPupilIdProp, effectiveCanAccessRaster, mySubjectCode]);
 
   // Ensure selectedPupilId is valid in the current tab if possible
   const currentList = folderTab === 'offen' ? openPupils : submittedPupils;
@@ -199,7 +216,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     }
 
     if (onBatchUpdate) {
-      await onBatchUpdate(selectedPupil.id, allCritItems);
+      await onBatchUpdate(selectedPupil.id, allCritItems, mySubjectCode);
     } else {
       for (const it of allCritItems) {
         onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, mySubjectCode);
@@ -227,7 +244,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     }
 
     if (onBatchUpdate) {
-      await onBatchUpdate(selectedPupil.id, allCritItems);
+      await onBatchUpdate(selectedPupil.id, allCritItems, mySubjectCode);
     } else {
       for (const it of allCritItems) {
         onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, mySubjectCode);
@@ -245,7 +262,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     }));
 
     if (onBatchUpdate) {
-      await onBatchUpdate(selectedPupil.id, catItems);
+      await onBatchUpdate(selectedPupil.id, catItems, mySubjectCode);
     } else {
       for (const it of catItems) {
         onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, mySubjectCode);
@@ -261,10 +278,10 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
 
     const { rank } = calculateRank(selectedPupil);
-    const finalRankToSubmit = canAccessRaster ? rank : (votedRank || rank || 'Geselle');
+    const finalRankToSubmit = effectiveCanAccessRaster ? rank : (votedRank || rank || 'Geselle');
 
     if (onSubmitPupil) {
-      await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment);
+      await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment, mySubjectCode);
     }
 
     // Advance to next sequential pupil in the open list
@@ -284,7 +301,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     setIsSavingVote(true);
     try {
       if (onSubmitPupil) {
-        await onSubmitPupil(selectedPupil.id, votedRank, votedComment);
+        await onSubmitPupil(selectedPupil.id, votedRank, votedComment, mySubjectCode);
       }
       setSaveSuccessMsg(`Votum „${votedRank}“ für ${selectedPupil.fullName} erfolgreich gespeichert!`);
       const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
@@ -331,12 +348,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }
 
   const { rank, color: rankColor, pos: positiveTicks } = calculateRank(selectedPupil);
-  const isSubmitted = selectedPupil.evaluations.some((e) =>
-    canAccessRaster ? e.isSubmitted : (e.subjectCode === mySubjectCode && e.isSubmitted)
-  );
-  const submittedAt = selectedPupil.evaluations.find((e) =>
-    canAccessRaster ? e.submittedAt : (e.subjectCode === mySubjectCode && e.submittedAt)
-  )?.submittedAt;
+  const myEval = selectedPupil.evaluations.find((e) => e.subjectCode === mySubjectCode);
+  const isSubmitted = myEval?.isSubmitted ?? (effectiveCanAccessRaster && selectedPupil.evaluations.some((e) => e.isSubmitted));
+  const submittedAt = myEval?.submittedAt ?? (effectiveCanAccessRaster ? selectedPupil.evaluations.find((e) => e.submittedAt)?.submittedAt : undefined);
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
@@ -358,6 +372,45 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
       {/* Left Column: Pupil Selector Bar with "Offen" & "Bewertet" Folder Tabs */}
       <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col max-h-[84vh] overflow-hidden shadow-lg">
+        {/* Active Subject Card & Switcher */}
+        <div className="mb-3 p-2.5 rounded-2xl bg-slate-950/80 border border-slate-800/90 shadow-sm flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold ${
+                mySubject.isCoreSmile
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block leading-tight">
+                Mein Fach ({mySubject.isCoreSmile ? 'Hauptfach' : 'Nicht-Hauptfach'})
+              </span>
+              <span className="text-xs font-bold text-slate-100 truncate block leading-tight mt-0.5">
+                {mySubject.name} <span className="text-slate-400 font-mono text-[10px]">[{mySubject.code}]</span>
+              </span>
+            </div>
+          </div>
+
+          {/* If teacher has multiple subjects in this class, allow switching */}
+          {mySubjects.length > 1 && (
+            <select
+              value={selectedSubjectCode}
+              onChange={(e) => setSelectedSubjectCode(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg px-2 py-1 outline-none focus:border-amber-400 cursor-pointer shrink-0"
+              title="Fach wechseln"
+            >
+              {mySubjects.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.code} ({s.name})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
         {/* Folder Tabs (Offen vs Bewertet) */}
         <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-3">
           <button
@@ -482,11 +535,26 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         {/* Pupil Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800 mb-3 shrink-0">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-50">{selectedPupil.fullName}</h2>
               <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${rankColor}`}>
                 {rank} ({positiveTicks}/18)
               </span>
+
+              {/* Prominent Subject Badge */}
+              <div
+                className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-sm ${
+                  mySubject.isCoreSmile
+                    ? 'bg-amber-400/15 text-amber-300 border-amber-400/30'
+                    : 'bg-sky-400/15 text-sky-300 border-sky-400/30'
+                }`}
+                title={`Aktuelles Bewertungsfach: ${mySubject.name} (${mySubject.code})`}
+              >
+                <BookOpen className="w-3.5 h-3.5 opacity-80" />
+                <span>{mySubject.name}</span>
+                <span className="font-mono text-[10px] opacity-75">[{mySubject.code}]</span>
+              </div>
+
               {isSubmitted && (
                 <div className="flex items-center gap-1.5">
                   <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
@@ -495,7 +563,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   </span>
                   {onReopenPupil && !isLockedByConference && (
                     <button
-                      onClick={() => onReopenPupil(selectedPupil.id)}
+                      onClick={() => onReopenPupil(selectedPupil.id, mySubjectCode)}
                       className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[10px] font-bold transition flex items-center gap-1"
                       title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
                     >
@@ -506,11 +574,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Beobachtungsraster · 6 Dimensionen à 3 Merkmale
+            <p className="text-[11px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+              <span>Beobachtungsraster · 6 Dimensionen à 3 Merkmale</span>
+              <span>·</span>
+              <span className="text-slate-300 font-medium">Fach: <strong>{mySubject.name}</strong> ({mySubject.code})</span>
               {submittedAt && (
-                <span className="ml-2 text-slate-500">
-                  (Eingereicht am {new Date(submittedAt).toLocaleDateString('de-AT')} um {new Date(submittedAt).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })})
+                <span className="text-slate-500">
+                  · (Eingereicht am {new Date(submittedAt).toLocaleDateString('de-AT')} um {new Date(submittedAt).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })})
                 </span>
               )}
             </p>
@@ -518,7 +588,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
           <div className="flex flex-wrap items-center gap-1.5">
             {/* Instant Rank Buttons & Reset (For core D/M/E teachers OR when raster is open) */}
-            {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
+            {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
               <div data-tour="instant-rank-buttons" className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
                 <span className="text-[10px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort:</span>
                 <button
@@ -565,7 +635,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             )}
 
             {/* Submit Ranking Button */}
-            {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
+            {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
               <button
                 onClick={handleSubmitPupil}
                 disabled={isLockedByConference || isPastDeadline}
@@ -616,7 +686,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         {/* Single, unified scroll container for the Right Column Body */}
         <div className="flex-1 overflow-y-auto pr-1.5 space-y-3.5">
           {/* Optional Rank Voting for Non-Core Teachers (Folded State) */}
-          {!canAccessRaster && !unlockedRasterPupils.has(selectedPupil.id) && (
+          {!effectiveCanAccessRaster && !unlockedRasterPupils.has(selectedPupil.id) && (
             <div data-tour="non-core-voting" className="bg-slate-950/70 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-3">
@@ -761,7 +831,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           )}
 
           {/* Unfolded Non-Core Control Header: Slim, clean top bar */}
-          {!canAccessRaster && unlockedRasterPupils.has(selectedPupil.id) && (
+          {!effectiveCanAccessRaster && unlockedRasterPupils.has(selectedPupil.id) && (
             <div className="bg-sky-500/10 border border-sky-500/30 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs text-sky-200">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -841,7 +911,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           )}
 
           {/* Detailed 18-Criteria Grid: Visible for Core Teachers OR if Unlocked by Non-Core Teacher */}
-          {(canAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
+          {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
             <div className="space-y-3">
               {criteria.map((crit) => (
                 <div

@@ -20,6 +20,7 @@ export interface SchoolClass {
   headTeacher2?: string | null;
   canAccessRaster?: boolean;
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
+  isKv?: boolean;
 }
 
 export interface RubricItem {

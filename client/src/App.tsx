@@ -14,6 +14,9 @@ import {
   Printer,
   Clock,
   HelpCircle,
+  LayoutGrid,
+  EyeOff,
+  BookOpen,
 } from 'lucide-react';
 import { User, SchoolClass, PupilWithData, RubricCriterion } from './types';
 import {
@@ -52,7 +55,23 @@ export function App() {
   const { forceDark } = useTheme();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [activeTab, setActiveTab] = useState<'schulalltag' | 'bewertung' | 'statistics'>('schulalltag');
+  // Default to 'bewertung'; Schulalltag & Schulstatistik are hidden by default
+  const [activeTab, setActiveTab] = useState<'schulalltag' | 'bewertung' | 'statistics'>('bewertung');
+  const [showAllModules, setShowAllModules] = useState<boolean>(() => {
+    return localStorage.getItem('smile_show_all_modules') === 'true';
+  });
+
+  const toggleAllModules = () => {
+    setShowAllModules((prev) => {
+      const next = !prev;
+      localStorage.setItem('smile_show_all_modules', String(next));
+      if (!next && (activeTab === 'schulalltag' || activeTab === 'statistics')) {
+        setActiveTab('bewertung');
+      }
+      return next;
+    });
+  };
+
   const [ratingPupilId, setRatingPupilId] = useState<number | null>(null);
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -272,10 +291,15 @@ export function App() {
     return currentClass?.mySubjects?.[0]?.code || 'SD';
   };
 
-  const handleSubmitPupil = async (pupilId: number, proposedStatus?: string, comment?: string) => {
+  const handleSubmitPupil = async (
+    pupilId: number,
+    proposedStatus?: string,
+    comment?: string,
+    subjectCode?: string
+  ) => {
     if (!selectedClassId) return;
     try {
-      const activeSub = getActiveSubjectCode();
+      const activeSub = subjectCode || getActiveSubjectCode();
       await submitEvaluation(pupilId, selectedClassId, activeSub, proposedStatus, undefined, comment);
       await loadClassData(selectedClassId);
       toast.success('Einstufung erfolgreich eingereicht!');
@@ -284,10 +308,10 @@ export function App() {
     }
   };
 
-  const handleReopenEvaluation = async (pupilId: number) => {
+  const handleReopenEvaluation = async (pupilId: number, subjectCode?: string) => {
     if (!selectedClassId) return;
     try {
-      const activeSub = getActiveSubjectCode();
+      const activeSub = subjectCode || getActiveSubjectCode();
       await reopenEvaluation(pupilId, selectedClassId, activeSub);
       await loadClassData(selectedClassId);
       toast.success('Bewertung wieder geöffnet');
@@ -298,11 +322,12 @@ export function App() {
 
   const handleBatchUpdate = async (
     pupilId: number,
-    items: Array<{ criterionId: string; itemKey: string; rating: string }>
+    items: Array<{ criterionId: string; itemKey: string; rating: string }>,
+    subjectCode?: string
   ) => {
     if (!selectedClassId) return;
     try {
-      const activeSub = getActiveSubjectCode();
+      const activeSub = subjectCode || getActiveSubjectCode();
       await batchUpdateItems(pupilId, selectedClassId, activeSub, items);
       await loadClassData(selectedClassId);
     } catch (e: any) {
@@ -418,70 +443,119 @@ export function App() {
             <span className="hidden sm:inline">SMILE</span>
           </div>
 
-          {/* Segmented control, iOS style: one inset container, selected segment lifts. */}
-          <div data-tour="nav-tabs" className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
-            {(
-              [
-                ['schulalltag', 'Schulalltag', Calendar],
-                ['bewertung', 'Bewertung', ClipboardList],
-                ['statistics', 'Schulstatistik', BarChart3],
-              ] as const
-            ).map(([key, label, Icon]) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                aria-current={activeTab === key}
-                className={`pressable focus-ring min-h-[40px] px-3 md:px-3.5 py-1.5 rounded-md text-xs font-semibold
-                  flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-                    activeTab === key
-                      ? 'bg-accent text-slate-950 font-bold shadow-sm'
-                      : 'text-slate-400 hover:text-slate-100'
-                  }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span className="hidden md:inline">{label}</span>
-                <span className="md:hidden">{label.split(' ')[0]}</span>
-              </button>
-            ))}
+          {/* Segmented control or Compact 'Bewertungen' badge with toggle */}
+          <div data-tour="nav-tabs" className="flex items-center gap-1.5 shrink-0">
+            {showAllModules ? (
+              <div className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
+                {(
+                  [
+                    ['schulalltag', 'Schulalltag', Calendar],
+                    ['bewertung', 'Bewertung', ClipboardList],
+                    ['statistics', 'Schulstatistik', BarChart3],
+                  ] as const
+                ).map(([key, label, Icon]) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    aria-current={activeTab === key}
+                    className={`pressable focus-ring min-h-[40px] px-3 md:px-3.5 py-1.5 rounded-md text-xs font-semibold
+                      flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                        activeTab === key
+                          ? 'bg-accent text-slate-950 font-bold shadow-sm'
+                          : 'text-slate-400 hover:text-slate-100'
+                      }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    <span className="hidden md:inline">{label}</span>
+                    <span className="md:hidden">{label.split(' ')[0]}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-100 font-bold text-xs shadow-sm">
+                <ClipboardList className="w-4 h-4 text-amber-400" />
+                <span>Bewertungen</span>
+              </div>
+            )}
+
+            {/* 1-Click Toggle to Show / Hide Schulalltag and Schulstatistik */}
+            <button
+              onClick={toggleAllModules}
+              className={`p-2 rounded-xl transition border text-xs flex items-center gap-1.5 ${
+                showAllModules
+                  ? 'bg-slate-800 text-amber-400 border-amber-500/40 hover:bg-slate-700'
+                  : 'bg-slate-800/70 text-slate-400 hover:text-slate-200 hover:bg-slate-700 border-slate-700/60'
+              }`}
+              title={
+                showAllModules
+                  ? 'Module wieder ausblenden (Fokus auf Bewertung)'
+                  : 'Weitere Module (Schulalltag & Schulstatistik) einblenden'
+              }
+              aria-label={showAllModules ? 'Module ausblenden' : 'Module einblenden'}
+            >
+              {showAllModules ? (
+                <>
+                  <EyeOff className="w-4 h-4" />
+                  <span className="hidden xl:inline text-[11px] font-semibold text-slate-300">Ausblenden</span>
+                </>
+              ) : (
+                <>
+                  <LayoutGrid className="w-4 h-4" />
+                  <span className="hidden xl:inline text-[11px] font-semibold text-slate-300">Module</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/*
             Class selector for the evaluation tab.
-
-            Previously `hidden lg:flex`, which removed class switching entirely on
-            an iPad in portrait (768px) — the main tablet orientation for a teacher
-            holding it to mark work. Now a horizontally scrollable strip on small
-            screens, with 44px targets.
+            Shows class name and all subjects taught by the teacher in that class.
           */}
           {activeTab === 'bewertung' && (
-            <div data-tour="rating-classes" className="flex lg:max-w-xl items-center gap-1.5 overflow-x-auto py-1
-                            -mx-1 px-1 max-w-full">
+            <div data-tour="rating-classes" className="flex lg:max-w-xl xl:max-w-2xl items-center gap-1.5 overflow-x-auto py-1 -mx-1 px-1 max-w-full">
               {classes.map((cls) => {
-                const coreSubject = cls.mySubjects?.find((s) => s.isCoreSmile);
+                const isSelected = selectedClassId === cls.id;
+                const subs = cls.mySubjects || [];
                 return (
                   <button
                     key={cls.id}
                     onClick={() => {
                       setSelectedClassId(cls.id);
                     }}
-                    className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 flex-shrink-0 ${
-                      selectedClassId === cls.id
-                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-2 flex-shrink-0 ${
+                      isSelected
+                        ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                        : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
                     }`}
                   >
-                    <span>{cls.name}</span>
-                    {coreSubject && (
+                    <span className="font-bold text-sm tracking-tight">{cls.name}</span>
+                    {subs.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        {subs.map((s) => (
+                          <span
+                            key={s.code}
+                            title={s.name}
+                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
+                              isSelected
+                                ? 'bg-slate-950/20 text-slate-950'
+                                : s.isCoreSmile
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                            }`}
+                          >
+                            {s.code}
+                          </span>
+                        ))}
+                      </div>
+                    ) : cls.isKv ? (
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
-                          selectedClassId === cls.id
-                            ? 'bg-slate-950/25 text-slate-950'
-                            : 'bg-amber-500/20 text-amber-400'
+                          isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-purple-500/20 text-purple-300'
                         }`}
                       >
-                        {coreSubject.code}
+                        KV
                       </span>
-                    )}
+                    ) : null}
                   </button>
                 );
               })}
