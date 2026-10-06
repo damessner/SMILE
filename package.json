@@ -14,7 +14,7 @@
     "client": "vite --config client/vite.config.ts",
     "build": "npm run build --workspaces",
     "start": "npm run start --workspace=server",
-    "test": "npm run test --workspace=server",
+    "test": "npm run test --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "seed": "npm run seed --workspace=server",
     "db:generate": "npm run db:generate --workspace=server",
