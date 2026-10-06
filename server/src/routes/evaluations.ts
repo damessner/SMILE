@@ -207,6 +207,13 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
 
+    const statusUpdateSet: Record<string, any> = {
+      updatedAt: new Date(),
+    };
+    if (proposedStatus !== undefined) statusUpdateSet.proposedStatus = proposedStatus;
+    if (nextStep !== undefined) statusUpdateSet.nextStep = nextStep;
+    if (comment !== undefined) statusUpdateSet.comment = comment;
+
     const [evaluation] = await db
       .insert(evaluations)
       .values({
@@ -221,12 +228,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       })
       .onConflictDoUpdate({
         target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
-        set: {
-          proposedStatus: proposedStatus !== undefined ? proposedStatus : null,
-          nextStep: nextStep !== undefined ? nextStep : null,
-          comment: comment !== undefined ? comment : null,
-          updatedAt: new Date(),
-        },
+        set: statusUpdateSet,
       })
       .returning();
 
@@ -281,6 +283,16 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
 
+    const submitUpdateSet: Record<string, any> = {
+      isSubmitted: true,
+      submittedAt: new Date(),
+      submittedByTeacherId: user.teacherId ?? null,
+      proposedStatus: finalProposedStatus,
+      updatedAt: new Date(),
+    };
+    if (nextStep !== undefined) submitUpdateSet.nextStep = nextStep;
+    if (comment !== undefined) submitUpdateSet.comment = comment;
+
     const [evaluation] = await db
       .insert(evaluations)
       .values({
@@ -298,15 +310,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       })
       .onConflictDoUpdate({
         target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
-        set: {
-          isSubmitted: true,
-          submittedAt: new Date(),
-          submittedByTeacherId: user.teacherId ?? null,
-          proposedStatus: finalProposedStatus,
-          nextStep: nextStep !== undefined ? nextStep : null,
-          comment: comment !== undefined ? comment : null,
-          updatedAt: new Date(),
-        },
+        set: submitUpdateSet,
       })
       .returning();
 

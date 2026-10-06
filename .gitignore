@@ -40,6 +40,11 @@ backup_*
 *.zip
 *.tar.gz
 *.tgz
+tools/
+m365_rclone.conf
+m365_token.txt
+*.xlsx
+
 
 # Third-party clones & scratch scripts
 UntisPlus-main/
