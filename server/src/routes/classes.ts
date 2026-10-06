@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
-import { db } from '../db/index.js';
+import { db, getPool } from '../db/index.js';
 import {
   assessmentRubrics,
   behaviorCards,
@@ -51,6 +51,38 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
       .orderBy(schoolClasses.grade, schoolClasses.name);
 
+    // Look up teacher's timetable lesson hours across classes and subjects
+    const teacherHoursMap = new Map<string, number>();
+    if (user.teacherId) {
+      try {
+        const hoursRes = await getPool().query<{
+          class_id: number;
+          subject_code: string;
+          hours: number;
+        }>(
+          `SELECT class_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
+             FROM timetable_lessons
+            WHERE teacher_id = $1
+            GROUP BY class_id, UPPER(TRIM(subject_code))`,
+          [user.teacherId],
+        );
+        for (const h of hoursRes.rows) {
+          const norm = normalizeSubject(h.subject_code).code;
+          const key = `${h.class_id}_${norm}`;
+          teacherHoursMap.set(key, (teacherHoursMap.get(key) || 0) + h.hours);
+        }
+      } catch (err) {
+        fastify.log.warn({ err }, 'Failed to query timetable lessons for classes');
+      }
+    }
+
+    const attachHours = (classId: number, subs: ReturnType<typeof normaliseSubjects>) => {
+      return subs.map((s) => ({
+        ...s,
+        hours: teacherHoursMap.get(`${classId}_${s.code}`) || 0,
+      }));
+    };
+
     // Admin and headmasters see every class.
     if (global.classIds === null) {
       const mine = user.teacherId
@@ -65,7 +97,14 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
           const subs = normaliseSubjects(
             mine.filter((a) => a.classId === c.id).map((a) => a.subjectName),
           );
-          return { ...c, mySubjects: subs, canAccessRaster: true, isCoreTeacher: true, canRate: true, isKv: false };
+          return {
+            ...c,
+            mySubjects: attachHours(c.id, subs),
+            canAccessRaster: true,
+            isCoreTeacher: true,
+            canRate: true,
+            isKv: false,
+          };
         }),
       );
     }
@@ -83,7 +122,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         const access = resolved[i]!;
         return {
           ...cls,
-          mySubjects: access.subjects,
+          mySubjects: attachHours(cls.id, access.subjects),
           canAccessRaster: access.isCoreTeacher,
           isCoreTeacher: access.isCoreTeacher,
           canRate: access.canRate,

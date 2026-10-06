@@ -19,7 +19,7 @@ export interface SchoolClass {
   headTeacher1?: string | null;
   headTeacher2?: string | null;
   canAccessRaster?: boolean;
-  mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
+  mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean; hours?: number }>;
   isKv?: boolean;
 }
 

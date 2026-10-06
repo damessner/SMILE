@@ -302,7 +302,6 @@ export function App() {
       const activeSub = subjectCode || getActiveSubjectCode();
       await submitEvaluation(pupilId, selectedClassId, activeSub, proposedStatus, undefined, comment);
       await loadClassData(selectedClassId);
-      toast.success('Einstufung erfolgreich eingereicht!');
     } catch (e: any) {
       toast.error(e.message || 'Fehler beim Einreichen');
     }

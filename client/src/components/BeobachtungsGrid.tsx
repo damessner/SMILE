@@ -20,6 +20,7 @@ import {
   ChevronUp,
   X,
   BookOpen,
+  Clock,
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
@@ -45,7 +46,7 @@ interface BeobachtungsGridProps {
   onOpenKelReport: (pupil: PupilWithData) => void;
   isLockedByConference: boolean;
   canAccessRaster?: boolean;
-  mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
+  mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean; hours?: number }>;
   selectedPupilIdProp?: number | null;
   onSubmitPupil?: (pupilId: number, proposedStatus?: string, comment?: string, subjectCode?: string) => Promise<void>;
   onReopenPupil?: (pupilId: number, subjectCode?: string) => Promise<void>;
@@ -118,6 +119,42 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const [votedComment, setVotedComment] = useState<string>('');
   const [isSavingVote, setIsSavingVote] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Autosave and feedback state
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  const [submitToast, setSubmitToast] = useState<{
+    pupilName: string;
+    nextPupilName: string | null;
+    allDone: boolean;
+  } | null>(null);
+
+  // Weekly timetable lesson hours & conference voting weight
+  const currentHoursInfo = React.useMemo(() => {
+    if (!mySubjects || mySubjects.length === 0) return null;
+    if (isAllSubjectsMode) {
+      const totalHours = mySubjects.reduce((sum, s) => sum + (s.hours || 0), 0);
+      const totalWeight = mySubjects.reduce(
+        (sum, s) => sum + (s.hours || 0) * (s.isCoreSmile ? 2 : 1),
+        0
+      );
+      if (totalHours === 0) return null;
+      return {
+        hours: totalHours,
+        weight: totalWeight,
+        isTeamTeaching: mySubjects.some((s) => s.isCoreSmile),
+        label: 'Gesamt (alle deine Fächer)',
+      };
+    }
+    const currentSub = mySubjects.find((s) => s.code === selectedSubjectCode) || mySubjects[0];
+    if (!currentSub || !currentSub.hours) return null;
+    return {
+      hours: currentSub.hours,
+      weight: currentSub.hours * (currentSub.isCoreSmile ? 2 : 1),
+      isTeamTeaching: currentSub.isCoreSmile,
+      label: currentSub.name,
+    };
+  }, [mySubjects, isAllSubjectsMode, selectedSubjectCode]);
 
   // Target subjects for write operations (all subjects in Gesamt mode, or the selected individual subject)
   const targetSubjectCodes = isAllSubjectsMode
@@ -219,10 +256,30 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
   };
 
+  // Auto-save feedback helper
+  const markSaved = () => {
+    setIsSaving(true);
+    setTimeout(() => {
+      setIsSaving(false);
+      setLastSavedTime(new Date());
+    }, 350);
+  };
+
+  // Auto-dismiss submit toast after 4.5 seconds
+  useEffect(() => {
+    if (submitToast) {
+      const timer = setTimeout(() => {
+        setSubmitToast(null);
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [submitToast]);
+
   // Instant Rank Handlers
   const handleInstantRank = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
     if (!selectedPupil) return;
     setVotedRank(targetRank);
+    setIsSaving(true);
 
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     let count = 0;
@@ -242,14 +299,19 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       }
     }
 
-    for (const subCode of targetSubjectCodes) {
-      if (onBatchUpdate) {
-        await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
-      } else {
-        for (const it of allCritItems) {
-          onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
+    try {
+      for (const subCode of targetSubjectCodes) {
+        if (onBatchUpdate) {
+          await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
+        } else {
+          for (const it of allCritItems) {
+            onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
+          }
         }
       }
+      setLastSavedTime(new Date());
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -267,6 +329,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     if (!ok) return;
 
     setVotedRank(null);
+    setIsSaving(true);
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     for (const crit of criteria) {
       for (const it of crit.items) {
@@ -274,34 +337,45 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       }
     }
 
-    for (const subCode of targetSubjectCodes) {
-      if (onBatchUpdate) {
-        await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
-      } else {
-        for (const it of allCritItems) {
-          onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, subCode);
+    try {
+      for (const subCode of targetSubjectCodes) {
+        if (onBatchUpdate) {
+          await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
+        } else {
+          for (const it of allCritItems) {
+            onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, subCode);
+          }
         }
       }
+      setLastSavedTime(new Date());
+    } finally {
+      setIsSaving(false);
     }
   };
 
   // Quick fill entire category (3 items)
   const handleQuickFillCategory = async (crit: RubricCriterion, rating: string) => {
     if (!selectedPupil) return;
+    setIsSaving(true);
     const catItems = crit.items.map((it) => ({
       criterionId: crit.id,
       itemKey: it.key,
       rating,
     }));
 
-    for (const subCode of targetSubjectCodes) {
-      if (onBatchUpdate) {
-        await onBatchUpdate(selectedPupil.id, catItems, subCode);
-      } else {
-        for (const it of catItems) {
-          onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
+    try {
+      for (const subCode of targetSubjectCodes) {
+        if (onBatchUpdate) {
+          await onBatchUpdate(selectedPupil.id, catItems, subCode);
+        } else {
+          for (const it of catItems) {
+            onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
+          }
         }
       }
+      setLastSavedTime(new Date());
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -311,7 +385,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
     // Find position in openPupils
     const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
-
+    const pupilName = selectedPupil.fullName;
     const { rank } = calculateRank(selectedPupil);
     const finalRankToSubmit = effectiveCanAccessRaster ? rank : (votedRank || rank || 'Geselle');
 
@@ -321,14 +395,26 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       }
     }
 
+    markSaved();
+
     // Advance to next sequential pupil in the open list
     const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
     if (remainingOpen.length > 0) {
       const nextPupil = openPupils[currIdx + 1] || remainingOpen[0];
       setSelectedPupilId(nextPupil.id);
+      setSubmitToast({
+        pupilName,
+        nextPupilName: nextPupil.fullName,
+        allDone: false,
+      });
     } else {
       setFolderTab('bewertet');
       setSelectedPupilId(selectedPupil.id);
+      setSubmitToast({
+        pupilName,
+        nextPupilName: null,
+        allDone: true,
+      });
     }
   };
 
@@ -347,13 +433,24 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           ? `Votum „${votedRank}“ für ${selectedPupil.fullName} in allen Fächern (${mySubjects.map((s) => s.code).join(', ')}) gespeichert!`
           : `Votum „${votedRank}“ für ${selectedPupil.fullName} erfolgreich gespeichert!`
       );
+      markSaved();
       const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
       const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
       if (remainingOpen.length > 0) {
         const nextPupil = openPupils[currIdx + 1] || remainingOpen[0];
         setSelectedPupilId(nextPupil.id);
+        setSubmitToast({
+          pupilName: selectedPupil.fullName,
+          nextPupilName: nextPupil.fullName,
+          allDone: false,
+        });
       } else {
         setFolderTab('bewertet');
+        setSubmitToast({
+          pupilName: selectedPupil.fullName,
+          nextPupilName: null,
+          allDone: true,
+        });
       }
     } catch (err) {
       console.error(err);
@@ -408,6 +505,40 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
+      {/* Floating Auto-Advance Toast Feedback */}
+      {submitToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-900/95 border border-emerald-500/50 shadow-2xl backdrop-blur-md text-slate-100 text-sm animate-in fade-in slide-in-from-top-4 duration-300"
+        >
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="font-bold text-slate-100 leading-tight">
+              <span className="text-emerald-300">{submitToast.pupilName}</span> erfolgreich eingereicht!
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {submitToast.allDone ? (
+                <span className="text-amber-300 font-bold">🎉 Alle Schüler dieser Klasse sind jetzt bewertet!</span>
+              ) : (
+                <span>
+                  ➔ Automatisch weiter zu: <strong className="text-amber-300">{submitToast.nextPupilName}</strong>
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setSubmitToast(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition ml-2"
+            title="Schließen"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Co-Teacher Conflict Banner */}
       {conflict && (
         <div className="fixed top-20 right-6 z-50 max-w-md p-4 rounded-2xl bg-amber-500 text-slate-950 font-bold shadow-lg flex items-center justify-between gap-3 animate-bounce">
@@ -595,6 +726,57 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
       {/* Right Column: Observation Grid for Selected Pupil */}
       <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-col max-h-[86vh] overflow-hidden shadow-lg">
+        {/* Multi-Subject Segmented Switcher Bar (Direct Quick-Switch) */}
+        {mySubjects.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800 shrink-0 mb-3 shadow-sm">
+            <span className="text-[11px] font-bold text-slate-400 px-2 flex items-center gap-1.5 shrink-0">
+              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>Fachauswahl:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedSubjectCode('__ALL__')}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 ${
+                isAllSubjectsMode
+                  ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold ring-1 ring-amber-400'
+                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>🌟 Gesamt (alle {mySubjects.length} Fächer)</span>
+            </button>
+            {mySubjects.map((s) => {
+              const isActive = selectedSubjectCode === s.code;
+              return (
+                <button
+                  key={s.code}
+                  type="button"
+                  onClick={() => setSelectedSubjectCode(s.code)}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 ${
+                    isActive
+                      ? s.isCoreSmile
+                        ? 'bg-amber-400 text-slate-950 shadow-md font-extrabold ring-1 ring-amber-300'
+                        : 'bg-sky-400 text-slate-950 shadow-md font-extrabold ring-1 ring-sky-300'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  <span>{s.code}</span>
+                  <span className="text-[10px] opacity-80 font-normal">({s.name})</span>
+                  {typeof s.hours === 'number' && s.hours > 0 && (
+                    <span
+                      className={`text-[10px] px-1 py-0.2 rounded font-mono font-bold ${
+                        isActive ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {s.hours}h
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Pupil Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800 mb-3 shrink-0">
           <div>
@@ -625,6 +807,52 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   [{isAllSubjectsMode ? mySubjects.map((s) => s.code).join(' + ') : mySubject.code}]
                 </span>
               </div>
+
+              {/* Autosave Status Badge */}
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-950/70 border border-slate-800 text-xs shadow-sm transition-all"
+                title="Automatisches Speichern: Alle Bewertungen und Eingaben werden sofort gesichert."
+              >
+                {isSaving ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                    </span>
+                    <span className="text-amber-300 font-medium text-[11px]">Wird gesichert...</span>
+                  </>
+                ) : lastSavedTime ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-emerald-300 font-medium text-[11px]">
+                      Gesichert ({lastSavedTime.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400/80 shrink-0" />
+                    <span className="text-slate-400 text-[11px]">Auto-Save aktiv</span>
+                  </>
+                )}
+              </div>
+
+              {/* Weekly Lessons & Voting Weight Infochip */}
+              {currentHoursInfo && (
+                <div
+                  className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-950/70 border border-slate-800 text-slate-300 flex items-center gap-1.5 shadow-sm"
+                  title={`Wochenstunden: ${currentHoursInfo.hours}h · Stimmgewicht in Konferenz: ${currentHoursInfo.weight}${currentHoursInfo.isTeamTeaching ? ' (Team-Teaching Kernfach x2)' : ''}`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>{currentHoursInfo.hours}h/Woche</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-amber-300 font-bold">Gewicht: {currentHoursInfo.weight}</span>
+                  {currentHoursInfo.isTeamTeaching && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+                      Team-Teaching (x2)
+                    </span>
+                  )}
+                </div>
+              )}
 
               {isSubmitted && (
                 <div className="flex items-center gap-1.5">
@@ -808,6 +1036,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 onChange={(e) => {
                   setVotedComment(e.target.value);
                   setSaveSuccessMsg(null);
+                }}
+                onBlur={() => {
+                  if (votedComment.trim()) {
+                    markSaved();
+                  }
                 }}
                 disabled={isLockedByConference || isPastDeadline}
                 rows={2}
@@ -1226,6 +1459,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                         subCode
                                       );
                                     }
+                                    markSaved();
                                   }}
                                   className={`w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
                                     isActive
@@ -1255,6 +1489,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                       subCode
                                     );
                                   }
+                                  markSaved();
                                 }}
                                 className="w-6 h-6 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
                               >
