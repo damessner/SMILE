@@ -243,3 +243,22 @@ export function hasSubmittedForSubject(
 ): boolean {
   return evaluations.some((e) => isSubjectMatch(e.subjectCode, code) && e.isSubmitted);
 }
+
+/**
+ * True when the pupil has a submitted evaluation for *every* subject in
+ * `codes`. Callers that show one pupil across several subjects pass all of them
+ * and get one verdict; callers showing a single subject pass just that one.
+ *
+ * An empty `codes` is false, never vacuously true: a caller holding no subject
+ * set has not established that anything is done.
+ *
+ * The unscoped alternative - `evaluations.some(e => e.isSubmitted)` - marks a
+ * pupil who submitted only Deutsch as done while their Mathematik evaluation
+ * is still open, and the teacher skips them.
+ */
+export function isPupilFullySubmitted(
+  evaluations: Array<{ subjectCode: string; isSubmitted?: boolean }>,
+  codes: string[]
+): boolean {
+  return codes.length > 0 && codes.every((code) => hasSubmittedForSubject(evaluations, code));
+}

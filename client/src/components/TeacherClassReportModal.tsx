@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Printer, Award, FileText, CheckCircle2, Clock } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User, SchoolClass } from '../types';
+import { isPupilFullySubmitted } from '../lib/pupilItems';
 
 interface TeacherClassReportModalProps {
   currentClass: SchoolClass;
@@ -19,9 +20,13 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
 }) => {
   const teacherName = currentUser.teacher?.fullName || currentUser.username;
   const teacherShort = currentUser.teacher?.shortName || currentUser.username;
+  // The subjects this teacher teaches in the class - the same set `subjectsStr`
+  // prints in the header, and the only set a status verdict may be drawn from.
+  const mySubjects = currentClass.mySubjects || [];
+  const mySubjectCodes = mySubjects.map((s) => s.code);
   const subjectsStr =
-    currentClass.mySubjects && currentClass.mySubjects.length > 0
-      ? currentClass.mySubjects.map((s) => `${s.code} (${s.name})`).join(', ')
+    mySubjects.length > 0
+      ? mySubjects.map((s) => `${s.code} (${s.name})`).join(', ')
       : 'Fachlehrer';
 
   const totalPupils = pupils.length;
@@ -38,7 +43,10 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
     else if (pos >= 8) rank = 'Geselle';
 
     const evalRecord = p.evaluations[0];
-    const isSubmitted = p.evaluations.some((e) => e.isSubmitted);
+    // Subject-scoped: a pupil submitted in Deutsch is still open in Mathematik,
+    // and this report counts the pupils a teacher still has to act on. A teacher
+    // with no subject in this class gets no verdict, never a borrowed one.
+    const isSubmitted = isPupilFullySubmitted(p.evaluations, mySubjectCodes);
     const submittedAt = p.evaluations.find((e) => e.submittedAt)?.submittedAt;
 
     return {

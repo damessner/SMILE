@@ -15,6 +15,7 @@ import {
   Info,
 } from 'lucide-react';
 import { PupilWithData, SchoolClass, RubricCriterion, User } from '../types';
+import { isPupilFullySubmitted, isSubjectMatch } from '../lib/pupilItems';
 
 interface ClassOverviewProps {
   currentClass: SchoolClass;
@@ -62,24 +63,30 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
     return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
   };
 
-  // Check if this pupil is submitted by current teacher
+  // Check if this pupil is submitted by current teacher, across every subject
+  // this teacher teaches in the class - not across the pupil's other subjects,
+  // which may be none of the current teacher's business.
   const isPupilSubmitted = (p: PupilWithData) => {
-    return p.evaluations.some((e) => e.isSubmitted);
+    return isPupilFullySubmitted(p.evaluations, mySubjects.map((s) => s.code));
   };
 
   const getSubmissionInfo = (p: PupilWithData) => {
-    const sub = p.evaluations.find((e) => e.isSubmitted);
+    const sub = p.evaluations.find(
+      (e) => mySubjects.some((s) => isSubjectMatch(s.code, e.subjectCode)) && e.isSubmitted
+    );
     return sub;
   };
 
-  // Split into Open and Ranked folders
+  // Split into Open and Ranked folders. `mySubjects` is a dependency of the
+  // split, not just of `isPupilSubmitted`: it arrives with the class data and
+  // the folders must be recomputed when it does.
   const openPupils = useMemo(() => {
     return pupils.filter((p) => !isPupilSubmitted(p));
-  }, [pupils]);
+  }, [pupils, mySubjects]);
 
   const rankedPupils = useMemo(() => {
     return pupils.filter((p) => isPupilSubmitted(p));
-  }, [pupils]);
+  }, [pupils, mySubjects]);
 
   // Current folder filtered by search
   const currentList = activeFolder === 'open' ? openPupils : rankedPupils;

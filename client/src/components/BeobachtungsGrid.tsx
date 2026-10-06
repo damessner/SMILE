@@ -23,7 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
-import { findItemForSubjects, isSubjectMatch, itemVersionForSubject } from '../lib/pupilItems';
+import { findItemForSubjects, isPupilFullySubmitted, isSubjectMatch, itemVersionForSubject } from '../lib/pupilItems';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
 import { useConfirm } from './ConfirmDialog';
 
@@ -673,7 +673,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             currentList.map((p) => {
               const isSelected = p.id === selectedPupil.id;
               const pRank = calculateRank(p);
-              const pDone = p.evaluations.some((e) => e.isSubmitted);
+              const pDone = isPupilFullySubmitted(p.evaluations, isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode]);
 
               return (
                 <button

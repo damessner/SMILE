@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findItemForSubjects,
   hasSubmittedForSubject,
+  isPupilFullySubmitted,
   isSubjectMatch,
   itemVersionForSubject,
 } from './pupilItems';
@@ -265,5 +266,89 @@ describe('hasSubmittedForSubject', () => {
 
     expect(hasSubmittedForSubject([evaluation], 'D')).toBe(true);
     expect(hasSubmittedForSubject([{ ...evaluation, isSubmitted: undefined }], 'D')).toBe(false);
+  });
+});
+
+describe('isPupilFullySubmitted', () => {
+  it('is false while any subject in scope is still open', () => {
+    // The regression this exists for: the pupil submitted Deutsch, so an
+    // unscoped `evaluations.some(e => e.isSubmitted)` reported them as done
+    // while their Mathematik evaluation was untouched and the teacher skipped
+    // them.
+    expect(isPupilFullySubmitted([{ subjectCode: 'D', isSubmitted: true }], ['D', 'M'])).toBe(false);
+  });
+
+  it('is true only when every subject in scope is submitted', () => {
+    const both: SubmittedFlag[] = [
+      { subjectCode: 'D', isSubmitted: true },
+      { subjectCode: 'M', isSubmitted: true },
+    ];
+    expect(isPupilFullySubmitted(both, ['D', 'M'])).toBe(true);
+    expect(isPupilFullySubmitted(both, ['M', 'D'])).toBe(true);
+  });
+
+  it('is false for an empty code list rather than vacuously true', () => {
+    // `codes.every` over nothing is true, which would read as "everything is
+    // done" for a teacher with no subjects in scope.
+    expect(isPupilFullySubmitted([{ subjectCode: 'D', isSubmitted: true }], [])).toBe(false);
+    expect(isPupilFullySubmitted([], [])).toBe(false);
+  });
+
+  it('is false when the only evaluation in scope is unsubmitted', () => {
+    expect(isPupilFullySubmitted([{ subjectCode: 'D', isSubmitted: false }], ['D'])).toBe(false);
+  });
+
+  it('is false when a subject in scope has no evaluation at all', () => {
+    expect(isPupilFullySubmitted([], ['D', 'M'])).toBe(false);
+    expect(isPupilFullySubmitted([{ subjectCode: 'D', isSubmitted: true }], ['D', 'BO'])).toBe(false);
+  });
+
+  it('is not satisfied by a submission outside the scope', () => {
+    // Berufsorientierung is submitted, Deutsch is not. Searching every
+    // evaluation instead of the codes in scope would return true here.
+    const elsewhere: SubmittedFlag[] = [
+      { subjectCode: 'D', isSubmitted: false },
+      { subjectCode: 'BO', isSubmitted: true },
+    ];
+    expect(isPupilFullySubmitted(elsewhere, ['D'])).toBe(false);
+    expect(isPupilFullySubmitted(elsewhere, ['D', 'BO'])).toBe(false);
+    expect(isPupilFullySubmitted(elsewhere, ['BO'])).toBe(true);
+  });
+
+  it('resolves every code through the alias table', () => {
+    const legacy: SubmittedFlag[] = [
+      { subjectCode: 'SD', isSubmitted: true },
+      { subjectCode: 'SM', isSubmitted: true },
+    ];
+    expect(isPupilFullySubmitted(legacy, ['D', 'M'])).toBe(true);
+    expect(isPupilFullySubmitted(legacy, ['D', 'E'])).toBe(false);
+  });
+
+  it('treats an absent isSubmitted flag as not submitted', () => {
+    // Evaluation.isSubmitted is optional, so an evaluation can reach this
+    // helper without the flag set.
+    expect(isPupilFullySubmitted([{ subjectCode: 'D' }], ['D'])).toBe(false);
+    expect(
+      isPupilFullySubmitted([{ subjectCode: 'D' }, { subjectCode: 'M', isSubmitted: true }], [
+        'D',
+        'M',
+      ])
+    ).toBe(false);
+  });
+
+  it('accepts Evaluation[] as-is, which is what the call sites pass', () => {
+    const evaluation = {
+      id: 'e1',
+      roundId: 'r1',
+      pupilId: 1,
+      classId: 1,
+      subjectCode: 'D',
+      teacherId: 7,
+      isSubmitted: true,
+      items: [],
+    } satisfies Evaluation;
+
+    expect(isPupilFullySubmitted([evaluation], ['D'])).toBe(true);
+    expect(isPupilFullySubmitted([{ ...evaluation, isSubmitted: undefined }], ['D'])).toBe(false);
   });
 });
