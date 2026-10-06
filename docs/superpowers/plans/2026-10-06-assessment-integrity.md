@@ -428,9 +428,17 @@ Deutsch showed as ticked while their Mathematik evaluation was still open."
 Create `client/src/components/BeobachtungsGrid.test.tsx`. Mock `../services/api` with `vi.mock`, render `BeobachtungsGrid` with a single pupil who has no submitted evaluation, and assert:
 
 - Typing into the comment textarea and blurring calls `saveEvaluationComment` with the typed text.
-- `saveEvaluationComment` rejecting leaves the "Gesichert" badge **not** shown, and surfaces an error toast. **This is the assertion that would have caught the original bug.**
+- `saveEvaluationComment` rejecting leaves the "Gesichert" badge **not** shown, and surfaces an `error` toast. **This is the assertion that would have caught the original bug.**
 - Switching `selectedPupilId` prop within the debounce window still flushes the pending comment before the switch. **Review Focus #2.**
 - `saveEvaluationComment` is not called when the textarea is empty or whitespace-only.
+
+**Test harness requirements — read before writing the test.** The component calls `useToast()`, and `Toast.tsx:105-108` **throws** `useToast() must be used inside <ToastProvider>` when there is no provider in the tree. So every `render()` in this file must be wrapped:
+
+```tsx
+render(<ToastProvider><BeobachtungsGrid {...props} /></ToastProvider>);
+```
+
+`ToastProvider` is exported from `client/src/components/Toast.tsx`. The exact API you will call is `const toast = useToast(); toast.error('...')` (`ToastApi.error: (message: string) => number`, `Toast.tsx:41`). Assert on the toast by querying the rendered text after the rejection, or by asserting the absence of the "Gesichert" badge — do not assert on toast internals.
 
 Use `userEvent.type` followed by `userEvent.tab` to trigger blur. Wrap the switch-pupil case in `vi.useFakeTimers()` and `vi.advanceTimersByTime(800)`.
 
@@ -465,7 +473,9 @@ In `BeobachtungsGrid.tsx`:
 - `onBlur` flushes immediately.
 - Add a `useEffect` cleanup on `[selectedPupil?.id]` that flushes any pending comment before the view switches. **Review Focus #3.**
 - Clear both refs on unmount.
-- Replace the `markSaved()` call in `onBlur` with `void flushComment().then(() => markSaved())`, so the badge only appears after the server confirms. On rejection, call the existing error-toast path and do not set `lastSavedTime`.
+- Replace the `markSaved()` call in `onBlur` with `void flushComment().then(() => markSaved())`, so the badge only appears after the server confirms. On rejection, call `toast.error(...)` and do not set `lastSavedTime`.
+
+The error toast comes from the existing global toast system, not from `submitToast` (which is a success/auto-advance toast typed for `{ pupilName, nextPupilName }` and has no error variant). Call `const toast = useToast()` from `client/src/components/Toast.tsx` at the top of the component — the component currently does not import it.
 
 - [ ] **Step 5: Run to verify it passes**
 
