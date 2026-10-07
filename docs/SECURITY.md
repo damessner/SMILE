@@ -250,10 +250,10 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
 
 ## Test coverage
 
-212 tests across 13 files, all passing. `npm test` at the repository root runs **both** workspaces
-(`npm run test --workspaces`): 144 server tests over 10 files, 68 client tests over 3 files.
+237 tests across 15 files, all passing. `npm test` at the repository root runs **both** workspaces
+(`npm run test --workspaces`): 159 server tests over 11 files, 78 client tests over 4 files.
 
-### Server — 144 tests, 10 files
+### Server — 159 tests, 11 files
 
 | File | Covers |
 |---|---|
@@ -267,8 +267,9 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
 | `src/ws/auth.test.ts` | End-to-end: the WebSocket upgrade is refused with 401 for missing, malformed, forged, and empty cookies |
 | `src/ws/live-sync.test.ts` | Subscribe authorization for admin / unassigned / forged / no-teacherId cases, plus structural assertions that identity is never read from the payload |
 | `src/index.test.ts` | Every pupil-data endpoint rejects unauthenticated requests, security headers present, CSRF Origin check, dead route removed |
+| `src/routes/evaluations.test.ts` | `routes/evaluations.ts` itself: `shouldBroadcastStatusUpdate` (a comment-only `/status` write must not broadcast), `/status` refusing an invalid rank before any query, and **structural** assertions that `/batch-items` validates through `validateBatchItems` and iterates *its* items, that authorization precedes validation on both write routes, that `/batch-default` takes its targets from the loaded index, and that `/status` gates its broadcast on that decision. The structural half exists because the behavioural half needs a database — see "Not covered" |
 
-### Client — 68 tests, 3 files
+### Client — 78 tests, 4 files
 
 Run under jsdom with Testing Library. These render the real components, so a regression in the grid
 fails the build rather than waiting to be found in a lesson.
@@ -276,15 +277,16 @@ fails the build rather than waiting to be found in a lesson.
 | File | Covers |
 |---|---|
 | `src/test/harness.test.tsx` | The harness itself: a jsdom render with jest-dom matchers, and a component consuming both `useToast()` and `useConfirm()` under their providers |
-| `src/lib/pupilItems.test.ts` | `isSubjectMatch`, `findItemForSubjects`, `itemVersionForSubject`, `hasSubmittedForSubject`, `isPupilFullySubmitted` — the subject-scoping guarantees of Invariants 4 and 5 |
-| `src/components/BeobachtungsGrid.test.tsx` | Subject-scoped `isSubmitted`, the no-cross-subject-fallback lookup, and the conference-comment autosave flush |
+| `src/lib/pupilItems.test.ts` | `isSubjectMatch`, `findItemForSubjects`, `itemVersionForSubject`, `hasSubmittedForSubject`, `isPupilFullySubmitted` — the subject-scoping guarantees of Invariants 4 and 5. **The unit-level home of the no-cross-subject-fallback regression**, not the grid test file |
+| `src/components/BeobachtungsGrid.test.tsx` | Subject-scoped `isSubmitted` in the roster and folder split; **the rendered cell for a subject that holds no evaluation** (no rating, no reset control, `0/18 Punkte`); per-subject `expectedVersion` on the rating write; and the conference-comment autosave flush, including that an in-flight write for one pupil cannot claim the next pupil's stored comment |
+| `src/components/ClassOverview.test.tsx` | The Open/Ranked folder split and the "Eingereicht" card badge, both scoped to the teacher's own subjects |
 
 The WebSocket and route-protection tests exercise real HTTP requests through
 `app.inject()` and a live listener rather than asserting on source text alone.
 
 ### Not covered
 
-Two live defects recorded in [`IF_YOU_ARE_AN_AI.md`](../IF_YOU_ARE_AN_AI.md) have **no test that
+Three live defects recorded in [`IF_YOU_ARE_AN_AI.md`](../IF_YOU_ARE_AN_AI.md) have **no test that
 would fail on them**, and would not fail here today:
 
 - `GET /api/timeouts/active` is unscoped (above). No test asserts it *is* scoped, so adding the
@@ -292,3 +294,17 @@ would fail on them**, and would not fail here today:
 - `TIMEOUT_ISSUED` and `FINAL_RANK_CONFIRMED` are dropped by the client's `switch` (Invariant 3).
   No test pairs a server-emitted `type` against the client's `case` labels, so a rename on one side
   alone stays invisible.
+- **The item-key forgery fix is not covered at the route.** `validateBatchItems` is thoroughly
+  unit-tested, but whether `POST /api/evaluations/batch-items` *calls* it and iterates its output is
+  pinned only by a source assertion in `src/routes/evaluations.test.ts`. That catches the original
+  forgery being pasted back (delete the two calls, restore the inline loop) but nothing else: a
+  wrong call, a discarded result, or a reordered handler would all pass. The reason is
+  infrastructure, not design — the handler reaches PostgreSQL (`loadRubricIndex`, `getClassAccess`,
+  `findPupilInClass`, `getOpenRound`, the transaction) before the decision, and there is no
+  database in CI. **What would close it:** a real PostgreSQL reachable from the test process (a
+  throwaway database created from `server/drizzle/`, or a `pg-mem` instance with a seeded
+  `assessment_rubrics` / `rubric_criteria` row, plus a `school_classes` row and a `teachers` /
+  `teaching_assignments` pair that grants `canRate`); then one `app.inject()` case posting a forged
+  `itemKey` and asserting a 400 with `evaluation_items` still empty, and one posting a valid key
+  with a *wrong* `criterionId` and asserting the stored row carries the server-derived one. The same
+  fixture would cover `/status`'s broadcast suppression, which has the same obstacle.
