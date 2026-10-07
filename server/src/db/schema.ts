@@ -42,7 +42,15 @@ export const teachingAssignments = pgTable('teaching_assignments', {
   id: serial('id').primaryKey(),
   teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
-  subjectCode: text('subject_code').notNull(), // e.g. "SD", "SE", "SM", "D", "E"
+  // Write canonical WebUntis codes — "D", "E", "M", "BO", "PH", "MUS", "TUD", ...
+  // Legacy aliases ("SD", "SE", "SM", "DigGB", "R KATH") occur in the imported data and
+  // stay readable because every lookup runs them through normalizeSubject(); do not
+  // write one. They are here because the seed (db/seed.ts:170) stores the WebUntis
+  // subject string verbatim as trimmed.toUpperCase() — that is deliberate, since
+  // normalizeSubject() resolves those forms, so do not "fix" the seed to pre-normalize.
+  // Invariant 1 in IF_YOU_ARE_AN_AI.md. No CHECK constraint enforces any of this, so
+  // the callers are the only guard.
+  subjectCode: text('subject_code').notNull(),
   subjectName: text('subject_name').notNull(),
 }, (t) => ({
   // Every guard resolves class access through this lookup.
@@ -115,6 +123,10 @@ export const evaluations = pgTable('evaluations', {
   roundId: uuid('round_id').references(() => observationRounds.id).notNull(),
   pupilId: integer('pupil_id').references(() => pupils.id).notNull(),
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
+  // The column Invariant 1 in IF_YOU_ARE_AN_AI.md governs: canonical WebUntis codes
+  // only ("D", "E", "M", "BO", "PH", ...), never a full German name or a legacy alias
+  // ("SD", "SE", "SM"). No CHECK constraint here, and normalizeSubject() coerces rather
+  // than rejects, so a write path must validate the code itself — none does yet.
   subjectCode: text('subject_code').notNull(),
   teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
   proposedStatus: text('proposed_status'), // "Lehrling", "Geselle", "Meister"
