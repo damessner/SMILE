@@ -68,6 +68,12 @@ interface PendingComment {
   pupilId: number;
   classId: number;
   subjectCodes: string[];
+  /**
+   * The `commentScopeKey` this pending was typed under. The write outlives the
+   * render that issued it, so this is what says whose ref a successful write may
+   * update - see the `commentScopeKeyRef` guard in `flushComment`.
+   */
+  scopeKey: string;
   /** What the box holds right now. Empty only when `clearRequested` is set. */
   comment: string;
   /**
@@ -339,6 +345,15 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const pendingCommentRef = useRef<PendingComment | null>(null);
   const commentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * The scope currently on screen, readable from inside `flushComment`'s async
+   * tail. `flushComment` is a `useCallback` that deliberately does not depend on
+   * the scope, so it cannot close over the current one; the ref is the only way it
+   * can tell "the write I just made still belongs to what is on screen" from "the
+   * teacher has already moved on".
+   */
+  const commentScopeKeyRef = useRef('');
+
   /** Subjects a comment write may touch; Gesamt mode writes to each of them. */
   const commentSubjectCodes = targetSubjectCodes.filter((c) => c !== '__ALL__');
 
@@ -395,7 +410,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       // mode a rejected subject leaves the comment half-written, and the retry
       // has to re-send all of them - re-sending a subject that already took is
       // an idempotent overwrite of the same text.
-      lastStoredCommentRef.current = pending.comment;
+      //
+      // Only update the stored-comment ref while this write's own scope is still on
+      // screen. The write outlives the render that issued it: a blur on one pupil
+      // followed by a click on the next resolves the write *after* the next pupil's
+      // box has been re-seeded, and assigning unconditionally then left the new pupil
+      // looking like he had a stored justification he never had - so emptying his box
+      // became a deletion aimed at the previous pupil's text.
+      if (pending.scopeKey === commentScopeKeyRef.current) {
+        lastStoredCommentRef.current = pending.comment;
+      }
       markSaved();
     } catch (err) {
       // "Bitte erneut versuchen" has to be followable: the teacher only has to
@@ -431,6 +455,10 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   // toast object changes, and a cleanup that runs mid-keystroke would cancel the
   // debounce the keystroke just scheduled.
   useEffect(() => {
+    // React runs every cleanup before any effect body, so this records the *new*
+    // scope only after the outgoing one has been flushed. An in-flight write from
+    // the outgoing scope therefore sees a mismatch by the time it resolves.
+    commentScopeKeyRef.current = commentScopeKey;
     return () => {
       void flushComment();
     };
@@ -451,6 +479,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       // Gesamt mode writes to each subject in scope; `__ALL__` is not a
       // subject the server could store the comment under.
       subjectCodes: commentSubjectCodes,
+      // Captured, not looked up later: `flushComment` resolves long after this
+      // render, and the ref it consults then describes a different pupil.
+      scopeKey: commentScopeKey,
     };
     // The pending mirrors what the box holds, and the box decides what that
     // means: a justification to write, a deletion to write, or nothing at all.

@@ -36,6 +36,20 @@ function evaluation(subjectCode: string, overrides: Partial<Evaluation> = {}): E
   };
 }
 
+/** One rated item, with the version a write for that subject must expect. */
+function item(itemKey: string, rating: string, version: number): Evaluation['items'][number] {
+  return {
+    id: `item-${itemKey}-${version}`,
+    evaluationId: 'eval-1',
+    criterionId: 'org',
+    itemKey,
+    rating,
+    version,
+    updatedByTeacherId: 1,
+    updatedAt: '2026-10-07T06:00:00.000Z',
+  };
+}
+
 function pupil(id: number, fullName: string, evaluations: Evaluation[] = []): PupilWithData {
   return {
     id,
@@ -53,6 +67,7 @@ interface GridOptions {
   pupils?: PupilWithData[];
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
   selectedPupilIdProp?: number | null;
+  onRate?: ReturnType<typeof vi.fn>;
 }
 
 /**
@@ -64,6 +79,7 @@ function renderGrid({
   pupils = [pupil(1, 'Anna Muster')],
   mySubjects = [GERMAN],
   selectedPupilIdProp = null,
+  onRate = vi.fn(),
 }: GridOptions = {}) {
   const props = {
     pupils,
@@ -73,7 +89,7 @@ function renderGrid({
     onClearConflict: vi.fn(),
     onSendFocus: vi.fn(),
     onSendBlur: vi.fn(),
-    onRate: vi.fn(),
+    onRate,
     onOpenCardDrawer: vi.fn(),
     onOpenKelReport: vi.fn(),
     isLockedByConference: false,
@@ -91,6 +107,8 @@ function renderGrid({
 
   return {
     ...view,
+    /** The rating callback, so a test can assert on what a click would write. */
+    onRate,
     rerenderWith(next: GridOptions) {
       view.rerender(
         <ToastProvider>
@@ -120,11 +138,44 @@ function rosterRow(name: string): HTMLElement {
   return screen.getByRole('button', { name: new RegExp(name) });
 }
 
+/** The five rating buttons' titles, in render order. */
+const RATING_TITLES = [
+  'Hervorragend (Krone)',
+  'Gut (😊)',
+  'Mit Mühe (😖)',
+  'Traurig (😢)',
+  'Neustart (🔄)',
+];
+
 /**
- * The roster's "Eingereicht" tick is a bare lucide icon with no accessible name
- * (`BeobachtungsGrid.tsx:693`) - it is the only child of the row that can be an
- * `<svg>`, so its presence is the assertion. The word "Eingereicht" itself is
- * asserted separately, from the header badge.
+ * Which rating the single grid cell shows as selected, or `null` when it is empty.
+ *
+ * Every selected rating button carries `border-2` from its active styling
+ * (`BeobachtungsGrid.tsx:1578-1603`); an unselected one carries
+ * `border border-slate-700/60` and no `border-2`, so its absence is the assertion.
+ */
+function selectedRating(): string | null {
+  for (const title of RATING_TITLES) {
+    if (screen.getByTitle(title).className.includes('border-2')) return title;
+  }
+  return null;
+}
+
+/**
+ * A clock reading safely before the submission deadline.
+ *
+ * The rating buttons are disabled once `new Date(2026, 9, 30, 23, 59, 59)` has
+ * passed (`BeobachtungsGrid.tsx:281`), so a test that clicks one after that date
+ * stops testing anything and stays green. Pinning the clock keeps these tests
+ * honest on both sides of the deadline.
+ */
+const BEFORE_DEADLINE = new Date(2026, 9, 1, 9, 0, 0);
+
+/**
+ * The roster's "Eingereicht" tick is a bare lucide icon with no accessible name -
+ * it is the only child of the row that can be an `<svg>`, so its presence is the
+ * assertion. The word "Eingereicht" itself is asserted separately, from the header
+ * badge.
  */
 function rosterTick(row: HTMLElement): SVGSVGElement | null {
   return row.querySelector('svg');
@@ -164,9 +215,9 @@ afterEach(() => {
 
 // --- Call-site coverage for the subject-scoped isSubmitted checks ------------
 //
-// These two cases pin `BeobachtungsGrid.tsx:676` (`isPupilFullySubmitted` in the
-// roster) and the folder split above it. Reverting either to the unscoped
-// `evaluations.some(e => e.isSubmitted)` makes them fail.
+// These cases pin `isPupilFullySubmitted` in the roster row and the folder split
+// above it. Reverting either to the unscoped `evaluations.some(e => e.isSubmitted)`
+// makes them fail.
 
 describe('isSubmitted is scoped to the subjects in view', () => {
   it('does not tick a pupil who submitted Deutsch when Mathematik is still open', () => {
@@ -211,6 +262,93 @@ describe('isSubmitted is scoped to the subjects in view', () => {
     expect(rosterTick(rosterRow('Anna Muster'))).not.toBeNull();
     expect(screen.getByRole('button', { name: /Offen/ })).toHaveTextContent('0');
     expect(screen.getByRole('button', { name: /Bewertet/ })).toHaveTextContent('1');
+  });
+});
+
+// --- The item lookup is subject-scoped, all the way to the rendered cell ----
+//
+// The helper is unit-tested in `client/src/lib/pupilItems.test.ts` ("does not fall
+// back to another subject when the subject has no evaluation", "does not borrow a
+// key that only a subject outside the scope holds"). These two cases assert what
+// the grid *draws*, which is the claim that was wrong: pasting the deleted widening
+// branch back into `getItemData` used to leave this suite green, because nothing
+// here had ever looked at a rendered rating cell.
+
+describe('the rendered cells hold no rating from another subject', () => {
+  it('renders an empty cell when only a subject outside the view holds the item', () => {
+    // Anna is rated in Deutsch; Mathematik is what is on screen, so Deutsch's
+    // `org_1` is another teacher's business in this view.
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: [item('org_1', 'smile', 3)] }),
+      evaluation('M'),
+    ]);
+    renderGrid({ pupils: [anna], mySubjects: [MATHS] });
+
+    expect(selectedRating()).toBeNull();
+    // The reset control renders only over a stored rating - a second, independent
+    // read on the same fact.
+    expect(screen.queryByTitle('Bewertung löschen (Leer)')).toBeNull();
+    // And the rating that is out of scope never reached the positive count.
+    expect(within(rosterRow('Anna Muster')).getByText('0/18 Punkte')).toBeInTheDocument();
+  });
+
+  it('fills the cell when the subject in view holds the item', () => {
+    // The control: the assertions above must be able to see a filled cell, or they
+    // would pass for the wrong reason.
+    const anna = pupil(1, 'Anna Muster', [evaluation('D', { items: [item('org_1', 'smile', 3)] })]);
+    renderGrid({ pupils: [anna], mySubjects: [GERMAN] });
+
+    expect(selectedRating()).toBe('Gut (😊)');
+    expect(screen.getByTitle('Bewertung löschen (Leer)')).toBeInTheDocument();
+    expect(within(rosterRow('Anna Muster')).getByText('1/18 Punkte')).toBeInTheDocument();
+  });
+});
+
+// --- Every subject's write carries its own item version --------------------
+
+describe('a rating write carries the version of the subject it targets', () => {
+  it('sends 7 for Deutsch and 3 for Mathematik on the same item key', async () => {
+    // The optimistic-concurrency contract at the point it is actually applied.
+    // Resolving one version for the whole grid makes the server's
+    // `UPDATE ... WHERE version = $expected` match zero rows for every subject but
+    // the first, and the teacher is shown a conflict on a cell nobody touched.
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: [item('org_1', 'struggle', 7)] }),
+      evaluation('M', { items: [item('org_1', 'struggle', 3)] }),
+    ]);
+    const { onRate } = renderGrid({ pupils: [anna], mySubjects: [GERMAN, MATHS] });
+
+    fireEvent.click(screen.getByTitle('Gut (😊)'));
+
+    expect(onRate).toHaveBeenCalledTimes(2);
+    expect(onRate).toHaveBeenNthCalledWith(1, 1, 'org', 'org_1', 'smile', 7, 'D');
+    expect(onRate).toHaveBeenNthCalledWith(2, 1, 'org', 'org_1', 'smile', 3, 'M');
+
+    // Drain the "Gesichert" badge timer the click scheduled, inside act so it cannot
+    // land after the test body has finished.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+  });
+
+  it('sends the version each subject holds even when the displayed rating came from another', () => {
+    // Gesamt mode draws one cell from the merged view - here Deutsch's 'struggle' -
+    // so the button is not "already selected" for Mathematik. The version must still
+    // be the one that subject's own row is at.
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: [item('org_1', 'struggle', 7)] }),
+      evaluation('M', { items: [item('org_1', 'struggle', 3)] }),
+    ]);
+    const { onRate } = renderGrid({ pupils: [anna], mySubjects: [GERMAN, MATHS] });
+
+    fireEvent.click(screen.getByTitle('Traurig (😢)'));
+
+    expect(onRate).toHaveBeenNthCalledWith(1, 1, 'org', 'org_1', 'sad', 7, 'D');
+    expect(onRate).toHaveBeenNthCalledWith(2, 1, 'org', 'org_1', 'sad', 3, 'M');
   });
 });
 
@@ -388,6 +526,46 @@ describe('conference comment autosave', () => {
     expect(saveEvaluationComment).toHaveBeenCalledTimes(2);
     expect(saveEvaluationComment).toHaveBeenNthCalledWith(1, 1, CLASS_ID, 'D', 'Für Anna');
     expect(saveEvaluationComment).toHaveBeenNthCalledWith(2, 2, CLASS_ID, 'D', 'Für Bernd');
+  });
+
+  it('does not let the previous pupil\'s write claim the next one\'s stored comment', async () => {
+    // The write is still in flight when the teacher moves on, so it resolves *after*
+    // the next pupil's box has been re-seeded. Assigning `lastStoredCommentRef` from
+    // that write left the new pupil looking like he had a stored justification, and
+    // emptying his box then wrote a deletion aimed at the previous pupil's text.
+    vi.useFakeTimers();
+    let resolveSave: () => void = () => {};
+    vi.mocked(saveEvaluationComment).mockImplementation(
+      () => new Promise<void>((resolve) => { resolveSave = resolve; }),
+    );
+    const anna = pupil(1, 'Anna Muster');
+    const bernd = pupil(2, 'Bernd Berger');
+    const { rerenderWith } = renderGrid({ pupils: [anna, bernd], selectedPupilIdProp: 1 });
+
+    await act(async () => {
+      fireEvent.change(commentBox(), { target: { value: 'Für Anna' } });
+      fireEvent.blur(commentBox());
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(saveEvaluationComment).toHaveBeenCalledTimes(1);
+
+    // Move on while that write is still open.
+    rerenderWith({ selectedPupilIdProp: 2 });
+    expect(commentBox()).toHaveValue('');
+    await act(async () => { resolveSave(); });
+
+    // Bernd has nothing stored. Typing and clearing his box is not a deletion - and
+    // the keystrokes make this a real flush boundary rather than a change event that
+    // carries a value the textarea already had.
+    fireEvent.change(commentBox(), { target: { value: 'x' } });
+    fireEvent.change(commentBox(), { target: { value: '' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    // Still only Anna: Bernd's box was never backed by a stored justification.
+    expect(saveEvaluationComment).toHaveBeenCalledTimes(1);
+    expect(saveEvaluationComment).toHaveBeenLastCalledWith(1, CLASS_ID, 'D', 'Für Anna');
   });
 
   it('debounces keystrokes into a single write after 800ms', async () => {
