@@ -2,13 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
-  assessmentRubrics,
   auditLogs,
   evaluationItems,
   evaluations,
   observationRounds,
   pupils,
-  rubricCriteria,
 } from '../db/schema.js';
 import { config } from '../config.js';
 import {
@@ -52,6 +50,29 @@ function deadlinePassed(): boolean {
   return new Date() > config.submissionDeadline;
 }
 
+/**
+ * Does this `/status` write have to reach the rest of the class?
+ *
+ * A comment is the one field that is *not* rendered live: it is the per-pupil
+ * justification typed into the grid's own textarea, and a co-teacher's screen shows
+ * nothing derived from it. The conference comment autosave writes one subject at a
+ * time, so a single Gesamt-mode blur is N `/status` calls, and each one used to
+ * broadcast `STATUS_UPDATED` - which every connected client answers with a full
+ * `loadClassData` (`App.tsx`). That made one pupil's new justification cost N
+ * class-wide refetches for every co-teacher, on the hottest shared surface in the
+ * app, and this branch is what introduced that traffic. Nothing is lost by staying
+ * quiet, so a comment-only write stays local; the database write is unchanged.
+ *
+ * A write carrying a rank or a next step is a real status change and still
+ * broadcasts. An explicit `null` counts: clearing a rank is a change.
+ */
+export function shouldBroadcastStatusUpdate(payload: {
+  proposedStatus?: string | null;
+  nextStep?: string | null;
+}): boolean {
+  return payload.proposedStatus !== undefined || payload.nextStep !== undefined;
+}
+
 export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * POST /api/evaluations/batch-default — set a default rating for a whole class.
@@ -74,14 +95,10 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'classId und subjectCode sind erforderlich.');
     }
     const canonicalSubject = normalizeSubject(subjectCode).code;
-    // The rating allowlist lives in lib/rubric.ts so this route and the WebSocket
-    // path cannot drift apart. `defaultRating` is a rating, not an item key, so it
-    // is checked against the allowlist only.
-    const rubricIndex = await loadRubricIndex();
-    if (!isValidRating(rubricIndex, defaultRating)) {
-      return badRequest(reply, 'Unbekannter Standardwert.');
-    }
 
+    // Authorization first: a caller without `canRate` must get a 403, not a 400
+    // about a rubric item key, and must not make the server read the rubric on
+    // their behalf.
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRate) {
@@ -90,27 +107,33 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    // The rating allowlist lives in lib/rubric.ts so this route and the WebSocket
+    // path cannot drift apart. `defaultRating` is a rating, not an item key, so it
+    // is checked against the allowlist only.
+    const rubricIndex = await loadRubricIndex();
+    if (!isValidRating(rubricIndex, defaultRating)) {
+      return badRequest(reply, 'Unbekannter Standardwert.');
+    }
+
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Bewertungszeitraum');
 
-    const [rubric] = await db
-      .select()
-      .from(assessmentRubrics)
-      .where(eq(assessmentRubrics.isDefault, true))
-      .limit(1);
-    if (!rubric) return badRequest(reply, 'Kein Bewertungsraster gefunden.');
+    // The write targets are the index's own entries, not a second fold of the same
+    // criteria. The inline version re-queried `rubric_criteria` and re-derived the
+    // `itemKey`/`criterionId` pairing with its own filter, which disagreed with
+    // `buildRubricIndex` on a blank key: `filter((i) => i?.key)` dropped it while the
+    // index keeps every string key. Reading the index keeps one definition of "this
+    // item key belongs to this criterion".
+    //
+    // The blank key is still filtered out here, deliberately: the index *records* it
+    // (that is what it is for) and `validateBatchItems` refuses to write it, so this
+    // route must not become the one path that does.
+    const targets = [...rubricIndex.keyToCriterion]
+      .filter(([itemKey]) => itemKey !== '')
+      .map(([itemKey, criterionId]) => ({ criterionId, itemKey }));
 
-    const criteria = await db
-      .select()
-      .from(rubricCriteria)
-      .where(eq(rubricCriteria.rubricId, rubric.id));
-
-    const targets = criteria.flatMap((c) => {
-      const items = Array.isArray(c.items) ? (c.items as Array<{ key?: string }>) : [];
-      return items
-        .filter((i) => i?.key)
-        .map((i) => ({ criterionId: c.id, itemKey: i.key! }));
-    });
+    // A default rubric with no usable items is a broken install, not a no-op.
+    if (targets.length === 0) return badRequest(reply, 'Kein Bewertungsraster gefunden.');
 
     const classPupils = await db
       .select({ id: pupils.id })
@@ -249,15 +272,17 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       })
       .returning();
 
-    broadcastToClass(classId, {
-      type: 'STATUS_UPDATED',
-      pupilId,
-      classId,
-      subjectCode: canonicalSubject,
-      proposedStatus: evaluation.proposedStatus,
-      nextStep: evaluation.nextStep,
-      comment: evaluation.comment,
-    });
+    if (shouldBroadcastStatusUpdate({ proposedStatus, nextStep })) {
+      broadcastToClass(classId, {
+        type: 'STATUS_UPDATED',
+        pupilId,
+        classId,
+        subjectCode: canonicalSubject,
+        proposedStatus: evaluation.proposedStatus,
+        nextStep: evaluation.nextStep,
+        comment: evaluation.comment,
+      });
+    }
 
     return reply.send(evaluation);
   });
@@ -439,18 +464,23 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
     const canonicalSubject = normalizeSubject(subjectCode).code;
 
-    // Every item key is looked up in the rubric and its criterion derived
-    // server-side. The client-supplied `criterionId` is ignored, so a batch of
-    // fabricated keys can no longer inflate a pupil's positive rating count.
-    const rubricIndex = await loadRubricIndex();
-    const validation = validateBatchItems(items, rubricIndex, MAX_BATCH_ITEMS);
-    if (!validation.ok) return badRequest(reply, validation.error);
-
+    // Authorization before validation: a caller who may not rate in this class gets
+    // a 403, not a 400 about a rubric item key, and does not make the server read
+    // the rubric on their behalf.
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRate) {
       return reply.status(403).send({ error: 'Sie dürfen in dieser Klasse nicht bewerten.' });
     }
+
+    // Every item key is looked up in the rubric and its criterion derived
+    // server-side. The client-supplied `criterionId` is ignored, so a batch of
+    // fabricated keys can no longer inflate a pupil's positive rating count.
+    // Rejection happens before the transaction, so a forged batch never reaches a
+    // write at all.
+    const rubricIndex = await loadRubricIndex();
+    const validation = validateBatchItems(items, rubricIndex, MAX_BATCH_ITEMS);
+    if (!validation.ok) return badRequest(reply, validation.error);
 
     const pupil = await findPupilInClass(pupilId, classId);
     if (!pupil) return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');

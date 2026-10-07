@@ -102,11 +102,19 @@ const REJECTED_ITEM_ERROR = 'Unbekanntes Beobachtungsmerkmal oder ungültiger Be
 /**
  * Validate a whole batch of ratings against the rubric before anything is written.
  *
- * This is the fix for the forgery that made ranks forgeable: the HTTP path used to
- * check only that `itemKey` was present and then wrote the client's own
- * `criterionId`, so 200 invented keys rated `'++'` became 200 positive ratings —
- * an automatic Meister. Now every key must exist in the rubric and the criterion is
- * derived here, which is what the WebSocket path already did.
+ * This is the fix for the *item-key half* of the forgery that made ranks
+ * forgeable: the HTTP path used to check only that `itemKey` was present and then
+ * wrote the client's own `criterionId`, so 200 invented keys rated `'++'` became
+ * 200 positive ratings — an automatic Meister. Now every key must exist in the
+ * rubric and the criterion is derived here, which is what the WebSocket path
+ * already did.
+ *
+ * What it does *not* fix: the positive count itself is still summed across every
+ * evaluation a pupil has, so it remains unbounded past the 18-item raster
+ * (`summarizeRatings` under the default `RANK_AGGREGATION=total`, and the four
+ * client implementations that `flatMap` across subjects — roadmap C9 and the
+ * deferred rank-logic unification). This validator makes each *write* honest; it
+ * does not make the *aggregate* bounded.
  *
  * Rejection is all-or-nothing. Returning the valid items and dropping the forged
  * ones would silently look like a successful save, so the first problem fails the
