@@ -600,14 +600,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               onClick={() => setIsLwView(true)}
               className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                 isLwView
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-sm'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
                   : 'bg-slate-800/80 text-amber-300 hover:text-slate-50 hover:bg-slate-700 border border-amber-500/30'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
               <span>Lernwerkstatt (LW)</span>
               {activeTimeouts.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-50 font-bold text-[10px] animate-pulse">
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-[10px] animate-pulse">
                   {activeTimeouts.length}
                 </span>
               )}

@@ -56,8 +56,21 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
     r === 'crown' || r === 'smile' || r === '++' || r === '+';
 
   const getPupilRank = (p: PupilWithData) => {
-    const allItems = p.evaluations.flatMap((e) => e.items || []);
-    const pos = allItems.filter((i) => isPositiveRating(i.rating)).length;
+    const evaluatedItemsMap = new Map<string, string | undefined>();
+    const relevantEvals = mySubjects.length > 0
+      ? p.evaluations.filter((e) => mySubjects.some((s) => isSubjectMatch(s.code, e.subjectCode)))
+      : p.evaluations;
+
+    for (const e of relevantEvals) {
+      if (!e.items) continue;
+      for (const it of e.items) {
+        if (!evaluatedItemsMap.has(it.itemKey) || isPositiveRating(it.rating)) {
+          evaluatedItemsMap.set(it.itemKey, it.rating);
+        }
+      }
+    }
+
+    const pos = Array.from(evaluatedItemsMap.values()).filter((r) => isPositiveRating(r)).length;
     if (pos >= 14) return { rank: 'Meister', color: 'bg-amber-400/20 text-amber-300 border-amber-400/40', barColor: 'bg-amber-400', pos };
     if (pos >= 8) return { rank: 'Geselle', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', barColor: 'bg-blue-500', pos };
     return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
@@ -129,7 +142,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
               data-tour="start-rating-button"
               onClick={() => onStartRating(openPupils[0]?.id || pupils[0]?.id)}
               disabled={isPastDeadline}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg shadow-sm transition active:scale-95 disabled:opacity-40"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-lg transition active:scale-95 disabled:opacity-40"
             >
               <Play className="w-4 h-4 fill-slate-950" />
               <span>{canAccessRaster ? 'Bewertungsmodus starten' : 'Einstufung starten'}</span>
@@ -162,7 +175,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
             onClick={() => setActiveFolder('open')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
               activeFolder === 'open'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm'
+                ? 'bg-amber-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-slate-50'
             }`}
           >
@@ -181,7 +194,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
             onClick={() => setActiveFolder('ranked')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition ${
               activeFolder === 'ranked'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-sm'
+                ? 'bg-emerald-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-slate-50'
             }`}
           >

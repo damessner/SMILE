@@ -797,7 +797,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       )}
 
       {/* Left Column: Pupil Selector Bar with "Offen" & "Bewertet" Folder Tabs */}
-      <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col max-h-[84vh] overflow-hidden shadow-lg">
+      <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-3xl p-3 sm:p-4 flex flex-col max-h-[44vh] lg:max-h-[86vh] overflow-hidden shadow-lg shrink-0">
         {/* Active Subject Card & Switcher */}
         <div className="mb-3 p-2.5 rounded-2xl bg-slate-950/80 border border-slate-800/90 shadow-sm flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -857,14 +857,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             }}
             className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
               folderTab === 'offen'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-50'
             }`}
           >
             <Folder className="w-3.5 h-3.5" />
             <span>Offen</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                 folderTab === 'offen' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -881,14 +881,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             }}
             className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
               folderTab === 'bewertet'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-sm font-bold'
+                ? 'bg-emerald-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-50'
             }`}
           >
             <FolderCheck className="w-3.5 h-3.5" />
             <span>Bewertet</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                 folderTab === 'bewertet' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -969,7 +969,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-col max-h-[86vh] overflow-hidden shadow-lg">
         {/* Multi-Subject Segmented Switcher Bar (Direct Quick-Switch) */}
         {mySubjects.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800 shrink-0 mb-3 shadow-sm">
+          <div className="flex items-center gap-1.5 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800 shrink-0 mb-3 shadow-sm overflow-x-auto no-scrollbar">
             <span className="text-[11px] font-bold text-slate-400 px-2 flex items-center gap-1.5 shrink-0">
               <BookOpen className="w-3.5 h-3.5 text-amber-400" />
               <span>Fachauswahl:</span>
@@ -977,7 +977,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             <button
               type="button"
               onClick={() => setSelectedSubjectCode('__ALL__')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 ${
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shrink-0 ${
                 isAllSubjectsMode
                   ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold ring-1 ring-amber-400'
                   : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800'
@@ -993,7 +993,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   key={s.code}
                   type="button"
                   onClick={() => setSelectedSubjectCode(s.code)}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 ${
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shrink-0 ${
                     isActive
                       ? s.isCoreSmile
                         ? 'bg-amber-400 text-slate-950 shadow-md font-extrabold ring-1 ring-amber-300'
@@ -1005,7 +1005,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   <span className="text-[10px] opacity-80 font-normal">({s.name})</span>
                   {typeof s.hours === 'number' && s.hours > 0 && (
                     <span
-                      className={`text-[10px] px-1 py-0.2 rounded font-mono font-bold ${
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
                         isActive ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
                       }`}
                     >
@@ -1019,14 +1019,96 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         )}
 
         {/* Pupil Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800 mb-3 shrink-0">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-50">{selectedPupil.fullName}</h2>
-              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${rankColor}`}>
+        <div className="pb-3 border-b border-slate-800 mb-3 shrink-0 space-y-2.5">
+          {/* Row 1: Identity & Primary Actions */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-50 truncate" title={selectedPupil.fullName}>
+                {selectedPupil.fullName}
+              </h2>
+              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${rankColor}`}>
                 {rank} ({positiveTicks}/18)
               </span>
 
+              {isSubmitted && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Eingereicht</span>
+                  </span>
+                  {onReopenPupil && !isLockedByConference && (
+                    <button
+                      onClick={handleReopenPupil}
+                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[10px] font-bold transition flex items-center gap-1"
+                      title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
+                    >
+                      <RotateCcw className="w-3 h-3 text-amber-400" />
+                      <span>Wieder öffnen</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Submit Ranking Button */}
+              {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
+                <button
+                  onClick={handleSubmitPupil}
+                  disabled={isLockedByConference || isPastDeadline}
+                  title="Ranking einreichen und zum nächsten Schüler wechseln"
+                  className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95 disabled:opacity-40 shrink-0 ${
+                    isSubmitted
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                      : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 shadow-sm'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{isSubmitted ? 'Erneut einreichen' : 'Ranking einreichen'}</span>
+                </button>
+              )}
+
+              {/* Action Toolbar */}
+              <div className="flex items-center gap-1.5">
+                {/* 1-Page Teacher Class Report Button */}
+                {onOpenReportModal && (
+                  <button
+                    onClick={onOpenReportModal}
+                    className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+                    title="1-Seiten Klassenbericht für Lehrpersonen drucken"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="hidden xl:inline">1-Seiten Export</span>
+                  </button>
+                )}
+
+                {/* Card Drawer Button */}
+                <button
+                  onClick={() => onOpenCardDrawer(selectedPupil.id, selectedPupil.fullName)}
+                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+                  title="Verhaltenskarten anzeigen"
+                >
+                  <Award className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="hidden xl:inline">Karte</span>
+                </button>
+
+                {/* KEL Report Button */}
+                <button
+                  onClick={() => onOpenKelReport(selectedPupil)}
+                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
+                  title="KEL-Entwicklungsbericht öffnen"
+                >
+                  <FileText className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="hidden xl:inline">KEL-Bericht</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Metadata Chips & Instant-Rank Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            {/* Metadata Chips */}
+            <div className="flex flex-wrap items-center gap-2">
               {/* Prominent Subject Badge */}
               <div
                 className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-sm ${
@@ -1042,7 +1124,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     : `Aktuelles Bewertungsfach: ${mySubject.name} (${mySubject.code})`
                 }
               >
-                {isAllSubjectsMode ? <Sparkles className="w-3.5 h-3.5 text-amber-400" /> : <BookOpen className="w-3.5 h-3.5 opacity-80" />}
+                {isAllSubjectsMode ? <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <BookOpen className="w-3.5 h-3.5 opacity-80 shrink-0" />}
                 <span>{isAllSubjectsMode ? '🌟 Gesamtbewertung' : mySubject.name}</span>
                 <span className="font-mono text-[10px] opacity-75">
                   [{isAllSubjectsMode ? mySubjects.map((s) => s.code).join(' + ') : mySubject.code}]
@@ -1088,49 +1170,18 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   <span className="text-slate-600">·</span>
                   <span className="text-amber-300 font-bold">Gewicht: {currentHoursInfo.weight}</span>
                   {currentHoursInfo.isTeamTeaching && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
                       Team-Teaching (x2)
                     </span>
                   )}
                 </div>
               )}
-
-              {isSubmitted && (
-                <div className="flex items-center gap-1.5">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>Eingereicht</span>
-                  </span>
-                  {onReopenPupil && !isLockedByConference && (
-                    <button
-                      onClick={handleReopenPupil}
-                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[10px] font-bold transition flex items-center gap-1"
-                      title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
-                    >
-                      <RotateCcw className="w-3 h-3 text-amber-400" />
-                      <span>Wieder öffnen</span>
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
-              <span>Beobachtungsraster · 6 Dimensionen à 3 Merkmale</span>
-              <span>·</span>
-              <span className="text-slate-300 font-medium">Fach: <strong>{mySubject.name}</strong> ({mySubject.code})</span>
-              {submittedAt && (
-                <span className="text-slate-500">
-                  · (Eingereicht am {new Date(submittedAt).toLocaleDateString('de-AT')} um {new Date(submittedAt).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })})
-                </span>
-              )}
-            </p>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
             {/* Instant Rank Buttons & Reset (For core D/M/E teachers OR when raster is open) */}
             {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
-              <div data-tour="instant-rank-buttons" className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
-                <span className="text-[10px] font-bold text-slate-400 px-1 hidden xl:inline">Sofort:</span>
+              <div data-tour="instant-rank-buttons" className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800 shrink-0">
+                <span className="text-[10px] font-bold text-slate-400 px-1 hidden 2xl:inline">Sofort:</span>
                 <button
                   type="button"
                   onClick={() => handleInstantRank('Lehrling')}
@@ -1173,53 +1224,6 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 </button>
               </div>
             )}
-
-            {/* Submit Ranking Button */}
-            {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
-              <button
-                onClick={handleSubmitPupil}
-                disabled={isLockedByConference || isPastDeadline}
-                title="Ranking einreichen und zum nächsten Schüler wechseln"
-                className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95 disabled:opacity-40 ${
-                  isSubmitted
-                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 shadow-sm'
-                }`}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{isSubmitted ? 'Erneut einreichen' : 'Ranking einreichen'}</span>
-              </button>
-            )}
-
-            {/* 1-Page Teacher Class Report Button */}
-            {onOpenReportModal && (
-              <button
-                onClick={onOpenReportModal}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
-                title="1-Seiten Klassenbericht für Lehrpersonen drucken"
-              >
-                <Printer className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">1-Seiten Export</span>
-              </button>
-            )}
-
-            {/* Card Drawer Button */}
-            <button
-              onClick={() => onOpenCardDrawer(selectedPupil.id, selectedPupil.fullName)}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
-            >
-              <Award className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Karte</span>
-            </button>
-
-            {/* KEL Report Button */}
-            <button
-              onClick={() => onOpenKelReport(selectedPupil)}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition"
-            >
-              <FileText className="w-3.5 h-3.5 text-sky-400" />
-              <span className="hidden sm:inline">KEL-Bericht</span>
-            </button>
           </div>
         </div>
 
@@ -1582,7 +1586,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-2.5">
                     {crit.items.map((it) => {
                       // The rating shown here comes from the merged view of the subjects in scope, but
                       // a write must carry the version of the subject it targets. In Gesamt mode each
@@ -1602,8 +1606,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                           val: 'crown',
                           label: (
                             <div className="flex flex-col items-center justify-center leading-none gap-0.5">
-                              <span className="text-[9px] leading-none">👑</span>
-                              <span className="text-sm sm:text-base leading-none">😊</span>
+                              <span className="text-[8px] sm:text-[9px] leading-none">👑</span>
+                              <span className="text-xs sm:text-sm leading-none">😊</span>
                             </div>
                           ),
                           activeBg: 'bg-amber-400 text-slate-950 font-bold shadow-md scale-105 border-2 border-amber-300 ring-2 ring-amber-400/40',
@@ -1698,7 +1702,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                     }
                                     markSaved();
                                   }}
-                                  className={`w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
+                                  className={`flex-1 min-w-0 max-w-[40px] h-8 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
                                     isActive
                                       ? btn.activeBg
                                       : 'bg-slate-800/80 hover:bg-slate-700/80 hover:scale-105 border border-slate-700/60 text-slate-300'

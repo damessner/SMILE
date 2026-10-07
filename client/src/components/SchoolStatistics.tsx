@@ -382,7 +382,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                     {/* Column 1: Pupil & Class */}
                     <div className="w-full lg:w-56 flex-shrink-0">
                       <div className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] font-bold text-slate-400 border border-slate-700">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-bold text-slate-400 border border-slate-700">
                           {pupil.className}
                         </span>
                         <span className="font-bold text-slate-50 text-xs leading-tight truncate">
@@ -398,7 +398,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                     <div className="w-full lg:w-48 flex-shrink-0">
                       <div className="flex items-center justify-between mb-1">
                         <span
-                          className={`px-2 py-0.2 rounded-md text-[10px] font-bold uppercase tracking-wider border ${rankBadgeClass}`}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${rankBadgeClass}`}
                         >
                           {pupil.finalRank}
                         </span>
@@ -442,7 +442,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                                 <span className="font-bold text-[10px] text-slate-400">
                                   {vote.teacherShort}
                                 </span>
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-slate-900/60 font-medium">
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-slate-900/60 font-medium">
                                   {vote.subjectCode}
                                 </span>
                                 {vote.proposedStatus && (

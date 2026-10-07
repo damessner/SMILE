@@ -150,3 +150,30 @@ describe("the card badge is scoped to the teacher's own subjects", () => {
     expect(screen.getByText('Bewerten')).toBeInTheDocument();
   });
 });
+
+describe('getPupilRank deduplication across subjects', () => {
+  it('deduplicates items across multiple subjects and never exceeds 18 points', () => {
+    // Pupil has 18 positive items in German and 18 positive items in Maths (same rubric keys)
+    const germanItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-d-${i}`,
+      itemKey: `crit_${i}`,
+      rating: 'smile',
+      version: 1,
+    }));
+    const mathsItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-m-${i}`,
+      itemKey: `crit_${i}`,
+      rating: 'crown',
+      version: 1,
+    }));
+
+    const anna = pupil(1, 'Anna Multi', [
+      { ...evaluation('D', false), items: germanItems as any },
+      { ...evaluation('M', false), items: mathsItems as any },
+    ]);
+
+    renderOverview([anna], [GERMAN, MATHS]);
+    // Must display 18 / 18 Punkte, never 36 / 18 Punkte
+    expect(screen.getByText('18 / 18 Punkte')).toBeInTheDocument();
+  });
+});
