@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Printer, Award, FileText, CheckCircle2, Clock } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User, SchoolClass } from '../types';
-import { isPupilFullySubmitted } from '../lib/pupilItems';
+import { isPupilFullySubmitted, isSubjectMatch } from '../lib/pupilItems';
 
 interface TeacherClassReportModalProps {
   currentClass: SchoolClass;
@@ -36,8 +36,21 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
 
   // Compute stats per pupil
   const pupilStats = pupils.map((p, idx) => {
-    const allItems = p.evaluations.flatMap((e) => e.items || []);
-    const pos = allItems.filter((i) => isPositive(i.rating)).length;
+    const evaluatedItemsMap = new Map<string, string | undefined>();
+    const relevantEvals =
+      mySubjectCodes.length > 0
+        ? p.evaluations.filter((e) => mySubjectCodes.some((code) => isSubjectMatch(code, e.subjectCode)))
+        : p.evaluations;
+
+    for (const e of relevantEvals) {
+      if (!e.items) continue;
+      for (const it of e.items) {
+        if (!evaluatedItemsMap.has(it.itemKey) || isPositive(it.rating)) {
+          evaluatedItemsMap.set(it.itemKey, it.rating);
+        }
+      }
+    }
+    const pos = Array.from(evaluatedItemsMap.values()).filter((r) => isPositive(r)).length;
     let rank: 'Lehrling' | 'Geselle' | 'Meister' = 'Lehrling';
     if (pos >= 14) rank = 'Meister';
     else if (pos >= 8) rank = 'Geselle';
@@ -117,7 +130,7 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
               <div className="flex items-center gap-2">
                 <span className="font-bold text-lg tracking-tight text-slate-950">SMILE</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-bold text-slate-700">
-                  MS Neustift
+                  MS Weissenbach
                 </span>
                 <span className="text-xs text-slate-500 font-medium">· Schuljahr 2026/27</span>
               </div>

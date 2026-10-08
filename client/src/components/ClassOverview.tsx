@@ -27,6 +27,7 @@ interface ClassOverviewProps {
   canAccessRaster?: boolean;
   mySubjects?: any[];
   currentUser: User | null;
+  submissionDeadline?: string | null;
 }
 
 export const ClassOverview: React.FC<ClassOverviewProps> = ({
@@ -39,17 +40,31 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
   canAccessRaster = true,
   mySubjects = [],
   currentUser,
+  submissionDeadline = null,
 }) => {
   const [activeFolder, setActiveFolder] = useState<'open' | 'ranked'>('open');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Deadline: 30.10.2026 23:59:59
-  const deadline = new Date(2026, 9, 30, 23, 59, 59);
+  // Deadline: 30.10.2026 23:59:59 (Vienna CEST is UTC+2 -> 2026-10-30T21:59:59.000Z)
+  const deadline =
+    submissionDeadline && !Number.isNaN(new Date(submissionDeadline).getTime())
+      ? new Date(submissionDeadline)
+      : new Date('2026-10-30T21:59:59.000Z');
   const now = new Date();
   const isPastDeadline = now > deadline;
 
   // Format deadline string
-  const deadlineFormatted = '30.10.2026, 23:59 Uhr';
+  const deadlineFormatted =
+    submissionDeadline && !Number.isNaN(new Date(submissionDeadline).getTime())
+      ? new Date(submissionDeadline).toLocaleString('de-AT', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Vienna',
+        }) + ' Uhr'
+      : '30.10.2026, 23:59 Uhr';
 
   // Calculate rank for a pupil
   const isPositiveRating = (r?: string) =>

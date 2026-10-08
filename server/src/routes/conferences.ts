@@ -390,7 +390,8 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
 
     const access = await getClassAccess(user, cid);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
-    if (!access.canRead) {
+    // Conference summary overview is accessible to all staff members (teachers, leadership, admin)
+    if (!access.canRead && !user.teacherId && user.role !== 'admin') {
       return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für diese Klasse' });
     }
 

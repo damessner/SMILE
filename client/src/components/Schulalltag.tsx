@@ -208,8 +208,16 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     r === 'crown' || r === 'smile' || r === '++' || r === '+';
 
   const getPupilRank = (p: PupilWithData) => {
-    const allItems = p.evaluations.flatMap((e) => e.items || []);
-    const pos = allItems.filter((i) => isPositiveRating(i.rating)).length;
+    const evaluatedItemsMap = new Map<string, string | undefined>();
+    for (const e of p.evaluations) {
+      if (!e.items) continue;
+      for (const it of e.items) {
+        if (!evaluatedItemsMap.has(it.itemKey) || isPositiveRating(it.rating)) {
+          evaluatedItemsMap.set(it.itemKey, it.rating);
+        }
+      }
+    }
+    const pos = Array.from(evaluatedItemsMap.values()).filter((r) => isPositiveRating(r)).length;
     let baseRank: 'Lehrling' | 'Geselle' | 'Meister' = 'Lehrling';
     if (pos >= 14) baseRank = 'Meister';
     else if (pos >= 8) baseRank = 'Geselle';

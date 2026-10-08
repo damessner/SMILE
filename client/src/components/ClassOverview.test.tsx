@@ -49,6 +49,7 @@ function pupil(id: number, fullName: string, evaluations: Evaluation[]): PupilWi
 function renderOverview(
   pupils: PupilWithData[],
   mySubjects: Array<{ code: string; name: string; isCoreSmile: boolean }> = [GERMAN, MATHS],
+  submissionDeadline?: string | null,
 ) {
   const currentClass: SchoolClass = { id: CLASS_ID, name: '3a', grade: 3, mySubjects };
   const currentUser: User = { id: 'u1', username: 'abc', role: 'teacher', teacherId: 1 };
@@ -64,6 +65,7 @@ function renderOverview(
       canAccessRaster
       mySubjects={mySubjects}
       currentUser={currentUser}
+      submissionDeadline={submissionDeadline}
     />,
   );
 }
@@ -175,5 +177,19 @@ describe('getPupilRank deduplication across subjects', () => {
     renderOverview([anna], [GERMAN, MATHS]);
     // Must display 18 / 18 Punkte, never 36 / 18 Punkte
     expect(screen.getByText('18 / 18 Punkte')).toBeInTheDocument();
+  });
+});
+
+describe('submission deadline display and behavior', () => {
+  it('indicates when the deadline has expired', () => {
+    const anna = pupil(1, 'Anna Musster', [evaluation('D', true, '2026-10-06T09:00:00.000Z')]);
+    renderOverview([anna], [GERMAN], '2020-01-01T00:00:00.000Z');
+    expect(screen.getByText(/\(Abgelaufen\)/)).toBeInTheDocument();
+  });
+
+  it('indicates active deadline when in future', () => {
+    const anna = pupil(1, 'Anna Musster', [evaluation('D', true, '2026-10-06T09:00:00.000Z')]);
+    renderOverview([anna], [GERMAN], '2099-01-01T00:00:00.000Z');
+    expect(screen.queryByText(/\(Abgelaufen\)/)).toBeNull();
   });
 });

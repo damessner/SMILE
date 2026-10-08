@@ -150,6 +150,11 @@ export async function getClasses() {
   return unwrap(res);
 }
 
+export async function getAllClasses() {
+  const res = await apiFetch('/classes/all');
+  return unwrap(res);
+}
+
 export async function getClassPupils(classId: number) {
   const res = await apiFetch(`/classes/${classId}/pupils`);
   return unwrap(res);

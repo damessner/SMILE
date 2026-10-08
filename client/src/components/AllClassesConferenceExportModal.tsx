@@ -14,7 +14,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { SchoolClass, User } from '../types';
-import { getConferenceSummary } from '../services/api';
+import { getConferenceSummary, getAllClasses } from '../services/api';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
 
 interface TeacherVote {
@@ -93,14 +93,37 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
   const [dataMap, setDataMap] = useState<Map<number, ClassConferenceData>>(new Map());
   const [loadingAll, setLoadingAll] = useState(true);
   const [exportFilter, setExportFilter] = useState<'all' | 'before' | 'after'>('all');
+  const [allClassesList, setAllClassesList] = useState<SchoolClass[]>(() =>
+    classes.filter((c) => c.name !== 'LW' && (c.grade === undefined || c.grade > 0))
+  );
 
-  // Filter out non-teaching special classes like LW (Lernwerkstatt)
-  const targetClasses = classes.filter((c) => c.name !== 'LW');
+  useEffect(() => {
+    let isMounted = true;
+    getAllClasses()
+      .then((cls) => {
+        if (isMounted && Array.isArray(cls) && cls.length > 0) {
+          const valid = cls.filter((c) => c.name !== 'LW' && (c.grade === undefined || c.grade > 0));
+          setAllClassesList(valid);
+        }
+      })
+      .catch((err) => {
+        console.warn('Fehler beim Laden aller Klassen, verwende übergebene Klassen:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  const loadAllClassData = async () => {
+  // Ensure all 15 classes are included in the conference export
+  const targetClasses = (allClassesList.length > 0 ? allClassesList : classes).filter(
+    (c) => c.name !== 'LW' && (c.grade === undefined || c.grade > 0)
+  );
+
+  const loadAllClassData = async (targetCls: SchoolClass[]) => {
+    if (targetCls.length === 0) return;
     setLoadingAll(true);
     const initialMap = new Map<number, ClassConferenceData>();
-    targetClasses.forEach((cls) => {
+    targetCls.forEach((cls) => {
       initialMap.set(cls.id, {
         classInfo: cls,
         totalClassTeachers: 0,
@@ -114,7 +137,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
 
     // Fetch summaries in parallel
     await Promise.all(
-      targetClasses.map(async (cls) => {
+      targetCls.map(async (cls) => {
         try {
           const res = await getConferenceSummary(cls.id);
           setDataMap((prev) => {
@@ -150,8 +173,8 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
   };
 
   useEffect(() => {
-    loadAllClassData();
-  }, [classes]);
+    loadAllClassData(targetClasses);
+  }, [allClassesList, classes]);
 
   const handlePrint = () => {
     window.print();
@@ -168,32 +191,83 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+    <div
+      id="all-classes-export-modal-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block"
+    >
       {/* Print Page Styles to enforce exactly 1 page per class */}
       <style>{`
         @media print {
           @page {
             size: A4 portrait;
-            margin: 8mm 10mm 8mm 10mm;
+            margin: 6mm 8mm 6mm 8mm;
           }
-          body {
+          html, body {
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            color: #000000 !important;
             print-color-adjust: exact !important;
             -webkit-print-color-adjust: exact !important;
+          }
+          body > div#root > *:not(#all-classes-export-modal-backdrop) {
+            display: none !important;
+          }
+          #all-classes-export-modal-backdrop {
+            position: static !important;
+            inset: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: transparent !important;
+            overflow: visible !important;
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            min-height: auto !important;
+            max-height: none !important;
+          }
+          #all-classes-export-card {
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
             background: white !important;
-            color: black !important;
+            max-height: none !important;
+            height: auto !important;
+            overflow: visible !important;
+            width: 100% !important;
+            max-width: none !important;
+            display: block !important;
+          }
+          #printable-all-classes-report {
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: white !important;
+            display: block !important;
+            width: 100% !important;
           }
           .print-class-page {
+            page-break-before: auto !important;
+            break-before: auto !important;
             page-break-after: always !important;
             break-after: page !important;
+            page-break-inside: avoid !important;
             break-inside: avoid !important;
-            min-height: 275mm !important;
-            height: auto !important;
             box-sizing: border-box !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            padding: 0 !important;
+            padding: 4mm 0 !important;
             margin: 0 !important;
+            height: 275mm !important;
+            max-height: 275mm !important;
+            overflow: hidden !important;
+          }
+          .print-class-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
           .no-print {
             display: none !important;
@@ -202,7 +276,10 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
       `}</style>
 
       {/* Main Container */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden print:m-0 print:p-0 print:border-none print:shadow-none print:bg-white print:max-h-none print:w-full print:max-w-none">
+      <div
+        id="all-classes-export-card"
+        className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl max-h-[96vh] flex flex-col shadow-2xl overflow-hidden print:m-0 print:p-0 print:border-none print:shadow-none print:bg-white print:max-h-none print:w-full print:max-w-none print:overflow-visible print:block"
+      >
         
         {/* Modal Controls Header (Hidden in Print) */}
         <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 no-print">
@@ -326,7 +403,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-base tracking-tight text-slate-950">SMILE</span>
                         <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-bold text-slate-700">
-                          MS Neustift
+                          MS Weissenbach
                         </span>
                         <span className="text-[11px] text-slate-500 font-medium">· Schuljahr 2026/27</span>
                       </div>

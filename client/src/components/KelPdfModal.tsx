@@ -1,6 +1,6 @@
 import React from 'react';
 import { Printer, X, Award, CheckCircle } from 'lucide-react';
-import { PupilWithData, RubricCriterion } from '../types';
+import { PupilWithData, RubricCriterion, EvaluationItem } from '../types';
 
 interface KelPdfModalProps {
   pupil: PupilWithData;
@@ -17,10 +17,19 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
   roundName = 'Schuljahr 2026/27',
   onClose,
 }) => {
-  // Extract all evaluation items
-  const allItems = pupil.evaluations.flatMap((e) => e.items || []);
   const isPositive = (r?: string) => r === 'crown' || r === 'smile' || r === '++' || r === '+';
-  const positiveCount = allItems.filter((i) => isPositive(i.rating)).length;
+
+  // Extract all evaluation items deduped by itemKey (max 18)
+  const evaluatedItemsMap = new Map<string, EvaluationItem>();
+  for (const e of pupil.evaluations) {
+    if (!e.items) continue;
+    for (const it of e.items) {
+      if (!evaluatedItemsMap.has(it.itemKey) || isPositive(it.rating)) {
+        evaluatedItemsMap.set(it.itemKey, it);
+      }
+    }
+  }
+  const positiveCount = Array.from(evaluatedItemsMap.values()).filter((it) => isPositive(it.rating)).length;
 
   let calculatedRank = 'Lehrling';
   let rankBadgeStyle = 'bg-rose-500 text-slate-50';
@@ -68,7 +77,7 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-6">
             <div>
               <span className="text-xs uppercase font-extrabold tracking-wider text-slate-500">
-                Mittelschule Telfs Weissenbach
+                MS Weissenbach
               </span>
               <h1 className="text-2xl font-bold text-slate-900">SMILE Entwicklungsübersicht</h1>
               <p className="text-xs text-slate-600">Beobachtungsraster & KEL-Gesprächsbeiblatt · {roundName}</p>
@@ -100,7 +109,7 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {criteria.map((crit) => {
-                const critItems = allItems.filter((i) => i.criterionId === crit.id);
+                const critItems = Array.from(evaluatedItemsMap.values()).filter((i) => i.criterionId === crit.id);
                 const pos = critItems.filter((i) => isPositive(i.rating)).length;
                 const total = crit.items.length;
                 const isStrong = pos >= 2;

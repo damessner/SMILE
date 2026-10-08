@@ -42,6 +42,19 @@ function normaliseSubjects(raw: string[]) {
 }
 
 export const classRoutes: FastifyPluginAsync = async (fastify) => {
+  /** GET /api/classes/all — all real school classes for school-wide overview and reports */
+  fastify.get('/all', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    requireAuth(request);
+
+    const realClasses = await db
+      .select()
+      .from(schoolClasses)
+      .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
+      .orderBy(schoolClasses.grade, schoolClasses.name);
+
+    return reply.send(realClasses);
+  });
+
   /** GET /api/classes — the classes this user may open. */
   fastify.get('/', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
@@ -52,6 +65,11 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       .from(schoolClasses)
       .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
       .orderBy(schoolClasses.grade, schoolClasses.name);
+
+    const { all } = (request.query || {}) as { all?: string };
+    if (all === 'true' || all === '1') {
+      return reply.send(realClasses);
+    }
 
     // Look up teacher's timetable lesson hours across classes and subjects
     const teacherHoursMap = new Map<string, number>();
