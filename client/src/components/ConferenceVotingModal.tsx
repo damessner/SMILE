@@ -100,6 +100,7 @@ interface ConferenceVotingModalProps {
   initialClassId: number;
   currentUser?: User | null;
   onClose: () => void;
+  onOpenAllClassesExport?: () => void;
   onVotesUpdated?: () => void;
 }
 
@@ -108,6 +109,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   initialClassId,
   currentUser,
   onClose,
+  onOpenAllClassesExport,
   onVotesUpdated,
 }) => {
   const [selectedClassId, setSelectedClassId] = useState<number>(initialClassId);
@@ -399,6 +401,19 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
               <span className="hidden sm:inline">Liste</span>
             </button>
           </div>
+
+          {/* All Classes PDF Export */}
+          {onOpenAllClassesExport && (
+            <button
+              onClick={onOpenAllClassesExport}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700 shadow-sm"
+              title="Gesamtexport aller Klassen (1 Seite pro Klasse) vor und nach der Konferenz als PDF"
+            >
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Gesamtexport (PDF)</span>
+              <span className="sm:hidden">PDF</span>
+            </button>
+          )}
 
           {isAuthorized && pupils.length > 0 && (
             <button

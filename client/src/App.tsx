@@ -50,6 +50,7 @@ import { PupilManagerModal } from './components/PupilManagerModal';
 import { SchoolStatistics } from './components/SchoolStatistics';
 import { ConferenceVotingModal } from './components/ConferenceVotingModal';
 import { TeacherClassReportModal } from './components/TeacherClassReportModal';
+import { AllClassesConferenceExportModal } from './components/AllClassesConferenceExportModal';
 import { TimeoutEscalationModal } from './components/TimeoutEscalationModal';
 import { OnboardingTour } from './components/OnboardingTour';
 
@@ -113,6 +114,7 @@ export function App() {
     return () => forceDark(false);
   }, [conferenceModalOpen, forceDark]);
   const [teacherReportModalOpen, setTeacherReportModalOpen] = useState(false);
+  const [allClassesExportOpen, setAllClassesExportOpen] = useState(false);
   const [adminAccountsOpen, setAdminAccountsOpen] = useState(false);
   const [timeoutEscalationOpen, setTimeoutEscalationOpen] = useState(false);
   const [pendingTimeoutCount, setPendingTimeoutCount] = useState(0);
@@ -582,61 +584,6 @@ export function App() {
               )}
             </button>
           </div>
-
-          {/*
-            Class selector for the evaluation tab.
-            Shows class name and all subjects taught by the teacher in that class.
-          */}
-          {activeTab === 'bewertung' && (
-            <div data-tour="rating-classes" className="flex lg:max-w-xl xl:max-w-2xl items-center gap-1.5 overflow-x-auto py-1 -mx-1 px-1 max-w-full">
-              {classes.map((cls) => {
-                const isSelected = selectedClassId === cls.id;
-                const subs = cls.mySubjects || [];
-                return (
-                  <button
-                    key={cls.id}
-                    onClick={() => {
-                      setSelectedClassId(cls.id);
-                    }}
-                    className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-2 flex-shrink-0 ${
-                      isSelected
-                        ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
-                        : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
-                    }`}
-                  >
-                    <span className="font-bold text-sm tracking-tight">{cls.name}</span>
-                    {subs.length > 0 ? (
-                      <div className="flex items-center gap-1">
-                        {subs.map((s) => (
-                          <span
-                            key={s.code}
-                            title={s.name}
-                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
-                              isSelected
-                                ? 'bg-slate-950/20 text-slate-950'
-                                : s.isCoreSmile
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                            }`}
-                          >
-                            {s.code}
-                          </span>
-                        ))}
-                      </div>
-                    ) : cls.isKv ? (
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
-                          isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-purple-500/20 text-purple-300'
-                        }`}
-                      >
-                        KV
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         {/* Action Controls & User Profile */}
@@ -663,6 +610,19 @@ export function App() {
             >
               <Scale className="w-3.5 h-3.5" />
               <span>Konferenz-Modus</span>
+            </button>
+          )}
+
+          {/* All Classes PDF Export (Schulleitung SLC/MED + Admin) */}
+          {isSchoolLeadership && (
+            <button
+              onClick={() => setAllClassesExportOpen(true)}
+              className="pressable focus-ring min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 hover:text-slate-50 hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700 shadow-sm"
+              title="Gesamtexport aller Klassen (1 Seite pro Klasse) vor und nach der Konferenz als PDF"
+            >
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden xl:inline">Gesamtexport (PDF)</span>
+              <span className="xl:hidden">Alle PDF</span>
             </button>
           )}
 
@@ -764,6 +724,82 @@ export function App() {
         </div>
       </header>
 
+      {/* Dedicated Class Navigation Sub-Header for Bewertung */}
+      {activeTab === 'bewertung' && classes.length > 0 && (
+        <nav
+          aria-label="Klassenauswahl"
+          data-tour="rating-classes"
+          className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-[53px] md:top-[61px] z-30 px-4 md:px-6 py-2.5 flex items-center justify-between gap-3 shadow-xs"
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-x-auto py-0.5 no-scrollbar">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 hidden sm:inline">
+              Klassen:
+            </span>
+            {classes.map((cls) => {
+              const isSelected = selectedClassId === cls.id;
+              const subs = cls.mySubjects || [];
+              return (
+                <button
+                  key={cls.id}
+                  onClick={() => setSelectedClassId(cls.id)}
+                  aria-current={isSelected ? 'true' : undefined}
+                  className={`min-h-[40px] px-3.5 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-2 shrink-0 ${
+                    isSelected
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-md ring-2 ring-amber-400/50'
+                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
+                  }`}
+                >
+                  <span className="font-bold text-sm tracking-tight">{cls.name}</span>
+                  {subs.length > 0 ? (
+                    <div className="flex items-center gap-1">
+                      {subs.map((s) => (
+                        <span
+                          key={s.code}
+                          title={s.name}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
+                            isSelected
+                              ? 'bg-slate-950/20 text-slate-950'
+                              : s.isCoreSmile
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                          }`}
+                        >
+                          {s.code}
+                        </span>
+                      ))}
+                    </div>
+                  ) : cls.isKv ? (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
+                        isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-purple-500/20 text-purple-300'
+                      }`}
+                    >
+                      KV
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          {currentClass && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-slate-400 hidden xl:inline font-medium">
+                {pupils.length} Schüler*innen in Klasse {currentClass.name}
+              </span>
+              <button
+                onClick={() => setTeacherReportModalOpen(true)}
+                className="pressable focus-ring min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700/60 shadow-xs"
+                title={`1-Seiten Klassenbericht für Klasse ${currentClass.name} drucken`}
+              >
+                <Printer className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">1-Seiten Export ({currentClass.name})</span>
+                <span className="sm:hidden">Export</span>
+              </button>
+            </div>
+          )}
+        </nav>
+      )}
+
       {/* Homeroom Yellow Card Alert Banner */}
       {yellowAlertError && (
         <div
@@ -860,9 +896,18 @@ export function App() {
           initialClassId={selectedClassId || classes[0].id}
           currentUser={currentUser}
           onClose={() => setConferenceModalOpen(false)}
+          onOpenAllClassesExport={() => setAllClassesExportOpen(true)}
           onVotesUpdated={() => {
             if (selectedClassId) loadClassData(selectedClassId);
           }}
+        />
+      )}
+
+      {allClassesExportOpen && currentUser && (
+        <AllClassesConferenceExportModal
+          classes={classes}
+          currentUser={currentUser}
+          onClose={() => setAllClassesExportOpen(false)}
         />
       )}
 
