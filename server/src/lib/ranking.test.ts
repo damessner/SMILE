@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateRank,
   demote,
@@ -135,5 +135,86 @@ describe('isRank', () => {
     expect(isRank('')).toBe(false);
     expect(isRank(null)).toBe(false);
     expect(isRank("Meister'; DROP TABLE pupils; --")).toBe(false);
+  });
+});
+/**
+ * `RANK_AGGREGATION=normalized` had no test at all, which is how it survived as an
+ * arithmetic no-op: the "scaling" step was `(positive / 18) * 18`, which is `positive`.
+ * These tests pin what the mode actually does — the mean positive count per contributing
+ * evaluation — so it cannot be "fixed" into something else, or back into a no-op,
+ * without one of them failing. See roadmap D8.
+ */
+describe('rank aggregation modes', () => {
+  const pos = (n: number) => Array.from({ length: n }, () => ({ rating: '+' }));
+  const rated = (n: number) => Array.from({ length: n }, () => ({ rating: 'x' }));
+
+  it('total sums positives across every evaluation', () => {
+    const result = summarizeRatings([
+      { evaluationId: 'a', items: pos(6) },
+      { evaluationId: 'b', items: pos(6) },
+      { evaluationId: 'c', items: pos(5) },
+    ]);
+    // Default RANK_AGGREGATION is `total`, so the threshold sees 17 — the unbounded
+    // behaviour the config's own comment warns about.
+    expect(result.positiveCount).toBe(17);
+    expect(result.scoreForThreshold).toBe(17);
+  });
+
+  it('normalized reports the mean, not the sum', async () => {
+    vi.resetModules();
+    process.env.RANK_AGGREGATION = 'normalized';
+    process.env.SMILE_ENV_FILE = 'no-such-env-file-for-ranking-aggregation-tests';
+    vi.resetModules();
+    const { summarizeRatings: summarizeNormalized } = await import('./ranking.js');
+
+    const result = summarizeNormalized([
+      { evaluationId: 'a', items: pos(6) },
+      { evaluationId: 'b', items: pos(6) },
+      { evaluationId: 'c', items: pos(5) },
+    ]);
+
+    // 17 positives spread over 3 contributing evaluations.
+    expect(result.scoreForThreshold).toBeCloseTo(17 / 3, 6);
+    expect(result.positiveCount).toBe(17);
+    delete process.env.RANK_AGGREGATION;
+    vi.resetModules();
+  });
+
+  it('normalized does not rescale to an 18-item raster (the old no-op)', async () => {
+    process.env.RANK_AGGREGATION = 'normalized';
+    process.env.SMILE_ENV_FILE = 'no-such-env-file-for-ranking-aggregation-tests';
+    vi.resetModules();
+    const { summarizeRatings: summarizeNormalized } = await import('./ranking.js');
+
+    const result = summarizeNormalized([
+      { evaluationId: 'a', items: [...pos(5), ...rated(13)] },
+      { evaluationId: 'b', items: [...pos(5), ...rated(13)] },
+    ]);
+
+    // Both evaluations are full 18-item rasters with 5 positives each. The old code
+    // computed `(5/18)*18 + (5/18)*18` = 10, then divided by 2 = 5, which is the same
+    // number — the identity cancelled. The documented "14 of 18" behaviour would be 5,
+    // so this is unchanged, but it is now asserted rather than accidental.
+    expect(result.scoreForThreshold).toBeCloseTo(5, 6);
+    delete process.env.RANK_AGGREGATION;
+    vi.resetModules();
+  });
+
+  it('normalized ignores evaluations that contributed nothing', async () => {
+    process.env.RANK_AGGREGATION = 'normalized';
+    process.env.SMILE_ENV_FILE = 'no-such-env-file-for-ranking-aggregation-tests';
+    vi.resetModules();
+    const { summarizeRatings: summarizeNormalized } = await import('./ranking.js');
+
+    const result = summarizeNormalized([
+      { evaluationId: 'rated', items: pos(8) },
+      { evaluationId: 'blank', items: [] },
+    ]);
+
+    // Dividing by `groups.length` would halve the score; only contributing evaluations count.
+    expect(result.scoreForThreshold).toBeCloseTo(8, 6);
+    expect(result.evaluationCount).toBe(2);
+    delete process.env.RANK_AGGREGATION;
+    vi.resetModules();
   });
 });

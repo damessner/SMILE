@@ -218,7 +218,6 @@ describe('strict config parsing', () => {
     ['GLOBAL_RATE_LIMIT_MAX', '0'],
     ['GLOBAL_RATE_LIMIT_WINDOW_SECONDS', '0'],
     ['SESSION_TTL_SECONDS', '0'],
-    ['SESSION_GRACE_SECONDS', '-1'],
     ['BODY_LIMIT_BYTES', '0'],
     ['WS_ROOM_MAX_CLIENTS', '0'],
     ['WS_SOFT_LOCK_TTL_MS', '0'],

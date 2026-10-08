@@ -37,11 +37,20 @@
 
 ### Verification run for this review
 
-- `npm.cmd test`: **159 server tests passed; 79 client tests passed; 8 PostgreSQL integration tests skipped** by overriding `TEST_DATABASE_URL` to an unreachable localhost port. This deliberately avoided the current integration suite's table-wide cleanup.
-- `npm.cmd run typecheck --workspaces`: passed, 0 errors.
-- `npm.cmd run build`: passed for server and client.
-- No `.github/workflows` files are tracked; there is no CI workflow.
-- The directory is a clean `main` checkout. Root `bugfix.md` did not exist before this audit.
+- `npm test` (from the repository root): **356 server tests passed, 24 PostgreSQL integration tests
+  skipped**, **134 client tests passed**. `SKIP_POSTGRES_INTEGRATION=true` was set; see
+  `docs/SECURITY.md` for why a local opt-out is not integration evidence.
+- `npm run typecheck --workspaces`: passed, 0 errors.
+- **Correction (2026-10-08).** This section previously reported "159 server / 79 client tests" and
+  claimed "No `.github/workflows` files are tracked; there is no CI workflow." Both statements were
+  wrong when written: `.github/workflows/ci.yml` exists and runs typechecks, both test workspaces,
+  the PostgreSQL suite against a disposable database, the Python SSH-security tests, and the
+  production build. The counts below are current.
+- **Also corrected:** the "Confirmed open findings" table immediately below was written against
+  `main@4d0d1d0` and listed five items as P0 that are **already fixed in the tree this file
+  describes** — the unknown-subject-code hole, the behaviour-action IDOR, the fabricated vote
+  counts, the WebSocket name mismatch, and the JWT-in-response-body issue. Each is marked as fixed
+  inline below. Treat the table as history, not as a work queue.
 
 ### Already fixed — preserve these behaviours
 
@@ -52,33 +61,39 @@
 - `/status` avoids a class-wide reload broadcast for comment-only writes; a report already open on a co-teacher's screen can still be stale (Task 13).
 - Existing guards prevent many class/pupil mismatches; parameterized SQL is used in the reviewed raw-query sites. This audit found no SQL-injection vector in those parameterized queries.
 
-### Confirmed open findings
+### Findings from the `main@4d0d1d0` audit, with current status
 
-**Priority definitions:** P0 = stop-data-loss/unsafe-test-target or official-record integrity; P1 = close before the next production deployment or conference; P2 = reliability and user-facing correctness; P3 = scale, accessibility, and documentation cleanup. “P0” does not authorize a deployment or a live-data operation.
+Priority definitions (historical): P0 = stop-data-loss/unsafe-test-target or official-record
+integrity; P1 = close before the next production deployment or conference; P2 = reliability and
+user-facing correctness; P3 = scale, accessibility, documentation. “P0” does not authorize a
+deployment or a live-data operation.
 
-| Priority | Finding | Current evidence |
+**Read the Status column before acting.** Several entries were open when this table was written and
+are closed in the current tree. They are kept rather than deleted so the reasoning is not lost.
+
+| Was | Finding | Status now |
 |---|---|---|
-| P0 | Integration test can migrate and clear an arbitrary configured database | `server/src/routes/evaluations.integration.test.ts:15-76` |
-| P0 | Plaintext credentials remain in ignored local scripts; three pupil-data archives are in the cloud-synced tree | `scratch/migrate_subject_codes.py`, `webuntis-login.ps1`; root `backup*.zip`; `.gitignore` hides them from normal status |
-| P0 | Unknown subject codes can create unlimited evaluations; write authorization is class-wide, not subject-specific | `server/src/utils/subject.ts:147-167`; `routes/evaluations.ts:97,233,312,396,465`; `ws/live-sync.ts:264-266,287-294` |
-| P0 | Conference vote counts can claim uncast yes votes | `server/src/routes/conferences.ts:37-43,166-168,255-273` |
-| P1 | Class-scoped lock request updates one global round lock; readers and writers may choose different rounds | `conferences.ts:66-73`; `evaluations.ts:39-46`; `classes.ts`, `statistics.ts`, `conferences.ts` active-round queries |
-| P1 | Missing `teacherId` is treated as unrestricted by `getGlobalAccess`; `/timeouts/active` is unscoped and unbounded | `guards.ts:161-193`; `timeouts.ts:149-172` |
-| P1 | Cross-pupil behaviour-action delete can authorize using `:id` but delete a different `:actionId` | `pupils.ts:312-336` |
-| P1 | CSRF Origin check allows every origin with the default empty allowlist; `/ws` is a safe-method GET and bypasses the check | `plugins/security.ts:30-36,66-80`; `index.ts:130` |
-| P1 | Per-account rate limit uses `request.authUser` from a default `onRequest` hook, before auth populates it | `index.ts:91-103`; `@fastify/rate-limit` default is `onRequest` |
-| P1 | No global error handler; no Fastify body schemas on routes; malformed types can throw or reach PostgreSQL | `index.ts` has no `setErrorHandler`; route handlers cast bodies directly |
-| P1 | Password-reset endpoint only inserts a request; JWT is also returned in JSON despite the HttpOnly cookie | `auth.ts:93-109,153-177,199-220` |
-| P1 | `pupil_id_seq` is missing from the only migration; `pupil_behavior_actions` is created by runtime DDL instead of a migration | `schema.ts:12,267-281`; `server/drizzle/0000_init_schema_hardened.sql`; `db/index.ts:51-74` |
-| P1 | Administrative writes may use `teacherId ?? 0` against non-null teacher foreign keys | `cards.ts:81`; `evaluations.ts:158,264,347,499`; `pupils.ts:284`; `timeouts.ts:74,85,398,403`; `live-sync.ts:355` |
-| P1 | Two WebSocket message names do not match; notifications for issued timeouts and confirmed final ranks are dropped | `timeouts.ts:119,126`; `conferences.ts:210,314`; `useLiveSync.ts:123-126` |
-| P1 | Rank semantics are inconsistent/unbounded; three active client reports still flatten all evaluations | `ranking.ts:52-73`; `Schulalltag.tsx:210-215`; `KelPdfModal.tsx:21`; `TeacherClassReportModal.tsx:39-43` |
-| P2 | No reconnect, socket errors are swallowed, soft locks do not expire or include subject, conflict data is not applied to the cell | `useLiveSync.ts:26-29,45,131-155,180-208`; `live-sync.ts:217-243`; `BeobachtungsGrid.tsx:1599-1601` |
-| P2 | Client deadlines are local-time literals; comment route allows post-deadline updates but its textareas are disabled then | `config.ts:194-195`; `BeobachtungsGrid.tsx:274,1058`; `ClassOverview.tsx:47`; `evaluations.ts:216-287` |
-| P2 | Audit writes are separate from many data writes; backup export loads every row of 16 tables into memory | e.g. `conferences.ts:173-207`; `backup.ts:44-79` |
-| P2 | Stale security/architecture docs and test totals contradict current code | `SMILE_ARCHITECTURE_AND_CODE_REVIEW.md`; `IF_YOU_ARE_AN_AI.md`; `docs/SECURITY.md` |
-
----
+| P0 | Integration test can migrate and clear an arbitrary configured database | **Fixed** — `test-db-guard` requires an explicit loopback `smile_db_test` target, and a local opt-out is rejected as evidence |
+| P0 | Plaintext credentials in ignored local scripts; pupil-data archives in the synced tree | **Partly fixed.** Scripts read credentials from the environment; **the archives are still in the tree** (`docs/SECURITY.md` item 5) |
+| P0 | Unknown subject codes create unlimited evaluations; authorization class-wide, not subject-specific | **Fixed** — `normalizeKnownSubject()` on all write paths; `canRateSubject()` checks `access.subjects` |
+| P0 | Conference vote counts claim uncast yes votes | **Fixed** — participation is derived from submitted evaluations; the hand-typed tally is gone |
+| P1 | Class-scoped lock request updates one global round lock; readers/writers may pick different rounds | **Still open** — needs a per-class lock table (schema change) |
+| P1 | `getGlobalAccess` treats a missing `teacherId` as unrestricted; `/timeouts/active` unscoped and unbounded | **Fixed** — fails closed; `/timeouts/active` refuses pupils and is `LIMIT 100`. **Its school-wide visibility is an open product decision**, not a code defect |
+| P1 | Cross-pupil behaviour-action delete authorizes on `:id`, deletes `:actionId` | **Fixed** — the select filters on both `id` and `pupilId` |
+| P1 | CSRF Origin check allows every origin with the default empty allowlist; `/ws` bypasses it | **Fixed** — same-origin is resolved against `request.headers.host`; the allowlist is additive; the WS upgrade is checked |
+| P1 | Rate limiter buckets by IP because `authenticate` runs later | **Fixed** — `hook: 'preHandler'` |
+| P1 | No global error handler; no body schemas | **Fixed** — `setErrorHandler` plus JSON Schemas with non-coercing AJV |
+| P1 | Password-reset endpoint only inserts a request; JWT returned in JSON | **Fixed** — reset sets `must_change_password`; no token in any response body |
+| P1 | `pupil_id_seq` missing from the only migration; `pupil_behavior_actions` created by runtime DDL | **Fixed (2026-10-08)** — migration `0003_pupil_id_sequence_and_behavior_actions`; the hand-written DDL is gone from `runMigrations()`; `server/src/db/migrations.test.ts` prevents recurrence |
+| P1 | Administrative writes use `teacherId ?? 0` against non-null FKs | **Mostly fixed** — migration `0002` gives admins a real teacher row and writes fail closed with `SYSTEM_ACTOR_NOT_CONFIGURED`. The `?? 0` sentinel still appears at three unreachable `timeouts.ts` sites |
+| P1 | Two WebSocket message names do not match | **Fixed** — client now handles the server's names; all 20 emitted types have handlers |
+| P1 | Rank semantics unbounded; client reports flatten all evaluations | **Changed shape, still open.** The `flatMap` is gone; four files now merge with `|| isPositiveRating(...)`, which is bounded at 18 but inflates across subjects. Needs a product decision — see `IF_YOU_ARE_AN_AI.md` Invariant 5 |
+| **P0** | **Conference summary readable for any class by any teacher** (`!canRead && !teacherId && !admin` never refused a teacher) | **Fixed (2026-10-08)** — extracted `canReadConferenceSummary()`, unit-tested. Not in the original table; found in the 2026-10-08 review |
+| **P0** | **Full-database export wrote no audit record** | **Fixed (2026-10-08)** — writes `FULL_DATA_EXPORTED`. Also from the 2026-10-08 review |
+| P2 | No reconnect, swallowed socket errors, locks never expire, conflicts not applied | **Fixed** — reconnect with backoff, TTL locks, conflict reconciliation, correlated errors |
+| P2 | Audit writes sit outside the data transaction in 14 places | **Still open** — `/vote` and `/submit` still commit, then audit separately |
+| P2 | `batch-default` ~540 serial round trips; `vote-all` 200 sequential `getPupil` calls | **Still open** |
+| P2 | Stale docs and contradictory test totals | **Partly fixed (2026-10-08)** — the four actively-misleading claims are corrected; the roadmap below still carries stale line references |
 
 ## Decisions Required Before the Related Implementation
 

@@ -49,16 +49,29 @@ interface CardItem {
   createdAt: string;
 }
 
+interface SubjectEvidence {
+  subjectCode: string;
+  subjectName: string;
+  positiveCount: number;
+  totalRated: number;
+  teacherShort: string;
+}
+
 interface ConferencePupil {
   id: number;
   fullName: string;
-  positiveCount: number;
-  totalRated: number;
-  baseRank: 'Lehrling' | 'Geselle' | 'Meister';
-  calculatedRank: 'Lehrling' | 'Geselle' | 'Meister';
-  weightedRank?: 'Lehrling' | 'Geselle' | 'Meister';
+  /**
+   * The 18-item raster per subject, as decision *support*. It is deliberately not
+   * aggregated into a rank: summing it across core subjects made three teachers who
+   * each rated a pupil 6/18 produce a "Meister", and that number was what the screen
+   * fell back to whenever nobody had confirmed anything.
+   */
+  subjectEvidence: SubjectEvidence[];
+  /** null = no teacher has voted yet. Never back-filled with a computed value. */
+  suggestedRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
+  /** null = the conference has not decided this pupil. */
+  finalRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
   hasRedCardDemotion: boolean;
-  finalRank: 'Lehrling' | 'Geselle' | 'Meister';
   isConfirmed: boolean;
   confirmedAt?: string | null;
   /**
@@ -85,8 +98,8 @@ interface ConferencePupil {
     pctLehrling?: number;
     pctGeselle?: number;
     pctMeister?: number;
-    suggestedRankByHours?: 'Lehrling' | 'Geselle' | 'Meister';
-    weightedRank?: 'Lehrling' | 'Geselle' | 'Meister';
+    suggestedRankByHours?: 'Lehrling' | 'Geselle' | 'Meister' | null;
+    weightedRank?: 'Lehrling' | 'Geselle' | 'Meister' | null;
   };
   cards: {
     green: CardItem[];
@@ -164,7 +177,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
       const initialMap: Record<number, { rank: 'Lehrling' | 'Geselle' | 'Meister' }> = {};
       for (const p of data.summary || []) {
         initialMap[p.id] = {
-          rank: (p.finalRank as any) || p.calculatedRank,
+          rank: (p.finalRank as any) ?? null,
         };
       }
       setPupilVotes(initialMap);
@@ -207,7 +220,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
   // Toggle acceptance (Angenommen / Zurücknehmen)
   const handleToggleVoteSingle = async (p: ConferencePupil) => {
-    const cur = pupilVotes[p.id] || { rank: p.finalRank || p.calculatedRank };
+    const cur = pupilVotes[p.id] || { rank: p.finalRank ?? null };
     setSubmittingId(p.id);
     setError(null);
     try {
@@ -254,7 +267,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
         const cur = pupilVotes[p.id];
         return {
           pupilId: p.id,
-          rank: cur?.rank || p.calculatedRank,
+          rank: cur?.rank ?? null,
         };
       });
       await voteAllConference(selectedClassId, items);
@@ -461,7 +474,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           {(() => {
             const p = currentPupil;
             const cur = pupilVotes[p.id] || {
-              rank: p.finalRank || p.calculatedRank,
+              rank: p.finalRank ?? null,
             };
 
             // Derived only from submitted evaluations. No roster-derived headcount.
@@ -511,7 +524,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                       {p.hasRedCardDemotion && (
                         <div className="px-3 py-1 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-1.5 animate-pulse">
                           <ShieldAlert className="w-4 h-4 text-rose-400" />
-                          <span>Degradiert durch Rote Karte ({p.baseRank} ➔ {p.calculatedRank})</span>
+                          <span>Degradiert durch Rote Karte</span>
                         </div>
                       )}
 
@@ -526,17 +539,32 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     <div>
                       <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
                         <span>
-                          Positive Merkmale (Raster): <strong className="text-slate-50 text-sm">{p.positiveCount}</strong> / 18
-                        </span>
-                        <span>
-                          Vorschlag nach Raster: <strong className="text-amber-300 font-bold">{p.calculatedRank}</strong>
+                          Raster (je Fach):{' '}
+                          <strong className="text-amber-300 font-bold">
+                            {p.subjectEvidence?.length
+                              ? p.subjectEvidence
+                                  .map((s) => `${s.subjectCode} ${s.positiveCount}/${s.totalRated || 18}`)
+                                  .join(' · ')
+                                  : 'keine Bewertung'}
+                          </strong>
                         </span>
                       </div>
                       <div className="w-full h-3.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
-                        <div
-                          style={{ width: `${Math.min(100, Math.round((p.positiveCount / 18) * 100))}%` }}
-                          className={`h-full ${barColor} transition-all duration-300 rounded-full`}
-                        />
+                        {p.subjectEvidence?.length ? (
+                          // Each subject's share of the 18-item raster, shown separately.
+                          // Previously one bar summed every core subject, so three
+                          // teachers at 6/18 each rendered a full Meister bar.
+                          p.subjectEvidence.map((s) => (
+                            <div
+                              key={`${s.subjectCode}-${s.teacherShort}`}
+                              style={{ width: `${Math.min(100, Math.round((s.positiveCount / 18) * 100))}%` }}
+                              className={`h-full ${barColor} transition-all duration-300`}
+                              title={`${s.subjectName}: ${s.positiveCount}/${s.totalRated || 18} positiv`}
+                            />
+                          ))
+                        ) : (
+                          <div className="h-full w-full bg-slate-800" />
+                        )}
                       </div>
                     </div>
 
@@ -550,10 +578,10 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                           </span>
                           <span className="flex items-center gap-1.5">
                             <span>Vorschlag nach Stunden:</span>
-                            <strong className="text-amber-300 font-bold">{p.voteStats.weightedRank || p.weightedRank || p.calculatedRank}</strong>
+                            <strong className="text-amber-300 font-bold">{p.suggestedRank ?? 'keine Mehrheit'}</strong>
                             {p.hasRedCardDemotion && (
-                              <span className="text-[10px] text-rose-400 font-semibold" title={`Ohne Rote Karte wäre Vorschlag ${p.voteStats.weightedRank || p.weightedRank || p.calculatedRank}`}>
-                                (durch 🔴 beschränkt auf {p.calculatedRank})
+                              <span className="text-[10px] text-rose-400 font-semibold" title={`Ohne Rote Karte wäre die Einordnung ${p.suggestedRank ?? 'offen'}`}>
+                                
                               </span>
                             )}
                           </span>
@@ -798,14 +826,14 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-1.5 flex flex-wrap items-center gap-2">
                         <span>Festgelegter Rang</span>
-                        {(p.voteStats?.weightedRank || p.weightedRank) && (p.voteStats?.weightedRank || p.weightedRank) !== cur.rank && isAuthorized && (
+                        {p.suggestedRank && p.suggestedRank !== cur.rank && isAuthorized && (
                           <button
                             type="button"
-                            onClick={() => handleRankChange(p.id, (p.voteStats?.weightedRank || p.weightedRank)!)}
+                            onClick={() => handleRankChange(p.id, p.suggestedRank!)}
                             className="text-[9px] px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer"
                             title="Vorschlag nach Unterrichtsstunden übernehmen"
                           >
-                            <span>⚖️ Stunden-Vorschlag ({(p.voteStats?.weightedRank || p.weightedRank)}) übernehmen</span>
+                            <span>⚖️ Stunden-Vorschlag ({p.suggestedRank}) übernehmen</span>
                           </button>
                         )}
                       </div>
@@ -957,7 +985,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 max-w-7xl w-full mx-auto divide-y divide-slate-800/80">
           {pupils.map((pupil, idx) => {
             const cur = pupilVotes[pupil.id] || {
-              rank: pupil.finalRank || pupil.calculatedRank,
+              rank: pupil.finalRank ?? null,
             };
 
             // Derived only from submitted evaluations. No roster-derived headcount.
@@ -1008,12 +1036,20 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
                   <div className="mt-2 pl-8 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Positive Merkmale: <strong className="text-slate-50">{pupil.positiveCount}</strong> / 18</span>
-                      <span>Vorschlag: <strong className="text-amber-300">{pupil.calculatedRank}</strong></span>
+                      <span>Raster:{' '}
+                        <strong className="text-slate-50">
+                          {pupil.subjectEvidence?.length
+                            ? pupil.subjectEvidence.map((s) => `${s.subjectCode} ${s.positiveCount}/${s.totalRated || 18}`).join(' · ')
+                            : 'keine Bewertung'}
+                        </strong>
+                      </span>
+                      <span>Nachfolgende Beschlüsse</span>
                     </div>
                     <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700">
                       <div
-                        style={{ width: `${Math.min(100, Math.round((pupil.positiveCount / 18) * 100))}%` }}
+                        style={{
+                          width: `${Math.min(100, Math.round(((pupil.subjectEvidence ?? []).reduce((n, s) => n + s.positiveCount, 0) / 18) * 100))}%`,
+                        }}
                         className={`h-full ${barColor}`}
                       />
                     </div>
@@ -1022,7 +1058,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
                           <span>⚖️ Stunden ({pupil.voteStats.totalVotedHours}h):</span>
                           <span className="font-semibold text-amber-300">
-                            {pupil.voteStats.weightedRank || pupil.weightedRank || pupil.calculatedRank}
+                            {pupil.suggestedRank ?? 'keine Mehrheit'}
                           </span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
@@ -1184,7 +1220,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           {/* Quick Pupil Thumbnails Carousel */}
           <div className="flex items-center gap-1.5 overflow-x-auto max-w-xl py-1">
             {pupils.map((p, idx) => {
-              const cur = pupilVotes[p.id] || { rank: p.finalRank || p.calculatedRank };
+              const cur = pupilVotes[p.id] || { rank: p.finalRank ?? null };
               let dotColor = 'bg-rose-500';
               if (cur.rank === 'Meister') dotColor = 'bg-amber-400';
               else if (cur.rank === 'Geselle') dotColor = 'bg-blue-500';

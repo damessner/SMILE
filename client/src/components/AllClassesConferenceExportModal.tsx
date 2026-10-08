@@ -35,11 +35,9 @@ interface ConferencePupilSummary {
   fullName: string;
   positiveCount: number;
   totalRated: number;
-  baseRank: 'Lehrling' | 'Geselle' | 'Meister';
-  calculatedRank: 'Lehrling' | 'Geselle' | 'Meister';
-  weightedRank?: 'Lehrling' | 'Geselle' | 'Meister';
+  suggestedRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
+  finalRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
   hasRedCardDemotion: boolean;
-  finalRank: 'Lehrling' | 'Geselle' | 'Meister';
   isConfirmed: boolean;
   confirmedAt?: string | null;
   overrideReason?: string | null;
@@ -60,8 +58,8 @@ interface ConferencePupilSummary {
     pctLehrling?: number;
     pctGeselle?: number;
     pctMeister?: number;
-    suggestedRankByHours?: 'Lehrling' | 'Geselle' | 'Meister';
-    weightedRank?: 'Lehrling' | 'Geselle' | 'Meister';
+    suggestedRankByHours?: 'Lehrling' | 'Geselle' | 'Meister' | null;
+    weightedRank?: 'Lehrling' | 'Geselle' | 'Meister' | null;
   };
   cards: {
     green: Array<{ id: string; teacherShort: string }>;
@@ -378,9 +376,9 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
             const confirmedCount = summary.filter((p) => p.isConfirmed).length;
             const openDecisionCount = totalPupils - confirmedCount;
 
-            const lehrlingCount = summary.filter((p) => (p.isConfirmed ? p.finalRank === 'Lehrling' : (p.weightedRank || p.calculatedRank) === 'Lehrling')).length;
-            const geselleCount = summary.filter((p) => (p.isConfirmed ? p.finalRank === 'Geselle' : (p.weightedRank || p.calculatedRank) === 'Geselle')).length;
-            const meisterCount = summary.filter((p) => (p.isConfirmed ? p.finalRank === 'Meister' : (p.weightedRank || p.calculatedRank) === 'Meister')).length;
+            const lehrlingCount = summary.filter((p) => (p.isConfirmed ? p.finalRank : p.suggestedRank) === 'Lehrling').length;
+            const geselleCount = summary.filter((p) => (p.isConfirmed ? p.finalRank : p.suggestedRank) === 'Geselle').length;
+            const meisterCount = summary.filter((p) => (p.isConfirmed ? p.finalRank : p.suggestedRank) === 'Meister').length;
 
             const pctLehrling = totalPupils > 0 ? Math.round((lehrlingCount / totalPupils) * 100) : 0;
             const pctGeselle = totalPupils > 0 ? Math.round((geselleCount / totalPupils) * 100) : 0;
@@ -509,7 +507,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                           const pctG = vStats.pctGeselle ?? (totalVotes > 0 ? Math.round((vStats.Geselle / totalVotes) * 100) : 0);
                           const pctM = vStats.pctMeister ?? (totalVotes > 0 ? Math.round((vStats.Meister / totalVotes) * 100) : 0);
 
-                          const suggested = p.weightedRank || p.calculatedRank;
+                          const suggested = p.suggestedRank;
                           const effectiveRank = p.isConfirmed ? p.finalRank : suggested;
 
                           let rankBadgeClass = 'bg-rose-100 text-rose-800 border-rose-300';

@@ -53,13 +53,28 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     const schoolWide = config.statisticsSchoolWide;
     const global = schoolWide ? { classIds: null } : await getGlobalAccess(user);
 
+    /**
+     * One shape for `scope`, built in one place.
+     *
+     * The early returns below used to hand-write this object each time, and two of the
+     * five omitted `schoolWide` — including the success path. A client reading
+     * `scope.schoolWide` therefore got a correct answer on every *empty* response and
+     * `undefined` precisely when there was data to describe. Deriving it here means a
+     * future branch cannot silently drop a field again.
+     */
+    const buildScope = () => ({
+      restricted: global.classIds !== null,
+      schoolWide,
+      classIds: global.classIds,
+    });
+
     if (global.classIds !== null && global.classIds.length === 0) {
       return reply.send({
         classes: [],
         round: null,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: true, schoolWide: false, classIds: [] },
+        scope: buildScope(),
       });
     }
 
@@ -85,7 +100,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         round: null,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, schoolWide, classIds: global.classIds },
+        scope: buildScope(),
       });
     }
 
@@ -111,7 +126,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         round,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, classIds: global.classIds },
+        scope: buildScope(),
       });
     }
 
@@ -134,7 +149,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         round,
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, schoolWide, classIds: global.classIds },
+        scope: buildScope(),
       });
     }
 
@@ -282,7 +297,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         percentMeister: pct(countMeister),
       },
       pupils: pupilsSummary,
-      scope: { restricted: global.classIds !== null, classIds: global.classIds },
+      scope: buildScope(),
     });
   });
 

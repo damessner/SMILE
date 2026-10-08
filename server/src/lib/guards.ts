@@ -200,7 +200,6 @@ export async function getGlobalAccess(user: Identity): Promise<GlobalAccess> {
   };
 }
 
-/** May this user act on data belonging to `classId`? Used to scope cross-class endpoints. */
 export async function canAccessClass(user: Identity, classId: number): Promise<boolean> {
   const access = await getGlobalAccess(user);
   if (access.classIds === null) return true;

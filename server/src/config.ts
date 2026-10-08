@@ -235,8 +235,15 @@ export const config = {
 
   /** Session lifetime. Deliberately short; the UI re-authenticates on expiry. */
   sessionTtlSeconds: readInt('SESSION_TTL_SECONDS', 8 * 60 * 60),
-  /** Grace window so an in-flight request does not die mid-write at expiry. */
-  sessionGraceSeconds: readInt('SESSION_GRACE_SECONDS', 60),
+  /**
+   * SESSION_GRACE_SECONDS was removed.
+   *
+   * It was read, validated and advertised in .env.example as a window that keeps an
+   * in-flight request alive past token expiry, but nothing ever referenced it. An
+   * operator who set it was configuring a behaviour that did not exist. Either implement
+   * the grace window or leave it out; a knob that only reads as a feature is worse than
+   * no knob.
+   */
 
   loginRateLimit: {
     max: readInt('LOGIN_RATE_LIMIT_MAX', 10),
@@ -339,9 +346,6 @@ export function assertServerConfig(): void {
 
   if (config.port > 65_535) {
     throw new ConfigError('Environment variable PORT must be between 1 and 65535.');
-  }
-  if (config.sessionGraceSeconds < 0) {
-    throw new ConfigError('Environment variable SESSION_GRACE_SECONDS must be 0 or greater.');
   }
   if (config.rankThresholds.geselle < 0) {
     throw new ConfigError('RANK_THRESHOLD_GESELLE must be 0 or greater.');

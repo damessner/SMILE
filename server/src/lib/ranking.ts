@@ -33,10 +33,21 @@ export interface RatingGroups {
   /**
    * The figure the rank thresholds are compared against.
    *
-   * With `RANK_AGGREGATION=total` this is `positiveCount`, preserving the behaviour the
-   * system has always reported. With `normalized` each evaluation is rescaled to an
-   * 18-item raster before averaging, so "14" always means "14 of 18" no matter how many
-   * core-subject teachers rated the pupil.
+   * With `RANK_AGGREGATION=total` (the default, preserving historical behaviour) this
+   * is `positiveCount`: every positive item across all of a pupil's evaluations. That
+   * total is unbounded — a pupil rated by three core-subject teachers can reach 54
+   * items — so 14 is easier to reach with more co-teachers than with one.
+   *
+   * With `normalized` it is the *mean* positive count across the evaluations that
+   * actually contributed items.
+   *
+   * It does NOT rescale to an 18-item raster, which is what the setting's own docstring
+   * used to claim. The "scaling" step was `(positive / 18) * 18`, which is an identity,
+   * so the only thing the mode ever did was divide by the number of contributing
+   * evaluations. Corrected here rather than left as a comment that misdescribes the
+   * code; the arithmetic is now written as the average it actually is. See hardening
+   * roadmap D8 — making this mean "14 of 18" needs the per-evaluation *rated* count as
+   * the denominator, which is a product decision, not a one-line change.
    */
   scoreForThreshold: number;
 }
@@ -67,9 +78,10 @@ export function summarizeRatings(
   let scoreForThreshold = positiveCount;
 
   if (config.rankAggregation === 'normalized' && contributing.length > 0) {
-    const perItem = config.rubricItemCount;
-    const scaledTotal = contributing.reduce((sum, e) => sum + (e.positive / perItem) * perItem, 0);
-    scoreForThreshold = scaledTotal / contributing.length;
+    // The mean positive count per contributing evaluation. Written without the
+    // `(positive / perItem) * perItem` round trip this used to perform, which cancelled
+    // out to `positive` and made the normalisation a no-op.
+    scoreForThreshold = positiveCount / contributing.length;
   }
 
   return {

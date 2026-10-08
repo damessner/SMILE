@@ -20,7 +20,7 @@ import {
   timetableLessons,
   users,
 } from '../db/schema.js';
-import { assertPasswordCurrent, requireAuth } from '../lib/guards.js';
+import { assertPasswordCurrent, requireAuth, safeTeacherId } from '../lib/guards.js';
 
 export const backupRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -34,6 +34,13 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
    *    incident after a restore.
    *
    * Password hashes are never included.
+   *
+   * The export is itself written to `audit_logs`. This is the one action that can move
+   * the entire school record out of the system in a single request, and it used to leave
+   * only a line in the pino stream — which is exactly the history that does not survive
+   * an incident. The payload records who, when, how many pupils, and nothing about the
+   * contents; putting pupil names into the audit row would copy the data into the one
+   * table every administrator can read without a per-record decision.
    */
   fastify.get(
     '/export-json',
@@ -113,6 +120,24 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
         { auditRows: allAudits.length, pupils: allPupils.length },
         'Full data export',
       );
+
+      // Recorded after a successful read, in the same shape as every other privileged
+      // mutation. A failed or unauthorized attempt never reaches this point, because the
+      // role gate and the password guard run first.
+      await db.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'FULL_DATA_EXPORTED',
+        entity: 'system',
+        entityId: 'backup',
+        payload: {
+          pupils: allPupils.length,
+          teachers: allTeachers.length,
+          evaluations: allEvals.length,
+          behaviorCards: allCards.length,
+          auditRowsIncluded: allAudits.length,
+          exportStartedAt: backupBundle.exportedAt,
+        },
+      });
 
       return reply.send(backupBundle);
     },

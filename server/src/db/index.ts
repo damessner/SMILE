@@ -72,29 +72,19 @@ const migrationsFolder = path.resolve(
   '../../drizzle',
 );
 
-/** Run pending Drizzle migrations. Safe to call on every boot. */
+/**
+ * Run pending Drizzle migrations. Safe to call on every boot.
+ *
+ * Schema ownership lives in `server/drizzle/*.sql` and nowhere else. This function used
+ * to follow the migrator with hand-written `CREATE TABLE IF NOT EXISTS
+ * pupil_behavior_actions` DDL, which put a real table outside the migration history and,
+ * because the integration suite builds its schema through this function, silently masked
+ * the missing `pupil_id_seq` sequence. Both objects are now created by migration
+ * `0003_pupil_id_sequence_and_behavior_actions`.
+ */
 export async function runMigrations(): Promise<void> {
   const { migrate } = await import('drizzle-orm/node-postgres/migrator');
   await migrate(drizzle(getPool(), { schema }), { migrationsFolder });
-
-  // Ensure table pupil_behavior_actions exists
-  await getPool().query(`
-    CREATE TABLE IF NOT EXISTS pupil_behavior_actions (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      pupil_id INTEGER NOT NULL REFERENCES pupils(id),
-      stage_level INTEGER NOT NULL,
-      stage_title TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'completed',
-      action_date TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
-      teacher_id INTEGER NOT NULL REFERENCES teachers(id),
-      notes TEXT,
-      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS pupil_behavior_actions_pupil_stage_idx
-      ON pupil_behavior_actions (pupil_id, stage_level);
-    CREATE INDEX IF NOT EXISTS pupil_behavior_actions_date_idx
-      ON pupil_behavior_actions (action_date);
-  `);
 }
 
 export async function closePool(): Promise<void> {

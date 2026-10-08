@@ -15,9 +15,10 @@ import {
   safeTeacherId,
   type AuthUser,
 } from '../lib/guards.js';
-import { calculateRank, demote, summarizeRatings, type RatingLike } from '../lib/ranking.js';
+import { demote, summarizeRatings, type Rank, type RatingLike } from '../lib/ranking.js';
 import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+import type { ClassAccess, Identity } from '../lib/guards.js';
 
 /**
  * Formal Notenkonferenz decisions.
@@ -42,6 +43,70 @@ async function countClassTeachers(classId: number): Promise<number> {
     [classId],
   );
   return result.rows[0]?.count || 1;
+}
+
+/**
+ * May this caller read the conference summary for one class?
+ *
+ * The payload carries every pupil, every behaviour card and its note, every other
+ * teacher's `comment` / `nextStep`, and every confirmed rank. It therefore rests on
+ * `canRead` and nothing else.
+ *
+ * Extracted from the handler so it can be tested without a database, and so the next
+ * edit to this file cannot silently reintroduce a wider gate: the previous condition was
+ * `!access.canRead && !user.teacherId && user.role !== 'admin'`, whose second conjunct
+ * is false for every teacher, so no teacher was ever refused.
+ */
+export function canReadConferenceSummary(_user: Identity, access: ClassAccess): boolean {
+  if (!access.exists) return false;
+  return access.canRead;
+}
+
+/**
+ * Hours-weighted suggestion from the three accumulated weight buckets.
+ *
+ * A suggestion requires a **single strict leader**. A tie or a three-way split returns
+ * `null`, which the screen renders as "keine Mehrheit" so the chair decides rather than
+ * inheriting an answer.
+ *
+ * The previous implementation tested
+ * `hoursMeister >= hoursGeselle && hoursMeister >= hoursLehrling`, which resolves ties
+ * *upward*. With the three core subjects weighted equally, a 1-1-1 split produced
+ * `Meister` - a completely deadlocked conference recorded the pupil at the top rank.
+ * Verified: Meister 1 / Geselle 1 / Lehrling 1 now returns null.
+ */
+export function hoursWeightedSuggestion(
+  hoursLehrling: number,
+  hoursGeselle: number,
+  hoursMeister: number,
+): Rank | null {
+  const buckets = [
+    { rank: 'Lehrling' as const, hours: hoursLehrling },
+    { rank: 'Geselle' as const, hours: hoursGeselle },
+    { rank: 'Meister' as const, hours: hoursMeister },
+  ];
+  const top = Math.max(hoursLehrling, hoursGeselle, hoursMeister);
+  if (top <= 0) return null;
+  const leaders = buckets.filter((b) => b.hours === top);
+  return leaders.length === 1 ? leaders[0]!.rank : null;
+}
+
+/** The rank to present for a pupil, after the red-card demotion. */
+export function presentRank(
+  confirmedRank: Rank | null | undefined,
+  suggestion: Rank | null,
+  hasActiveRedCard: boolean,
+): { presentedRank: Rank | null; suggestedRank: Rank | null; hasRedCardDemotion: boolean } {
+  const demote1 = (rank: Rank | null): Rank | null =>
+    hasActiveRedCard && rank ? demote(rank) : rank;
+
+  const presentedRank = demote1(confirmedRank ?? null);
+  const suggestedRank = demote1(suggestion);
+  return {
+    presentedRank,
+    suggestedRank,
+    hasRedCardDemotion: hasActiveRedCard && presentedRank !== null,
+  };
 }
 
 export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
@@ -390,8 +455,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
 
     const access = await getClassAccess(user, cid);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
-    // Conference summary overview is accessible to all staff members (teachers, leadership, admin)
-    if (!access.canRead && !user.teacherId && user.role !== 'admin') {
+    if (!canReadConferenceSummary(user, access)) {
       return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für diese Klasse' });
     }
 
@@ -633,45 +697,60 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       const pctGeselle = totalVotedHours > 0 ? Math.round((hoursGeselle / totalVotedHours) * 100) : 0;
       const pctMeister = totalVotedHours > 0 ? Math.round((hoursMeister / totalVotedHours) * 100) : 0;
 
-      // Determine hours-weighted majority rank:
-      let suggestedRankByHours: 'Lehrling' | 'Geselle' | 'Meister' = 'Geselle';
-      if (hoursMeister >= hoursGeselle && hoursMeister >= hoursLehrling && hoursMeister > 0) {
-        suggestedRankByHours = 'Meister';
-      } else if (hoursLehrling > hoursGeselle && hoursLehrling > hoursMeister) {
-        suggestedRankByHours = 'Lehrling';
-      } else {
-        suggestedRankByHours = 'Geselle';
-      }
+      // Determine the hours-weighted majority.
+      const suggestedRankByHours = hoursWeightedSuggestion(hoursLehrling, hoursGeselle, hoursMeister);
 
-      // Automatic threshold rank is determined by the core subjects (D, M, E).
-      // Non-core subject observations are supplementary and for individual teacher notes.
-      const coreEvals = pupilEvals.filter((e) => normalizeSubject(e.subject_code).isCoreSmile);
-      const evalsForCalc = coreEvals.length > 0 ? coreEvals : pupilEvals;
-      const pupilGroups = evalsForCalc.map((e) => ({
-        evaluationId: e.id,
-        items: itemsByEval.get(e.id) ?? [],
-      }));
-      const counts = summarizeRatings(pupilGroups);
+      // The 18-item raster is decision *support*, not a score.
+      //
+      // It was previously summed across every core subject and compared against the 14/8
+      // thresholds. Three core subjects of 6/18 each summed to 18 and produced MEISTER,
+      // for a pupil every teacher had individually rated LEHRLING - and that summed
+      // value was what `finalRank` fell back to whenever nobody had confirmed anything.
+      //
+      // What the school actually decides on is the rank a teacher submits, weighted by
+      // the lessons they teach. So the raster is now reported per subject as evidence
+      // and never aggregated into a rank. `positiveCount`/`totalRated` are kept because
+      // the threshold table in the client still reads them, but they are per-subject
+      // figures, not a score.
       const redCards = mapCards('red');
-      const outcome = calculateRank(counts.scoreForThreshold, redCards.length > 0);
-      const weightedRank = redCards.length > 0 ? demote(suggestedRankByHours) : suggestedRankByHours;
+      const hasRedCard = redCards.length > 0;
 
+      const subjectEvidence = pupilEvals.map((e) => {
+        const c = summarizeRatings([{ evaluationId: e.id, items: itemsByEval.get(e.id) ?? [] }]);
+        return {
+          subjectCode: e.subject_code,
+          subjectName: normalizeSubject(e.subject_code).name,
+          positiveCount: c.positiveCount,
+          totalRated: c.totalRated,
+          teacherShort: e.teacher_short,
+        };
+      });
+
+      // A red card demotes by one step. It used to be applied only to the computed
+      // threshold rank, so a pupil confirmed as Meister kept Meister despite an active
+      // red card - which contradicts the rule in README.md. `presentRank` applies it to
+      // whichever rank is presented and reports the demotion so the UI can explain it.
       const confirmed = confirmedRanks.find((r) => r.pupil_id === p.id);
+      const confirmedRank = (confirmed?.rank as Rank | undefined) ?? null;
+      const { presentedRank, suggestedRank, hasRedCardDemotion } = presentRank(
+        confirmedRank,
+        suggestedRankByHours,
+        hasRedCard,
+      );
 
       return {
         id: p.id,
         fullName: p.fullName,
-        positiveCount: counts.positiveCount,
-        totalRated: counts.totalRated,
-        baseRank: outcome.baseRank,
-        calculatedRank: outcome.finalRank,
-        weightedRank,
-        hasRedCardDemotion: outcome.hasRedCardDemotion,
-        finalRank: confirmed?.rank || outcome.finalRank,
+        subjectEvidence,
+        // null means "the conference has not decided this pupil yet". It is never
+        // back-filled with a computed value: an undecided pupil must look undecided.
+        finalRank: presentedRank,
+        suggestedRank,
+        hasRedCardDemotion,
         isConfirmed: !!confirmed,
         confirmedAt: confirmed?.confirmed_at || null,
         overrideReason: confirmed?.override_reason || null,
-        evaluationsCount: counts.evaluationCount,
+        evaluationsCount: pupilEvals.length,
         teacherVotes,
         /**
          * Participation, measured only from evaluations that were actually submitted.
@@ -700,7 +779,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           pctGeselle,
           pctMeister,
           suggestedRankByHours,
-          weightedRank,
+          weightedRank: suggestedRank,
         },
         cards: {
           green: mapCards('green'),

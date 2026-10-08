@@ -14,7 +14,7 @@ The most recent reconciliation (2026-10-07) is recorded in
 
 ### Quick Reference
 - **Tech Stack**: Fastify v5 (TypeScript, Node >= 22), React 19 (Vite), Drizzle ORM, PostgreSQL (`smile_db`), WebSockets.
-- **Test Suite**: `npm test` — runs **both** workspaces (server 144 tests / 10 files, client 68 tests / 3 files). Not server-only.
+- **Test Suite**: `npm test` — runs **both** workspaces (server: 427 passed + 24 PostgreSQL-skipped across 28 files; client: 134 passed across 10 files). Not server-only.
 - **Typecheck**: `npm run typecheck --workspaces`
 - **Build**: `npm run build`
 - **Deployment**: `python scripts/deploy_to_production.py` (Proxmox LXC 115)

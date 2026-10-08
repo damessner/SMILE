@@ -22,6 +22,13 @@
       "when": 1791489300000,
       "tag": "0002_admin_actor_teacher",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791575700000,
+      "tag": "0003_pupil_id_sequence_and_behavior_actions",
+      "breakpoints": true
     }
   ]
 }

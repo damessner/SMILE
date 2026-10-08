@@ -41,7 +41,7 @@ BUNDLE = [
     'package.json', 'package-lock.json',
     'server/package.json', 'server/dist', 'server/src', 'server/drizzle',
     'client/package.json', 'client/dist', 'client/src',
-    'scripts', 'docs',
+    'scripts', 'docs', 'Stundenplan.TXT',
 ]
 
 FORBIDDEN_COMPONENTS = {'.env', 'node_modules', '.git'}

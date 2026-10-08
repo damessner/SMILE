@@ -25,10 +25,14 @@ import {
 import { normalizeSubject } from '../utils/subject.js';
 
 /**
- * Per-class permission results, filled in as classes are opened, so GET /api/classes
- * can report the raster permission for each class without re-resolving every guard.
+ * Per-class permission results, filled in as classes are opened.
+ *
+ * Removed: this map was written on two paths and read by none. It held a full
+ * `ClassAccess` per class, was never invalidated, and was only exported so a test could
+ * observe it — which no test did. `GET /api/classes` resolves every class's access on
+ * each request, which is correct and cheap enough at 15 classes; a cache that is never
+ * read and never invalidated is not a speed-up.
  */
-const accessCache = new Map<number, ClassAccess>();
 
 function normaliseSubjects(raw: string[]) {
   return Array.from(
@@ -135,7 +139,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Resolve permissions for exactly the classes being listed.
     const resolved = await Promise.all(classes.map((c) => getClassAccess(user, c.id)));
-    classes.forEach((c, i) => accessCache.set(c.id, resolved[i]!));
+
 
     return reply.send(
       classes.map((cls, i) => {
@@ -222,7 +226,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für die Schüler dieser Klasse' });
     }
 
-    accessCache.set(cid, access);
+
 
     const classPupils = await db
       .select()
@@ -337,4 +341,4 @@ async function className(classId: number): Promise<string | undefined> {
 }
 
 /** Exported for tests. */
-export { accessCache };
+export {};

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   GraduationCap,
   Users,
@@ -79,6 +79,7 @@ export function App() {
   const [ratingPupilId, setRatingPupilId] = useState<number | null>(null);
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [classListError, setClassListError] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [pupils, setPupils] = useState<PupilWithData[]>([]);
   const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
@@ -165,6 +166,7 @@ export function App() {
 
   const loadClasses = async (user: User) => {
     try {
+      setClassListError(null);
       const cls = await getClasses();
       const validClasses = cls.filter((c: any) => c.name !== 'LW' && (c.grade === undefined || c.grade > 0));
       setClasses(validClasses);
@@ -199,11 +201,30 @@ export function App() {
       // unavailable alert endpoint is never presented as an empty alert list.
       void refreshYellowCardAlerts();
     } catch (e) {
+      // Do not present a failed class-list load as an empty school. `refreshYellowCardAlerts`
+      // already models this explicitly; the class list has to as well.
       console.error(e);
+      setClassListError(
+        'Die Klassenliste konnte nicht geladen werden. Bitte die Verbindung prüfen und neu laden.',
+      );
     }
   };
 
+  // Guards against out-of-order class loads.
+  //
+  // `loadClassData` is fired from two places that can overlap: the class-change effect,
+  // and eleven WebSocket broadcast types that each trigger a full refetch. Without this
+  // guard two in-flight loads can resolve in the opposite order to their start order, and
+  // the slower one overwrites the pupils/criteria/deadline of the class the user actually
+  // selected. The guard is a monotonically increasing generation rather than an
+  // AbortController so that a *coalesced* refetch of the class already on screen is still
+  // allowed to replace stale local state.
+  const classLoadGenerationRef = useRef(0);
+
   const loadClassData = async (cid: number) => {
+    const generation = ++classLoadGenerationRef.current;
+    const isCurrent = () => classLoadGenerationRef.current === generation;
+
     setLoadingClass(true);
     setSubmissionDeadline(null);
     try {
@@ -211,15 +232,18 @@ export function App() {
         getClassPupils(cid),
         getClassRubric(cid),
       ]);
+      if (!isCurrent()) return;
       setPupils(pupilData.pupils);
       setCriteria(rubricData.criteria);
       setSubmissionDeadline(
         typeof pupilData.submissionDeadline === 'string' ? pupilData.submissionDeadline : null,
       );
     } catch (e) {
+      // A superseded load must not surface an error or clear the visible class.
+      if (!isCurrent()) return;
       console.error(e);
     } finally {
-      setLoadingClass(false);
+      if (isCurrent()) setLoadingClass(false);
     }
   };
 
@@ -824,6 +848,22 @@ export function App() {
                 if (selectedClassId) loadClassData(selectedClassId);
               }}
             />
+          ) : classListError ? (
+            // A failed class-list load must never be rendered as an empty school: that
+            // reads as "you have no classes" and sends the teacher looking for a
+            // permissions problem that does not exist.
+            <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
+              <AlertTriangle className="w-8 h-8 text-red-400" />
+              <p className="font-bold">Klassenliste nicht verfügbar.</p>
+              <p className="text-sm text-center max-w-md">{classListError}</p>
+              <button
+                type="button"
+                onClick={() => currentUser && void loadClasses(currentUser)}
+                className="mt-2 px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-sm"
+              >
+                Erneut laden
+              </button>
+            </div>
           ) : (
             <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
               <AlertTriangle className="w-8 h-8 text-amber-400" />

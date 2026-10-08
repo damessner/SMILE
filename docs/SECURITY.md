@@ -151,53 +151,51 @@ export SSH_KNOWN_HOSTS=/path/to/pinned_known_hosts
 | Re-running the seed reset the admin password to the published default | Existing accounts are left untouched; only new ones are created |
 | `cors: { origin: true, credentials: true }` reflected any Origin | Explicit allowlist, empty by default (same-origin) |
 
-### Known gap: `GET /api/timeouts/active` is not scoped
+### Endpoint visibility: how each read is scoped
 
-The High table above used to claim that statistics, card alerts **and** timeout history were all
-scoped to the caller's classes through `getGlobalAccess()`. Three of those four endpoint claims hold;
-the fourth does not. Corrected here rather than deleted, because the gap is open work, not a
-resolved fix:
+**Correction (2026-10-08).** An earlier revision of this file carried a section headed *"Known
+gap: `GET /api/timeouts/active` is not scoped"*, which asserted that the endpoint had no
+`role === 'pupil'` guard, no `LIMIT`, and that `getGlobalAccess` returned `classIds: null` for any
+account without a `teacherId`. It then prescribed a three-step remediation. **All three steps are
+already implemented.** The description was stale, and acting on it would have been wrong twice
+over: adding a `getGlobalAccess` guard to a route that already refuses pupils narrows nothing, and
+the quoted `guards.ts` branch no longer reads that way.
+
+Current state, verified against the code:
 
 | Endpoint | Scoped? | Evidence |
 |---|---|---|
-| `GET /api/statistics/overview` | Only when `STATISTICS_SCHOOL_WIDE=false` | The shipped default is **school-wide**: `config.ts:230` defaults `statisticsSchoolWide` to `true`, and `statistics.ts:54` then passes `classIds: null` (unrestricted) without ever calling `getGlobalAccess`. Set the flag to `false` and it scopes normally. `statistics.ts:49-51` refuses `pupil`-role accounts outright, ahead of any scoping. |
-| `GET /api/cards/alerts` | Yes | `cards.ts:187` calls `getGlobalAccess(user)`, `:188` short-circuits an empty scope, `:211` filters by `global.classIds` |
-| `GET /api/timeouts/history` | Yes | `timeouts.ts:232` calls `getGlobalAccess(user)`, `:233` short-circuits an empty scope, `:259` filters by `global.classIds`, and the query is `LIMIT 50` |
-| `GET /api/timeouts/active` | **No** | `timeouts.ts:149-172` — no `getGlobalAccess` call, no class filter, no `LIMIT` |
+| `GET /api/statistics/overview` | Only when `STATISTICS_SCHOOL_WIDE=false` | The shipped default is **school-wide**: `config.ts` defaults `statisticsSchoolWide` to `true`, and `statistics.ts` then passes `classIds: null` without calling `getGlobalAccess`. Set the flag to `false` and it scopes normally. `pupil`-role accounts are refused outright, ahead of any scoping. **Both policy toggles are now documented in `.env.example`** — they were previously absent, which made the most consequential privacy switch in the system undiscoverable for operators. |
+| `GET /api/cards/alerts` | Yes | Calls `getGlobalAccess(user)`, short-circuits an empty scope, filters by `global.classIds` |
+| `GET /api/timeouts/history` | Yes | Calls `getGlobalAccess(user)`, short-circuits an empty scope, filters by `global.classIds`, `LIMIT 50` |
+| `GET /api/timeouts/active` | Partially — **see below** | Refuses `role === 'pupil'` outright, and the query is `LIMIT 100`. It is deliberately **not** class-scoped. |
+| `GET /api/conferences/:classId/summary` | **Yes — fixed 2026-10-08** | See below. |
 
-Any authenticated account can therefore read every active timeout in the school: pupil name, class
-name, reason for the timeout, and the colleague who issued it. There is a comment at
-`timeouts.ts:145` arguing the visibility is deliberate, on the grounds that the Lernwerkstatt
-supervisor may be any teacher on duty and the underlying data is inherently shared. That is a
-product decision, but it was never scoped or limited, so it covers the pupil names in the LW list
-as well — and the argument for open visibility does not extend to unbounded result size.
+**Two of these were live defects and are now closed.**
 
-**`getGlobalAccess` alone is not a sufficient fix, and it would not narrow this endpoint.** Its
-first branch (`guards.ts:166`) is
+1. **`GET /api/conferences/:classId/summary` read every class in the school.** The gate was
+   `!access.canRead && !user.teacherId && user.role !== 'admin'` — a three-way `&&` whose second
+   conjunct is false for *every* teacher, so it never refused anyone with a `teacherId`. Any
+   teacher could read any class's full summary: every pupil, every behaviour card and its note,
+   every other teacher's `comment` and `nextStep`, and every final rank. It was the only endpoint in
+   the codebase using that shape; every sibling uses a plain `if (!access.canRead)`. Now gated by
+   the extracted, unit-tested predicate `canReadConferenceSummary(user, access)` in
+   `conferences.ts`, covered by `conferences.test.ts`. The route's own comment had claimed this was
+   already fixed.
 
-```ts
-if (isAdmin || isHeadmaster || !user.teacherId) {
-  return { isAdmin, isHeadmaster, teacherId: user.teacherId, classIds: null };
-}
-```
+2. **`GET /api/backup/export-json` wrote no audit record.** The one action that can move the entire
+   school record out of the system in a single request left only a pino line, which is precisely the
+   history that does not survive an incident. It now writes a `FULL_DATA_EXPORTED` row carrying the
+   actor and row counts — counts only, because copying pupil names into the one table every
+   administrator can read would reproduce the exposure.
 
-`classIds: null` means *unrestricted* (`guards.ts:157`), and the third disjunct fires for **any
-account without a `teacherId`** — which is exactly a `pupil`-role account. So adding
-`getGlobalAccess` narrows the endpoint for ordinary teachers and leaves it just as wide for pupil
-logins. Note also that `guards.ts:268` is inside `getClassAccess`, a *per-class* resolver; it is not
-the global scope resolver and does not apply here. The only explicit `role === 'pupil'` refusal
-anywhere in the statistics path is `statistics.ts:49-51`, which this route does not have.
-
-A real remediation therefore needs **all three**, in this order:
-
-1. a `role === 'pupil'` guard, mirroring `statistics.ts:49-51`;
-2. `getGlobalAccess` scoping for the remaining teacher accounts;
-3. a `LIMIT` — `/timeouts/history` already applies one (:258).
-
-Plus a test per step; none of the three is covered today. Tracked as item **B7** in
-[`docs/superpowers/plans/2026-10-06-hardening-roadmap.md`](superpowers/plans/2026-10-06-hardening-roadmap.md),
-whose "add `getGlobalAccess`, a `LIMIT`, and a test" summary is therefore incomplete for the same
-reason — it omits step 1.
+**Still open, and deliberately so.** `/api/timeouts/active` remains readable by any non-pupil staff
+account school-wide. A comment in the route argues this is intentional, on the grounds that the
+Lernwerkstatt supervisor may be any teacher on duty and the data is inherently shared. That is a
+school policy question, not a code defect, and the roadmapping decision is still open: restrict to
+a scheduled supervisor role, or keep it open to staff. It is now **bounded** (`LIMIT 100`) and
+**pupil-proof**, which is what the old text said was missing. Do not "fix" the scoping without that
+decision.
 
 ### Confirmed functional bug
 
@@ -303,8 +301,12 @@ implemented honestly.
 ## Test coverage
 
 The root `npm test` command runs the server and client workspaces. The latest local-safe run
-reported **324 server tests passed, 24 PostgreSQL integration tests skipped, and 132 client tests
-passed**. `python -m unittest discover -s scripts/test -p "test_*.py"` ran 2 SSH security tests.
+reported **427 server tests passed, 24 PostgreSQL integration tests skipped, and 134 client tests
+passed**.
+
+Run it as `npm test` from the repository root. There is no root vitest config, so invoking
+`npx vitest` directly at the root collects both workspaces under the server's environment and
+produces spurious failures — the workspace scripts are the only supported entry point. `python -m unittest discover -s scripts/test -p "test_*.py"` ran 2 SSH security tests.
 Workspace typechecks and the production build also passed in that run.
 
 A local run must either set `TEST_DATABASE_URL` (a throwaway, loopback, empty `smile_db_test`

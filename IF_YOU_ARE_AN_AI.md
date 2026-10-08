@@ -98,16 +98,19 @@ If you modify this codebase, **you must maintain these invariants**:
   - **On a write**, coercion is a hole. A caller that passes an unrecognized string gets a well-formed, syntactically valid, completely unbounded code, and `evaluations` has no `CHECK` constraint on `subject_code` to catch it. Reject the request instead. Compare the normalized code against the canonical list above (or a `Set` derived from `CANONICAL_MAP`) and return 400 on a miss — the same shape as `validateBatchItems` rejecting an unknown item key.
 - **Client-side counterpart**: [`client/src/lib/pupilItems.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/lib/pupilItems.ts) carries a **deliberate copy** of the server's `CANONICAL_MAP` alias table (95 normalized keys over the 28 codes, down from the server's 108 entries — forms differing only in separators or umlaut spelling collapse to one key). The client cannot import from the server tree (separate tsconfigs, Vite bundling vs Node ESM). **Regenerate that table whenever `CANONICAL_MAP` changes.** A code dropped from it stops that subject from matching: `isSubjectMatch` returns false, the subject renders empty, and no error is raised — a dropped alias is a silent data-loss bug, not a visible one.
 - **Reason**: Timetable hours in `timetable_lessons` use these WebUntis short codes. If codes mismatch, timetable lesson hours resolve to 0, breaking the weighted voting system!
-- ⚠️ **KNOWN VIOLATION — no write path performs the allowlist check.** Verified 2026-10-07 against the code at commit `bf35249`. Five paths take `subjectCode` straight from the request body (or WS payload), run it through the coercing `normalizeSubject()`, and insert the result as `evaluations.subject_code`:
-  | Path | Line |
-  |---|---|
-  | `POST /api/evaluations/batch-default` | [`evaluations.ts:97`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.ts) |
-  | `POST /api/evaluations/status` | [`evaluations.ts:233`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.ts) |
-  | `POST /api/evaluations/submit` | [`evaluations.ts:312`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.ts) |
-  | `POST /api/evaluations/batch-items` | [`evaluations.ts:465`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.ts) |
-  | WS `UPDATE_RATING` | [`live-sync.ts:265`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/ws/live-sync.ts) |
+- ✅ **RESOLVED (verified 2026-10-08). All five write paths now reject an unknown subject code.** Every path listed below validates the request's `subjectCode` through **`normalizeKnownSubject()`** (`server/src/utils/subject.ts`), which returns `null` for anything not in `CANONICAL_MAP`; the handler returns 400 `Ungültiges Unterrichtsfach.` rather than inserting a minted code. The coercing `normalizeSubject()` is still correct — and still required — for **reads**, where legacy `SD`/`SE`/`SM` rows must resolve.
 
-  Task 3 closed the *item-key* half of this class of bug (`batch-items` now derives `criterionId` server-side via `validateBatchItems`) but did **not** touch the subject-code half. The item-key allowlist is now mandatory; the subject-code allowlist does not exist. Consequences of the gap: each invented code mints another `evaluations` row, `summarizeRatings` sums positives across *all* of a pupil's evaluations, and `conferences.ts:505` builds one weighted vote per evaluation with **no subject filter** — so a forged code adds both rating mass and a conference vote. **Do not treat this invariant as currently enforced.** Closing it is open work.
+  | Path | Validates with |
+  |---|---|
+  | `POST /api/evaluations/batch-default` | `normalizeKnownSubject` |
+  | `POST /api/evaluations/status` | `normalizeKnownSubject` |
+  | `POST /api/evaluations/submit` | `normalizeKnownSubject` |
+  | `POST /api/evaluations/reopen` | `normalizeKnownSubject` |
+  | `POST /api/evaluations/batch-items` | `normalizeKnownSubject` |
+  | WS `UPDATE_RATING` | `normalizeKnownSubject` |
+  | WS `CELL_FOCUS` / `CELL_BLUR` | `normalizeKnownSubject` |
+
+  Subject-level **authorization** is also in place: `canRateSubject(access, code)` (`guards.ts`) checks the caller's `access.subjects`, so a D-only teacher cannot write an M row. A previous revision of this file said the subject-code allowlist "does not exist" and warned that a forged code adds both rating mass and a conference vote — that was true of the code at `bf35249` and is no longer true of this one.
 
 ### Invariant 2: Database Natural Keys & OCC Concurrency
 - **Rule**: The table `evaluations` has a unique constraint on:
@@ -130,15 +133,11 @@ If you modify this codebase, **you must maintain these invariants**:
   1. [`client/src/hooks/useLiveSync.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/hooks/useLiveSync.ts) (must not drop it in `switch(msg.type)`).
   2. [`client/src/App.tsx`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/App.tsx) in `handleRatingUpdated`.
 - There is exactly **one** WebSocket client in the app (`useLiveSync.ts:45`) with **one** `onmessage` (`:53`) and a `default: break;` at `:136` that drops anything unrecognised **silently**. A handler that does not match the emitted `type` string byte-for-byte is indistinguishable from no handler at all. Grep the server for `type: '...'` and diff it against the `case` labels before you trust this invariant.
-- ⚠️ **KNOWN VIOLATION — two broadcasts are silently dropped today.** The client handles `TIMEOUT_CREATED` and `FINAL_RANK_LOCKED`, but the server never emits those names; it emits `TIMEOUT_ISSUED` and `FINAL_RANK_CONFIRMED`.
-  | Server emits | Where | Client handles? |
-  |---|---|---|
-  | `TIMEOUT_ISSUED` | `timeouts.ts:119`, `:126` | **No** — falls to `default` |
-  | `FINAL_RANK_CONFIRMED` | `conferences.ts:210`, `:314` | **No** — falls to `default` |
-  | `TIMEOUT_CREATED` | *never emitted* | Yes (`useLiveSync.ts:123`) — dead |
-  | `FINAL_RANK_LOCKED` | *never emitted* | Yes (`useLiveSync.ts:125`) — dead |
+- ✅ **RESOLVED (verified 2026-10-08). No action needed — and do not "fix" this again.** An earlier revision of this file recorded a live violation here: the client handled `TIMEOUT_CREATED` / `FINAL_RANK_LOCKED` while the server emitted `TIMEOUT_ISSUED` / `FINAL_RANK_CONFIRMED`, so those two broadcasts were dropped. Both sides now use the **server's** names. The client handles `TIMEOUT_ISSUED`, `TIMEOUT_RESOLVED`, `FINAL_RANK_CONFIRMED` and `FINAL_RANK_REVOKED` (`useLiveSync.ts:246-249`), and **all 20 emitted `type` strings have a matching `case` label.** The old `TIMEOUT_CREATED` / `FINAL_RANK_LOCKED` cases are gone.
 
-  This is the same failure mode as Historical Trap 1, re-entered through a rename rather than an omission. A co-teacher does not see a timeout issue or a confirmed final rank until they reload. `USER_JOINED` / `USER_LEFT` (`live-sync.ts:196`, `:102`) are also unhandled; their payloads are `teacherName` (plus `classId` for `USER_JOINED`), so dropping them costs a presence indicator rather than pupil data — but nothing in the code says that was the intent, so treat it as undocumented rather than decided. **Fix the two real drops when you touch either route** — it is a rename on both sides, not a redesign.
+  **Read this before touching the event bus:** the server names are canonical. If you find yourself renaming `TIMEOUT_ISSUED` to `TIMEOUT_CREATED` because a document told you to, you are reintroducing a bug that was fixed. The checklist item in §7 that used to suggest exactly that rename has been corrected for the same reason.
+
+  `USER_JOINED` / `USER_LEFT` are no longer emitted by the server at all; earlier references to `live-sync.ts:196` / `:102` were stale. Presence indicators were dropped deliberately rather than left broken.
 
 ### Invariant 4: Subject Isolation in Observation Grid
 - In [`client/src/components/BeobachtungsGrid.tsx`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/components/BeobachtungsGrid.tsx), a pupil is submitted **only** for the active subject being viewed.
@@ -160,16 +159,30 @@ If you modify this codebase, **you must maintain these invariants**:
   - ⚠️ **In Gesamt mode that call is a deliberate cross-subject read, and its rank is submitted to every subject.** `findItemForSubjects` returns the first match across all `mySubjects`, so a cell shows the first subject in `mySubjects` order that holds the key. `handleSubmitPupil` then sends that one rank as `finalRankToSubmit` for **each** `subCode`. A pupil rated in Mathematik alone and then in Deutsch is submitted under a Deutsch-derived rank for Mathematik. This is the same defect *shape* this branch closed for the roster and the item lookup, on the `final_ranks` path, and it is **pre-existing** — recorded as roadmap **E13** with the product question, not fixed. Cite the merged call as the reference implementation only together with this caveat; it is correct about *scoping*, not about *which scope*.
 - Never do `pupil.evaluations.flatMap(e => e.items)` to calculate positive counts, as pupils with multiple subject evaluations will accumulate $> 18$ items and artificially trigger *Meister*!
 - [`client/src/lib/pupilItems.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/lib/pupilItems.ts) is the client-side counterpart of this rule and of Invariant 4. It is the sanctioned home for subject-scoped reads; the grid already routes through it.
-- ⚠️ **KNOWN VIOLATION — four client files still `flatMap` across all of a pupil's evaluations.** Their positive counts are unbounded past 18, so they violate this invariant today. **This is deliberately deferred**, not overlooked — see [`docs/superpowers/plans/2026-10-06-hardening-roadmap.md`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/docs/superpowers/plans/2026-10-06-hardening-roadmap.md), "Deferred: rank-logic unification", which now lists **these exact four** with their lines. Note that the roadmap's *unification* target is a different set of four — `server/src/lib/ranking.ts`, `BeobachtungsGrid.tsx`, `Schulalltag.tsx`, `ClassOverview.tsx` — and two of *those* (`ranking.ts` and `BeobachtungsGrid.tsx`) are already correct. The two sets overlap in only `Schulalltag.tsx` and `ClassOverview.tsx`. Until the unification lands, treat these ranks as **display-only and untrustworthy**; do not build on them, and do not read this invariant as enforced across the app.
-  | File | Line | Status |
-  |---|---|---|
-  | `client/src/components/Schulalltag.tsx` (`getPupilRank`) | 211 | violates; named in the roadmap |
-  | `client/src/components/ClassOverview.tsx` (`getPupilRank`) | 59 | violates; named in the roadmap |
-  | `client/src/components/KelPdfModal.tsx` | 21 | violates; named in the roadmap |
-  | `client/src/components/TeacherClassReportModal.tsx` | 39 | violates; named in the roadmap |
+- ⚠️ **OPEN VIOLATION — the four client report/overview rank implementations inflate positives. The bug's *shape* changed and the old description is wrong.**
 
-  (`BeobachtungsGrid.tsx` itself is correct about *scoping* — it is the reference implementation the other four should converge on. Read the Gesamt-mode caveat above before applying it to a merged write.)
-- **Related hardcoding, also unfixed**: the thresholds (`14` / `8`), the `/18` denominator, and the submission deadline are literals in the client, not read from `server/src/config.ts` (`rankThresholds`, `rubricItemCount`, `submissionDeadline`). The client references none of them. `new Date(2026, 9, 30, 23, 59, 59)` appears in `BeobachtungsGrid.tsx:274` and `ClassOverview.tsx:47`, in browser-local time, while the server's `submissionDeadline` is UTC — they agree only for a CEST browser (roadmap item E11). Do not assume a value you read in one of these files is the same value the server enforces.
+  An earlier revision of this file said these four `flatMap` every evaluation, so their positive count is unbounded past 18. **That is no longer the code.** They now dedupe by item key, so the count is bounded at 18 — but the *semantics* are worse in a way that is easy to miss:
+
+  ```ts
+  if (!evaluatedItemsMap.has(it.itemKey) || isPositiveRating(it.rating)) {
+    evaluatedItemsMap.set(it.itemKey, it.rating);
+  }
+  ```
+
+  The `|| isPositiveRating(...)` means **any** teacher's positive rating for a key wins. With three core-subject teachers rating disjoint sets of 6 keys each, a pupil scores **18/18 → automatic Meister**, where each teacher individually saw 6/18 → **Lehrling**. The bound was restored; the inflation moved from the count into the merge. Two of these four render documents that get printed for parent conferences (`KelPdfModal`, `TeacherClassReportModal`), and `Schulalltag` is the main classroom view.
+
+  | File | Function | Reachable from the UI? |
+  |---|---|---|
+  | `client/src/components/Schulalltag.tsx:211` | `getPupilRank` | yes — main classroom view |
+  | `client/src/components/KelPdfModal.tsx:21` | inline count | yes — parent conference printout |
+  | `client/src/components/TeacherClassReportModal.tsx:39` | inline count | yes — teacher report printout |
+  | `client/src/components/ClassOverview.tsx:59` | `getPupilRank` | **no** — not imported by `App.tsx`; dead component |
+
+  Treat these four ranks as **display-only and untrustworthy** until unification lands. `BeobachtungsGrid.tsx` is correct about scoping and is the reference implementation. **The fix needs a product decision, not just a refactor:** the correct merge is one of (a) scope each view to `mySubjects` and treat distinct subjects as distinct rasters, (b) average the per-subject ranks, or (c) any-positive across subjects, which is what the code does today and which the 18-item invariant argues against. Do not pick one in code without the school's answer — see the Gesamt-mode caveat above and roadmap E13. Unification alone only decides *where* the count comes from.
+
+- **Related hardcoding, also unfixed**: the thresholds (`14` / `8`) and the `/18` denominator are literals in all four files above and in `BeobachtungsGrid.tsx`, not read from `server/src/config.ts` (`rankThresholds`, `rubricItemCount`). Changing `RANK_THRESHOLD_MEISTER` changes the server's answer and none of the client's.
+
+- **Resolved since the last revision**: the deadline is no longer a local-time literal. `submissionDeadline` now arrives from the API (`/api/classes/:id/pupils` → `App.tsx` → props) and is parsed as a UTC ISO string. `BeobachtungsGrid.tsx` fails **closed** when it is absent (`!Number.isFinite(deadlineAt) || now > deadlineAt` → writes disabled), so a missing deadline locks the grid rather than unlocking it. `ClassOverview.tsx` still carries a hardcoded `'2026-10-30T21:59:59.000Z'` fallback, but that component is not wired in.
 
 ### Invariant 6: Authentication & Cookies
 - The app uses **HttpOnly, SameSite cookies** for both REST API and WebSockets.
@@ -180,8 +193,8 @@ If you modify this codebase, **you must maintain these invariants**:
 
 ## 5. ⚠️ Historical Traps (Bugs Fixed - Do Not Reintroduce)
 
-1. **Bug: LiveSync message omission**:  
-   `useLiveSync.ts` previously dropped `CARD_ISSUED`, `CARD_REVOKED`, `BATCH_*`, `PUPIL_RANKING_*`, leaving co-teachers desynchronized until a manual browser reload. Those handlers are now wired up — **but the trap is not fully closed**: `TIMEOUT_ISSUED` and `FINAL_RANK_CONFIRMED` are dropped by exactly this mechanism today. See the known violation under Invariant 3.
+1. **Bug: LiveSync message omission**:
+   `useLiveSync.ts` previously dropped `CARD_ISSUED`, `CARD_REVOKED`, `BATCH_*`, `PUPIL_RANKING_*`, leaving co-teachers desynchronized until a manual browser reload. Those handlers are wired up, and the trap is **now fully closed** — every one of the 20 server-emitted event names has a matching client `case`. The `TIMEOUT_ISSUED` / `FINAL_RANK_CONFIRMED` instance of this trap (re-entered through a rename) was fixed; see the resolved note under Invariant 3. The recurrence guard is `client/src/hooks/useLiveSync.test.ts` plus the event-symmetry test in `server/src/ws/live-sync.test.ts`.
 2. **Bug: Ternary logic error in submitted list**:  
    `effectiveCanAccessRaster ? (e.subjectCode === mySubjectCode ? e.isSubmitted : e.isSubmitted) : ...` returned `e.isSubmitted` on both true and false branches, leaking submissions across all subjects. Fixed with `isSubjectMatch`.
 3. **Bug: Subject code naming divergence**:  
@@ -212,8 +225,8 @@ Run commands from the repository root:
 npm run dev
 
 # Run the Vitest test suite — BOTH workspaces
-#   server: 11 suites / 159 tests
-#   client:  4 suites / 78 tests
+#   server: 27 suites / 403 tests (+24 PostgreSQL-integration tests, skipped without
+#           TEST_DATABASE_URL)   client: 10 suites / 134 tests
 # The client suites use jsdom + Testing Library and include
 # client/src/components/BeobachtungsGrid.test.tsx and
 # client/src/components/ClassOverview.test.tsx, which render the real components.
@@ -243,7 +256,7 @@ When reviewing changes or writing code:
 - [ ] Did you check whether your database query respects the `(roundId, pupilId, classId, subjectCode)` natural key?
 - [ ] Does your change preserve atomic versioning on `evaluation_items`?
 - [ ] If you emitted a new WebSocket event on the backend, did you handle it on the client — and did you check the `type` string matches byte-for-byte, not just that a similar-looking `case` exists?
-- [ ] If you renamed a WebSocket event, did you rename it on **both** sides? (`TIMEOUT_ISSUED` → `TIMEOUT_CREATED` and `FINAL_RANK_CONFIRMED` → `FINAL_RANK_LOCKED` were renamed on the client only.)
+- [ ] If you renamed a WebSocket event, did you rename it on **both** sides? (The server's `type` strings are canonical: `TIMEOUT_ISSUED`, `FINAL_RANK_CONFIRMED`, `TIMEOUT_RESOLVED`, `FINAL_RANK_REVOKED`. The historical one-sided rename that broke this is fixed; never re-apply it.)
 - [ ] Does every write path that accepts a subject code **reject** an unknown one, rather than letting `normalizeSubject()` coerce it into a new code?
 - [ ] Did you use `findItemForSubjects` / `hasSubmittedForSubject` / `isPupilFullySubmitted` rather than an inline or unscoped scan?
 - [ ] If you computed a rank or a positive count, did you scope it to the subjects in view instead of `flatMap`ing every evaluation?
