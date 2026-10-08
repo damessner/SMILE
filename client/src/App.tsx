@@ -654,19 +654,6 @@ export function App() {
             </button>
           )}
 
-          {/* 1-Page Class Export Report Button (In Bewertung mode) */}
-          {activeTab === 'bewertung' && currentClass && (
-            <button
-              onClick={() => setTeacherReportModalOpen(true)}
-              className="pressable focus-ring min-h-[44px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 hover:text-slate-50 hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
-              title="1-Seiten Klassenbericht für Lehrpersonen drucken"
-            >
-              <Printer className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden lg:inline">1-Seiten Export</span>
-              <span className="lg:hidden">Export</span>
-            </button>
-          )}
-
           {/* Light / dark theme */}
           <ThemeToggle />
 
@@ -783,24 +770,15 @@ export function App() {
           </div>
           {currentClass && (
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-slate-400 hidden xl:inline font-medium">
-                {pupils.length} Schüler*innen in Klasse {currentClass.name}
+              <span className="text-xs text-slate-400 font-medium">
+                {pupils.length} Schüler*innen
               </span>
-              <button
-                onClick={() => setTeacherReportModalOpen(true)}
-                className="pressable focus-ring min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700/60 shadow-xs"
-                title={`1-Seiten Klassenbericht für Klasse ${currentClass.name} drucken`}
-              >
-                <Printer className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">1-Seiten Export ({currentClass.name})</span>
-                <span className="sm:hidden">Export</span>
-              </button>
             </div>
           )}
         </nav>
       )}
 
-      {/* Homeroom Yellow Card Alert Banner */}
+      {/* Alert Load Error Banner */}
       {yellowAlertError && (
         <div
           role="alert"
@@ -814,17 +792,6 @@ export function App() {
           >
             Erneut versuchen
           </button>
-        </div>
-      )}
-      {!yellowAlertError && yellowAlerts.length > 0 && (
-        <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-2 text-xs text-amber-300 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>
-              Mahnstufen-Alarm (Klassenvorstand):{' '}
-              {yellowAlerts.map((a) => `${a.pupil_name} (${a.class_name}: ${a.yellow_count} Gelbe Karten)`).join(' · ')}
-            </span>
-          </div>
         </div>
       )}
 

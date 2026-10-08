@@ -1049,9 +1049,9 @@ describe('write permission from the server class response', () => {
     const onSubmitPupil = vi.fn().mockResolvedValue(undefined);
     renderGrid({ canRate: true, canAccessRaster: false, mySubjects: [], onSubmitPupil });
 
-    expect(screen.getByRole('button', { name: /Meister Eigenständig/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Rang-Voting speichern & einreichen' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Rang-Voting speichern & einreichen' }));
+    expect(screen.getByRole('button', { name: /Meister/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Ranking einreichen/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Ranking einreichen/ }));
     expect(onSubmitPupil).not.toHaveBeenCalled();
   });
 });
