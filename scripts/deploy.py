@@ -22,7 +22,7 @@ import paramiko
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-HOST = os.environ.get('PROXMOX_HOST', '192.168.178.87')
+HOST = os.environ.get('PROXMOX_HOST', '172.16.1.54')
 USER = os.environ.get('PROXMOX_USER', 'root')
 PASSWORD = os.environ.get('PROXMOX_PASSWORD')
 CID = os.environ.get('LXC_CONTAINER_ID', '115')
@@ -30,8 +30,9 @@ STAMP = time.strftime('%Y%m%d-%H%M%S')
 
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-if not PASSWORD:
-    print('PROXMOX_PASSWORD not set', file=sys.stderr)
+key_file = os.path.expanduser('~/.ssh/id_ed25519')
+if not PASSWORD and not os.path.exists(key_file):
+    print('Neither PROXMOX_PASSWORD nor ~/.ssh/id_ed25519 is configured.', file=sys.stderr)
     sys.exit(1)
 
 # Explicitly excluded: .env (live secrets), node_modules (rebuilt on target),
@@ -66,7 +67,12 @@ sys.path.insert(0, os.path.dirname(__file__))
 from ssh_utils import create_ssh_client
 
 ssh = create_ssh_client()
-ssh.connect(HOST, username=USER, password=PASSWORD, timeout=25)
+connect_kwargs = {'timeout': 25}
+if PASSWORD:
+    connect_kwargs['password'] = PASSWORD
+elif os.path.exists(key_file):
+    connect_kwargs['key_filename'] = key_file
+ssh.connect(HOST, username=USER, **connect_kwargs)
 
 
 def ex(script: str, timeout=300, label=None):
@@ -162,7 +168,7 @@ psql "$DATABASE_URL" -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations"'''
     print('\n  bundle uploaded to Proxmox host')
 
     host(f'pct push {CID} /tmp/smile_update.tar.gz /tmp/smile_update.tar.gz', label='1. push')
-    host(f'pct exec {CID} -- bash -c "mkdir -p /opt/smile && tar -xzf /tmp/smile_update.tar.gz -C /opt/smile --overwrite"',
+    host(f'pct exec {CID} -- bash -c "mkdir -p /opt/smile && tar -xzf /tmp/smile_update.tar.gz -C /opt/smile --overwrite && chown -R smile:smile /opt/smile"',
          label='1. extract')
 
     # Keep a copy of the .env in case anything touches it.
@@ -170,7 +176,7 @@ psql "$DATABASE_URL" -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations"'''
 
     # --- 2. dependencies -------------------------------------------------
     # --ignore-scripts: nothing should execute during a production install.
-    ex('cd /opt/smile && npm install --omit=dev --ignore-scripts --no-fund --no-audit',
+    ex('cd /opt/smile && npm install --omit=dev --ignore-scripts --no-fund --no-audit && chown -R smile:smile /opt/smile',
        timeout=600, label='2. npm install')
 
     # --- 3. restart ------------------------------------------------------

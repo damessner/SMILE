@@ -16,7 +16,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-proxmox_host = os.environ.get('PROXMOX_HOST', '192.168.178.87')
+proxmox_host = os.environ.get('PROXMOX_HOST', '172.16.1.54')
 proxmox_user = os.environ.get('PROXMOX_USER', 'root')
 proxmox_pass = os.environ.get('PROXMOX_PASSWORD')
 container_id = os.environ.get('LXC_CONTAINER_ID', '115')
