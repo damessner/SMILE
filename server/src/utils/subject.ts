@@ -144,6 +144,12 @@ const CANONICAL_MAP: Record<string, { code: string; name: string; isCoreSmile: b
   'lernwerkstatt': { code: 'LW', name: 'Lernwerkstatt', isCoreSmile: false },
 };
 
+function lookupCanonical(value: string): NormalizedSubject | undefined {
+  // Do not let Object.prototype keys (for example "constructor") masquerade as
+  // known subjects. The alias table is data, not an object-property namespace.
+  return Object.hasOwn(CANONICAL_MAP, value) ? CANONICAL_MAP[value] : undefined;
+}
+
 export function normalizeSubject(rawName: string): NormalizedSubject {
   if (!rawName) {
     return { code: 'UNKNOWN', name: 'Unbekannt', isCoreSmile: false };
@@ -153,16 +159,47 @@ export function normalizeSubject(rawName: string): NormalizedSubject {
   const sNoSpace = s.replace(/\s+/g, '');
   const sUnder = s.replace(/\s+/g, '_');
 
-  if (CANONICAL_MAP[s]) return CANONICAL_MAP[s];
-  if (CANONICAL_MAP[sNoSpace]) return CANONICAL_MAP[sNoSpace];
-  if (CANONICAL_MAP[sUnder]) return CANONICAL_MAP[sUnder];
+  const direct = lookupCanonical(s);
+  if (direct) return direct;
+  const withoutSpaces = lookupCanonical(sNoSpace);
+  if (withoutSpaces) return withoutSpaces;
+  const underscored = lookupCanonical(sUnder);
+  if (underscored) return underscored;
 
   const sAscii = s.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
-  if (CANONICAL_MAP[sAscii]) return CANONICAL_MAP[sAscii];
+  const ascii = lookupCanonical(sAscii);
+  if (ascii) return ascii;
 
   return {
     code: rawName.toUpperCase().replace(/[^A-Z0-9]/g, '_'),
     name: rawName.trim(),
     isCoreSmile: false,
   };
+}
+
+/**
+ * Strict write normalizer: returns the canonical subject if raw is recognized in the
+ * alias table, or null for unknown subject strings / non-strings.
+ */
+export function normalizeKnownSubject(raw: unknown): NormalizedSubject | null {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return null;
+  }
+
+  const s = raw.trim().toLowerCase().replace(/[\s_-]+/g, ' ');
+  const sNoSpace = s.replace(/\s+/g, '');
+  const sUnder = s.replace(/\s+/g, '_');
+
+  const direct = lookupCanonical(s);
+  if (direct) return direct;
+  const withoutSpaces = lookupCanonical(sNoSpace);
+  if (withoutSpaces) return withoutSpaces;
+  const underscored = lookupCanonical(sUnder);
+  if (underscored) return underscored;
+
+  const sAscii = s.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+  const ascii = lookupCanonical(sAscii);
+  if (ascii) return ascii;
+
+  return null;
 }

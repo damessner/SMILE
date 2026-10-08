@@ -66,6 +66,13 @@ function pupil(id: number, fullName: string, evaluations: Evaluation[] = []): Pu
 interface GridOptions {
   pupils?: PupilWithData[];
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean }>;
+  canRate?: boolean;
+  canAccessRaster?: boolean;
+  onSubmitPupil?: any;
+  onBatchUpdate?: any;
+  softLocks?: Map<string, any>;
+  criteria?: RubricCriterion[];
+  submissionDeadline?: string | null;
   selectedPupilIdProp?: number | null;
   onRate?: ReturnType<typeof vi.fn>;
 }
@@ -78,13 +85,21 @@ interface GridOptions {
 function renderGrid({
   pupils = [pupil(1, 'Anna Muster')],
   mySubjects = [GERMAN],
+  canRate = true,
+  canAccessRaster = true,
   selectedPupilIdProp = null,
   onRate = vi.fn(),
+  onSubmitPupil,
+  onBatchUpdate,
+  softLocks = new Map(),
+  criteria = CRITERIA,
+  submissionDeadline = '2099-01-01T00:00:00.000Z',
 }: GridOptions = {}) {
-  const props = {
+  const props: any = {
     pupils,
-    criteria: CRITERIA,
-    softLocks: new Map(),
+    criteria,
+    submissionDeadline,
+    softLocks,
     conflict: null,
     onClearConflict: vi.fn(),
     onSendFocus: vi.fn(),
@@ -93,8 +108,12 @@ function renderGrid({
     onOpenCardDrawer: vi.fn(),
     onOpenKelReport: vi.fn(),
     isLockedByConference: false,
+    canRate,
+    canAccessRaster,
     mySubjects,
     selectedPupilIdProp,
+    onSubmitPupil,
+    onBatchUpdate,
   };
 
   const view = render(
@@ -117,6 +136,12 @@ function renderGrid({
               {...props}
               pupils={next.pupils ?? pupils}
               mySubjects={next.mySubjects ?? mySubjects}
+              canRate={next.canRate ?? canRate}
+              canAccessRaster={next.canAccessRaster ?? canAccessRaster}
+              softLocks={next.softLocks ?? softLocks}
+              onBatchUpdate={next.onBatchUpdate ?? onBatchUpdate}
+              criteria={next.criteria ?? criteria}
+              submissionDeadline={next.submissionDeadline ?? submissionDeadline}
               selectedPupilIdProp={
                 next.selectedPupilIdProp === undefined ? selectedPupilIdProp : next.selectedPupilIdProp
               }
@@ -307,6 +332,138 @@ describe('the rendered cells hold no rating from another subject', () => {
 // --- Every subject's write carries its own item version --------------------
 
 describe('a rating write carries the version of the subject it targets', () => {
+  it('carries each subject version through the HTTP batch fallback', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: [item('org_1', 'smile', 7)] }),
+      evaluation('M', { items: [item('org_1', 'sad', 3)] }),
+    ]);
+    const onBatchUpdate = vi.fn().mockResolvedValue(undefined);
+    renderGrid({ pupils: [anna], mySubjects: [GERMAN, MATHS], onBatchUpdate });
+
+    fireEvent.click(screen.getByTitle(/Alle Merkmale dieser Kategorie mit Krone/));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onBatchUpdate).toHaveBeenCalledTimes(2);
+    expect(onBatchUpdate).toHaveBeenNthCalledWith(1, 1, [
+      { criterionId: 'org', itemKey: 'org_1', rating: 'crown', version: 7 },
+    ], 'D');
+    expect(onBatchUpdate).toHaveBeenNthCalledWith(2, 1, [
+      { criterionId: 'org', itemKey: 'org_1', rating: 'crown', version: 3 },
+    ], 'M');
+  });
+
+  it('does not report a rating saved while its write request is still pending', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    let resolveWrite!: () => void;
+    const onRate = vi.fn(() => new Promise<void>((resolve) => { resolveWrite = resolve; }));
+    renderGrid({ onRate });
+
+    fireEvent.click(screen.getByTitle('Gut (😊)'));
+    expect(screen.getByText('Wird gesichert...')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(screen.queryByText(/Gesichert \(/)).not.toBeInTheDocument();
+
+    await act(async () => resolveWrite());
+  });
+
+  it('does not let an earlier rating save timer clear a later pending write', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    const resolveWrites: Array<() => void> = [];
+    const onRate = vi.fn(() => new Promise<void>((resolve) => resolveWrites.push(resolve)));
+    renderGrid({ mySubjects: [GERMAN, MATHS], onRate });
+
+    fireEvent.click(screen.getByTitle('Gut (😊)'));
+    fireEvent.click(screen.getByTitle('Traurig (😢)'));
+    expect(resolveWrites).toHaveLength(4);
+
+    await act(async () => {
+      resolveWrites[2]();
+      resolveWrites[3]();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    expect(screen.queryByText(/Gesichert \(/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveWrites[0]();
+      resolveWrites[1]();
+      await Promise.resolve();
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    expect(screen.getByText(/Gesichert \(/)).toBeInTheDocument();
+  });
+
+  it('waits for every subject write to settle before showing a batch failure', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    let rejectDeutsch!: (error: Error) => void;
+    let resolveMathematik!: () => void;
+    const onRate = vi.fn((_pupil, _criterion, _item, _rating, _version, subjectCode) =>
+      subjectCode === 'D'
+        ? new Promise<void>((_resolve, reject) => { rejectDeutsch = reject; })
+        : new Promise<void>((resolve) => { resolveMathematik = resolve; }),
+    );
+    renderGrid({ mySubjects: [GERMAN, MATHS], onRate });
+
+    fireEvent.click(screen.getByTitle('Gut (😊)'));
+    await act(async () => {
+      rejectDeutsch(new Error('Deutsch offline'));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Wird gesichert...')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(screen.queryByText(/Gesichert \(/)).not.toBeInTheDocument();
+
+    await act(async () => resolveMathematik());
+    expect(screen.getByRole('alert')).toHaveTextContent('Deutsch offline');
+    expect(screen.queryByText(/Gesichert \(/)).not.toBeInTheDocument();
+  });
+
+  it('waits for every item in a quick-fill action before reporting partial failure', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    let rejectFirst!: (error: Error) => void;
+    let resolveSecond!: () => void;
+    const onRate = vi.fn((_pupil, _criterion, itemKey) => itemKey === 'org_1'
+      ? new Promise<void>((_resolve, reject) => { rejectFirst = reject; })
+      : new Promise<void>((resolve) => { resolveSecond = resolve; }));
+    const criteria: RubricCriterion[] = [{
+      id: 'org',
+      name: 'Organisation',
+      position: 1,
+      items: [{ key: 'org_1' }, { key: 'org_2' }],
+    }];
+    renderGrid({ criteria, onRate });
+
+    fireEvent.click(screen.getByTitle(/Alle Merkmale dieser Kategorie mit Krone/));
+    expect(onRate).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      rejectFirst(new Error('first item failed'));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Wird gesichert...')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await act(async () => resolveSecond());
+    expect(screen.getByRole('alert')).toHaveTextContent('first item failed');
+    expect(screen.queryByText(/Gesichert \(/)).not.toBeInTheDocument();
+  });
+
   it('sends 7 for Deutsch and 3 for Mathematik on the same item key', async () => {
     // The optimistic-concurrency contract at the point it is actually applied.
     // Resolving one version for the whole grid makes the server's
@@ -868,5 +1025,68 @@ describe('conference comment autosave', () => {
     expect(saveEvaluationComment).toHaveBeenCalledTimes(2);
     expect(saveEvaluationComment).toHaveBeenCalledWith(1, CLASS_ID, 'D', 'Sehr motiviert');
     expect(saveEvaluationComment).toHaveBeenCalledWith(1, CLASS_ID, 'M', 'Sehr motiviert');
+  });
+});
+
+describe('write permission from the server class response', () => {
+  it('disables rating and submission controls for a read-only class', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    const onRate = vi.fn();
+    renderGrid({ canRate: false, onRate });
+
+    const ratingButton = screen.getByTitle('Gut (😊)');
+    expect(ratingButton).toBeDisabled();
+    fireEvent.click(ratingButton);
+    expect(onRate).not.toHaveBeenCalled();
+
+    expect(screen.getByRole('button', { name: /Ranking einreichen/ })).toBeDisabled();
+  });
+
+  it('does not grant an assignment-free KV subject rating controls from class visibility', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+    const onSubmitPupil = vi.fn().mockResolvedValue(undefined);
+    renderGrid({ canRate: true, canAccessRaster: false, mySubjects: [], onSubmitPupil });
+
+    expect(screen.getByRole('button', { name: /Meister Eigenständig/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Rang-Voting speichern & einreichen' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Rang-Voting speichern & einreichen' }));
+    expect(onSubmitPupil).not.toHaveBeenCalled();
+  });
+});
+
+describe('server-provided submission deadline', () => {
+  it('disables ratings after the exact UTC cutoff supplied by the server', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+    renderGrid({ submissionDeadline: '2026-01-01T00:00:00.000Z' });
+
+    expect(screen.getByTitle('Gut (😊)')).toBeDisabled();
+  });
+});
+
+describe('subject-scoped soft locks', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BEFORE_DEADLINE);
+  });
+
+  it('does not block Mathematik when the matching cell is locked only in Deutsch', () => {
+    const softLocks = new Map([
+      ['D|1|org_1', { pupilId: 1, itemKey: 'org_1', subjectCode: 'D', teacherName: 'Deutsch-Lehrkraft' }],
+    ]);
+    renderGrid({ mySubjects: [MATHS], softLocks });
+
+    expect(screen.getByTitle('Gut (😊)')).not.toBeDisabled();
+  });
+
+  it('blocks the matching subject cell while its own lock is held', () => {
+    const softLocks = new Map([
+      ['M|1|org_1', { pupilId: 1, itemKey: 'org_1', subjectCode: 'M', teacherName: 'Mathematik-Lehrkraft' }],
+    ]);
+    renderGrid({ mySubjects: [MATHS], softLocks });
+
+    expect(screen.getByTitle('Gut (😊)')).toBeDisabled();
   });
 });

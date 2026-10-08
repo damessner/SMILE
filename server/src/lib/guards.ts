@@ -1,8 +1,9 @@
-import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
+import type { FastifyReply, FastifyRequest, preHandlerHookHandler, preValidationHookHandler } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { pupils, schoolClasses, teachingAssignments, teachers } from '../db/schema.js';
-import { normalizeSubject, type NormalizedSubject } from '../utils/subject.js';
+import { normalizeKnownSubject, normalizeSubject, type NormalizedSubject } from '../utils/subject.js';
+import { clearSessionCookie, getPersistedUserSessionState, isUserForcedToChangePassword } from './session.js';
 
 export type Role = 'admin' | 'head_teacher' | 'teacher' | 'pupil';
 
@@ -14,6 +15,7 @@ export interface AuthUser {
   teacherId?: number;
   pupilId?: number;
   mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 /** The minimal identity projection that authorization helpers need. */
@@ -24,8 +26,8 @@ declare module 'fastify' {
     authUser?: AuthUser;
   }
   interface FastifyInstance {
-    authenticate: preHandlerHookHandler;
-    requireRole: (...roles: Role[]) => preHandlerHookHandler;
+    authenticate: preValidationHookHandler;
+    requireRole: (...roles: Role[]) => preValidationHookHandler;
     rateLimitLoginMax: number;
     rateLimitLoginWindowSeconds: number;
   }
@@ -163,8 +165,13 @@ export async function getGlobalAccess(user: Identity): Promise<GlobalAccess> {
   const isAdmin = user.role === 'admin';
   const isHeadmaster = isHeadmasterUser(user, teacher);
 
-  if (isAdmin || isHeadmaster || !user.teacherId) {
+  if (isAdmin || isHeadmaster) {
     return { isAdmin, isHeadmaster, teacherId: user.teacherId, classIds: null };
+  }
+
+  // Non-admin accounts without a linked teacher row and pupils receive an empty scope
+  if (!user.teacherId || (user as any).role === 'pupil') {
+    return { isAdmin: false, isHeadmaster: false, teacherId: user.teacherId, classIds: [] };
   }
 
   const assignments = await db
@@ -286,6 +293,21 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
   };
 }
 
+/**
+ * Decides whether a caller may submit ratings for a specific subject in a class.
+ *
+ * Class-level `access.canRate` must be true first.
+ * Administrative users and school leadership (headmasters) may rate any subject.
+ * Ordinary teachers may only rate subjects assigned to them in that class.
+ */
+export function canRateSubject(access: ClassAccess, subjectCode: string): boolean {
+  if (!access.canRate) return false;
+  const knownSubject = normalizeKnownSubject(subjectCode);
+  if (!knownSubject) return false;
+  if (access.isAdmin || access.isHeadmaster) return true;
+  return access.subjects.some((s) => s.code === knownSubject.code);
+}
+
 // ---------------------------------------------------------------------------
 // Pupil / class consistency
 // ---------------------------------------------------------------------------
@@ -345,18 +367,22 @@ export async function visibleClassIds(user: Identity): Promise<number[] | null> 
 // Route-level guard factories
 // ---------------------------------------------------------------------------
 
-/** The canonical `authenticate` preHandler. Populates `request.authUser`. */
-export function buildAuthenticate(jwtVerify: (request: FastifyRequest) => Promise<unknown>): preHandlerHookHandler {
-  const handler: preHandlerHookHandler = async function authenticate(request, reply) {
+/** The canonical `authenticate` preValidation hook. Populates `request.authUser`. */
+export function buildAuthenticate(jwtVerify: (request: FastifyRequest) => Promise<unknown>): preValidationHookHandler {
+  const handler: preValidationHookHandler = async function authenticate(request, reply) {
     try {
       const payload = (await jwtVerify(request)) as AuthUser;
+      const mustChange = Boolean(payload.mustChangePassword || isUserForcedToChangePassword(String(payload.id)));
       request.authUser = {
         id: String(payload.id),
         username: payload.username,
         role: payload.role,
         teacherId: payload.teacherId,
         pupilId: payload.pupilId,
-        mustChangePassword: payload.mustChangePassword,
+        mustChangePassword: mustChange,
+        sessionVersion: Number.isSafeInteger(payload.sessionVersion) && (payload.sessionVersion ?? 0) >= 0
+          ? payload.sessionVersion
+          : 0,
       };
     } catch {
       await reply.status(401).send({ error: 'Nicht authentifiziert' });
@@ -371,20 +397,24 @@ export function buildAuthenticate(jwtVerify: (request: FastifyRequest) => Promis
  */
 export function buildRequireRole(
   jwtVerify: (request: FastifyRequest) => Promise<unknown>,
-): (...roles: Role[]) => preHandlerHookHandler {
+): (...roles: Role[]) => preValidationHookHandler {
   return (...roles: Role[]) => {
-    const handler: preHandlerHookHandler = async function requireRole(request, reply) {
+    const handler: preValidationHookHandler = async function requireRole(request, reply) {
       // Authenticate inline rather than composing handlers, so there is one code path
       // that can populate `request.authUser`.
       try {
         const payload = (await jwtVerify(request)) as AuthUser;
+        const mustChange = Boolean(payload.mustChangePassword || isUserForcedToChangePassword(String(payload.id)));
         request.authUser = {
           id: String(payload.id),
           username: payload.username,
           role: payload.role,
-          teacherId: payload.teacherId,
-          pupilId: payload.pupilId,
-          mustChangePassword: payload.mustChangePassword,
+        teacherId: payload.teacherId,
+        pupilId: payload.pupilId,
+        mustChangePassword: mustChange,
+        sessionVersion: Number.isSafeInteger(payload.sessionVersion) && (payload.sessionVersion ?? 0) >= 0
+          ? payload.sessionVersion
+          : 0,
         };
       } catch {
         await reply.status(401).send({ error: 'Nicht authentifiziert' });
@@ -400,6 +430,52 @@ export function buildRequireRole(
   };
 }
 
+/**
+ * Compare the verified JWT against durable account state after schema validation
+ * and before every authenticated handler. A reset-pending account may reach only
+ * the password-change endpoint; it must not keep reading pupil data on an old cookie.
+ */
+export function buildSessionGuard(
+  readSessionState: typeof getPersistedUserSessionState = getPersistedUserSessionState,
+): preHandlerHookHandler {
+  return async function validateSessionVersion(request, reply) {
+    const user = request.authUser;
+    if (!user) return;
+
+    const state = await readSessionState(user.id);
+    if (!state) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+
+    const tokenVersion = user.sessionVersion;
+    if (!Number.isSafeInteger(tokenVersion) || (tokenVersion as number) < 0) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+
+    user.sessionVersion = state.sessionVersion;
+    user.mustChangePassword = state.mustChangePassword;
+
+    if (state.mustChangePassword) {
+      const isPasswordChangeRoute =
+        request.method === 'POST' && request.url.split('?', 1)[0] === '/api/auth/password';
+      if (!isPasswordChangeRoute) {
+        return reply.status(403).send({
+          error: 'Bitte setzen Sie zuerst ein neues Passwort.',
+          code: 'PASSWORD_CHANGE_REQUIRED',
+        });
+      }
+      return;
+    }
+
+    if (tokenVersion !== state.sessionVersion) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Reply helpers — consistent status codes and German messages
 // ---------------------------------------------------------------------------
@@ -408,7 +484,12 @@ export function buildRequireRole(
  * Re-exported from session.ts so route modules have a single import for the
  * authorization surface.
  */
-export { assertPasswordCurrent } from './session.js';
+export {
+  assertPasswordCurrent,
+  markUserMustChangePassword,
+  clearUserMustChangePassword,
+  isUserForcedToChangePassword,
+} from './session.js';
 
 /** True when the rank string is one of the three valid ranks. */
 export { isRank } from './ranking.js';
@@ -427,6 +508,7 @@ export async function badRequest(reply: FastifyReply, message: string): Promise<
 
 /** Strict positive-integer route param: digits only, no sign, whitespace or trailing text. */
 const POSITIVE_INT = /^[1-9][0-9]{0,14}$/;
+export const MAX_POSTGRES_INTEGER = 2_147_483_647;
 
 /**
  * Parse a positive integer route param.
@@ -439,6 +521,44 @@ const POSITIVE_INT = /^[1-9][0-9]{0,14}$/;
 export function parseIdParam(value: string, _fieldName?: string): number | null {
   if (typeof value !== 'string' || !POSITIVE_INT.test(value)) return null;
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) return null;
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_POSTGRES_INTEGER) return null;
   return parsed;
+}
+
+/**
+ * Is this a usable `teacher_id` foreign key?
+ *
+ * `teacherId` reaches the write paths from the session, and older code substituted
+ * `0` for "unknown teacher". Zero is a perfectly valid primary key, so writing it
+ * would attach ratings/ownership to a phantom teacher row instead of failing. Every
+ * actor check funnels through here so the HTTP route and the WebSocket path agree.
+ */
+export function hasPersistedTeacherActor(teacherId: number | null | undefined): teacherId is number {
+  return typeof teacherId === 'number' && Number.isSafeInteger(teacherId) && teacherId > 0;
+}
+
+/**
+ * Persistable teacher foreign key.
+ *
+ * Same rule as `hasPersistedTeacherActor`, but for the nullable columns (audit log
+ * `actor_id`, conference `confirmed_by`/`changed_by`) where "no actor" is a legitimate
+ * state. A missing, non-integer or non-positive id collapses to `null` instead of
+ * persisting a sentinel that points at a phantom teacher row.
+ */
+export function safeTeacherId(teacherId: number | null | undefined): number | null {
+  return hasPersistedTeacherActor(teacherId) ? teacherId : null;
+}
+
+/**
+ * Strict positive integer parser for numbers or strings.
+ * Rejects non-integers, numbers <= 0, and strings with non-digit characters.
+ */
+export function parsePositiveInt(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 && value <= MAX_POSTGRES_INTEGER ? value : null;
+  }
+  if (typeof value === 'string') {
+    return parseIdParam(value);
+  }
+  return null;
 }

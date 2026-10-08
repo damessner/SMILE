@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
@@ -12,13 +12,16 @@ import { config } from '../config.js';
 import {
   assertPasswordCurrent,
   badRequest,
+  canRateSubject,
   findPupilInClass,
   getClassAccess,
+  hasPersistedTeacherActor,
+  MAX_POSTGRES_INTEGER,
   requireAuth,
 } from '../lib/guards.js';
-import { isRank } from '../lib/ranking.js';
-import { isValidRating, loadRubricIndex, validateBatchItems } from '../lib/rubric.js';
-import { normalizeSubject } from '../utils/subject.js';
+import { isRank, type Rank } from '../lib/ranking.js';
+import { isValidRating, loadRubricIndex, VALID_RATINGS, validateBatchItems } from '../lib/rubric.js';
+import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 
 /**
@@ -29,6 +32,13 @@ import { broadcastToClass } from '../ws/live-sync.js';
  * that is the rubric lookup inside `validateBatchItems`.
  */
 const MAX_BATCH_ITEMS = 200;
+
+class BatchItemVersionConflict extends Error {
+  constructor(readonly itemKey: string) {
+    super(`Stale rating version for ${itemKey}`);
+    this.name = 'BatchItemVersionConflict';
+  }
+}
 
 /**
  * Deterministically pick the open observation round.
@@ -48,6 +58,19 @@ async function getOpenRound() {
 
 function deadlinePassed(): boolean {
   return new Date() > config.submissionDeadline;
+}
+
+/** evaluation.teacher_id is required; never invent a sentinel actor FK. */
+export function requireEvaluationActor(
+  teacherId: number | null | undefined,
+  reply: FastifyReply,
+): number | null {
+  if (hasPersistedTeacherActor(teacherId)) return teacherId;
+  reply.status(503).send({
+    error: 'Bewertungen sind nicht verfügbar, weil kein Lehrkraftkonto zur Erfassung zugeordnet ist.',
+    code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
+  });
+  return null;
 }
 
 /**
@@ -73,6 +96,25 @@ export function shouldBroadcastStatusUpdate(payload: {
   return payload.proposedStatus !== undefined || payload.nextStep !== undefined;
 }
 
+/**
+ * Resolve the rank a submission stores.
+ *
+ * "Not chosen" is legitimate (the grid allows submitting without picking a rank) and
+ * becomes the neutral `Geselle`. A value that *is* present but is not a rank is a bug
+ * in the caller — an older client enum, a typo, a truncated string — and the previous
+ * code turned it into `Geselle` as well, so a pupil could silently be recorded one rank
+ * below what the teacher submitted. Those are rejected instead of being reinterpreted.
+ */
+export function resolveProposedRank(
+  proposedStatus: string | null | undefined,
+): { ok: true; rank: Rank } | { ok: false } {
+  if (proposedStatus === undefined || proposedStatus === null || proposedStatus === '') {
+    return { ok: true, rank: 'Geselle' };
+  }
+  if (isRank(proposedStatus)) return { ok: true, rank: proposedStatus };
+  return { ok: false };
+}
+
 export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * POST /api/evaluations/batch-default — set a default rating for a whole class.
@@ -80,8 +122,28 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
    * The previous implementation only broadcast a WebSocket message and returned
    * success — it never wrote anything, so the UI reported "Standardwert angewendet"
    * while nothing was saved. It is now a real, transactional bulk write.
+   * This is an explicit force-overwrite operation: the caller must acknowledge that
+   * existing ratings in the selected class/subject will be replaced.
    */
-  fastify.post('/batch-default', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/batch-default',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['classId', 'subjectCode', 'forceOverwrite'],
+          additionalProperties: false,
+          properties: {
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            subjectCode: { type: 'string', minLength: 1, maxLength: 32 },
+            defaultRating: { enum: [...VALID_RATINGS] },
+            forceOverwrite: { type: 'boolean', const: true },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
     if (deadlinePassed()) return badRequest(reply, 'Die Abgabefrist ist abgelaufen.');
@@ -94,7 +156,11 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!classId || !subjectCode) {
       return badRequest(reply, 'classId und subjectCode sind erforderlich.');
     }
-    const canonicalSubject = normalizeSubject(subjectCode).code;
+    const known = normalizeKnownSubject(subjectCode);
+    if (!known) {
+      return badRequest(reply, 'Ungültiges Unterrichtsfach.');
+    }
+    const canonicalSubject = known.code;
 
     // Authorization first: a caller without `canRate` must get a 403, not a 400
     // about a rubric item key, and must not make the server read the rubric on
@@ -106,6 +172,13 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         error: 'Sie sind in dieser Klasse nicht als Lehrkraft eingeteilt.',
       });
     }
+    if (!canRateSubject(access, canonicalSubject)) {
+      return reply.status(403).send({
+        error: 'Sie sind für dieses Fach in dieser Klasse nicht eingeteilt.',
+      });
+    }
+    const teacherId = requireEvaluationActor(user.teacherId, reply);
+    if (teacherId === null) return;
 
     // The rating allowlist lives in lib/rubric.ts so this route and the WebSocket
     // path cannot drift apart. `defaultRating` is a rating, not an item key, so it
@@ -155,7 +228,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
             pupilId: pupil.id,
             classId,
             subjectCode: canonicalSubject,
-            teacherId: user.teacherId ?? 0,
+             teacherId,
           })
           .onConflictDoUpdate({
             target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
@@ -172,7 +245,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
               itemKey: target.itemKey,
               rating: defaultRating,
               version: 1,
-              updatedByTeacherId: user.teacherId ?? null,
+               updatedByTeacherId: teacherId,
               updatedAt: new Date(),
             })
             .onConflictDoUpdate({
@@ -180,7 +253,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
               set: {
                 rating: defaultRating,
                 version: sql`${evaluationItems.version} + 1`,
-                updatedByTeacherId: user.teacherId ?? null,
+                 updatedByTeacherId: teacherId,
                 updatedAt: new Date(),
               },
             });
@@ -189,7 +262,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       await tx.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
+        actorId: teacherId,
         action: 'BATCH_DEFAULT_APPLIED',
         entity: 'class',
         entityId: String(classId),
@@ -201,7 +274,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       type: 'BATCH_DEFAULTS_APPLIED',
       subjectCode: canonicalSubject,
       defaultRating,
-      appliedBy: user.teacherId ?? null,
+      appliedBy: teacherId,
     });
 
     return reply.send({
@@ -213,7 +286,28 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** POST /api/evaluations/status — overall proposed rank, next step and comment. */
-  fastify.post('/status', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/status',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            subjectCode: { type: 'string', minLength: 1, maxLength: 32 },
+            proposedStatus: { type: 'string', nullable: true, maxLength: 32 },
+            nextStep: { type: 'string', nullable: true, maxLength: 500 },
+            comment: { type: 'string', nullable: true, maxLength: 2000 },
+            overrideReason: { type: 'string', nullable: true, maxLength: 500 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -230,9 +324,19 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!pupilId || !classId) {
       return badRequest(reply, 'pupilId und classId sind erforderlich.');
     }
-    const canonicalSubject = normalizeSubject(subjectCode).code;
+    const known = normalizeKnownSubject(subjectCode);
+    if (!known) {
+      return badRequest(reply, 'Ungültiges Unterrichtsfach.');
+    }
+    const canonicalSubject = known.code;
     if (proposedStatus !== undefined && proposedStatus !== null && !isRank(proposedStatus)) {
       return badRequest(reply, 'proposedStatus muss ein gültiger Rang sein.');
+    }
+    if (deadlinePassed() && (proposedStatus !== undefined || nextStep !== undefined)) {
+      return badRequest(reply, 'Abgabefrist ist abgelaufen. Rang und nächster Schritt können nicht mehr geändert werden.');
+    }
+    if (deadlinePassed() && comment === undefined) {
+      return badRequest(reply, 'Abgabefrist ist abgelaufen. Nachträglich sind nur Kommentaränderungen möglich.');
     }
 
     const access = await getClassAccess(user, classId);
@@ -240,6 +344,11 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!access.canRate) {
       return reply.status(403).send({ error: 'Sie dürfen in dieser Klasse nicht bewerten.' });
     }
+    if (!canRateSubject(access, canonicalSubject)) {
+      return reply.status(403).send({ error: 'Sie dürfen dieses Fach in dieser Klasse nicht bewerten.' });
+    }
+    const teacherId = requireEvaluationActor(user.teacherId, reply);
+    if (teacherId === null) return;
 
     const pupil = await findPupilInClass(pupilId, classId);
     if (!pupil) return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
@@ -261,7 +370,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         pupilId,
         classId,
         subjectCode: canonicalSubject,
-        teacherId: user.teacherId ?? 0,
+        teacherId,
         proposedStatus: proposedStatus ?? null,
         nextStep: nextStep ?? null,
         comment: comment ?? null,
@@ -288,7 +397,27 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** POST /api/evaluations/submit — final ranking for a pupil. */
-  fastify.post('/submit', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/submit',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            subjectCode: { type: 'string', minLength: 1, maxLength: 32 },
+            proposedStatus: { type: 'string', nullable: true, maxLength: 32 },
+            nextStep: { type: 'string', nullable: true, maxLength: 500 },
+            comment: { type: 'string', nullable: true, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
     if (deadlinePassed()) {
@@ -309,17 +438,25 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
-    const canonicalSubject = normalizeSubject(subjectCode).code;
-    let finalProposedStatus = proposedStatus;
-    if (!finalProposedStatus || !isRank(finalProposedStatus)) {
-      finalProposedStatus = 'Geselle';
+    const known = normalizeKnownSubject(subjectCode);
+    if (!known) return badRequest(reply, 'Ungültiges Unterrichtsfach.');
+    const canonicalSubject = known.code;
+    const resolvedRank = resolveProposedRank(proposedStatus);
+    if (!resolvedRank.ok) {
+      return badRequest(reply, 'Ungültiger Rangvorschlag. Erlaubt sind: Lehrling, Geselle, Meister.');
     }
+    const finalProposedStatus = resolvedRank.rank;
 
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRate) {
       return reply.status(403).send({ error: 'Sie dürfen in dieser Klasse nicht bewerten.' });
     }
+    if (!canRateSubject(access, canonicalSubject)) {
+      return reply.status(403).send({ error: 'Sie dürfen dieses Fach in dieser Klasse nicht bewerten.' });
+    }
+    const teacherId = requireEvaluationActor(user.teacherId, reply);
+    if (teacherId === null) return;
 
     const pupil = await findPupilInClass(pupilId, classId);
     if (!pupil) return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
@@ -330,7 +467,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     const submitUpdateSet: Record<string, any> = {
       isSubmitted: true,
       submittedAt: new Date(),
-      submittedByTeacherId: user.teacherId ?? null,
+      submittedByTeacherId: teacherId,
       proposedStatus: finalProposedStatus,
       updatedAt: new Date(),
     };
@@ -344,13 +481,13 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         pupilId,
         classId,
         subjectCode: canonicalSubject,
-        teacherId: user.teacherId ?? 0,
+        teacherId,
         proposedStatus: finalProposedStatus,
         nextStep: nextStep ?? null,
         comment: comment ?? null,
         isSubmitted: true,
         submittedAt: new Date(),
-        submittedByTeacherId: user.teacherId ?? null,
+        submittedByTeacherId: teacherId,
       })
       .onConflictDoUpdate({
         target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
@@ -359,7 +496,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       .returning();
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: teacherId,
       action: 'PUPIL_RANKING_SUBMITTED',
       entity: 'pupil',
       entityId: String(pupilId),
@@ -372,7 +509,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       classId,
       subjectCode: canonicalSubject,
       proposedStatus: evaluation.proposedStatus,
-      submittedBy: user.teacherId ?? null,
+      submittedBy: teacherId,
       submittedAt: evaluation.submittedAt,
     });
 
@@ -380,7 +517,24 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** POST /api/evaluations/reopen — withdraw a submission before the deadline. */
-  fastify.post('/reopen', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/reopen',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            subjectCode: { type: 'string', minLength: 1, maxLength: 32 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
     if (deadlinePassed()) {
@@ -393,12 +547,23 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       subjectCode?: string;
     };
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
-    const canonicalSubject = normalizeSubject(subjectCode).code;
+    const known = normalizeKnownSubject(subjectCode);
+    if (!known) return badRequest(reply, 'Ungültiges Unterrichtsfach.');
+    const canonicalSubject = known.code;
 
     const access = await getClassAccess(user, classId);
+    if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRate) {
       return reply.status(403).send({ error: 'Sie dürfen in dieser Klasse nicht bewerten.' });
     }
+    if (!canRateSubject(access, canonicalSubject)) {
+      return reply.status(403).send({ error: 'Sie dürfen dieses Fach in dieser Klasse nicht bewerten.' });
+    }
+
+    // Reopening withdraws a submitted rating, so it is a rating write like every other
+    // one here: without a persisted teacher actor there is nobody to attribute it to.
+    const teacherId = requireEvaluationActor(user.teacherId, reply);
+    if (teacherId === null) return;
 
     const pupil = await findPupilInClass(pupilId, classId);
     if (!pupil) return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
@@ -427,7 +592,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!evaluation) return reply.status(404).send({ error: 'Keine Einreichung gefunden.' });
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: teacherId,
       action: 'PUPIL_RANKING_REOPENED',
       entity: 'pupil',
       entityId: String(pupilId),
@@ -446,7 +611,39 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
    * WebSocket path. The previous read-then-write `version: existing.version + 1` was
    * application-side and could silently lose-update against a concurrent WS write.
    */
-  fastify.post('/batch-items', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/batch-items',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId', 'items'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            subjectCode: { type: 'string', minLength: 1, maxLength: 32 },
+            items: {
+              type: 'array',
+               maxItems: MAX_BATCH_ITEMS,
+              items: {
+                type: 'object',
+                 required: ['itemKey', 'rating', 'version'],
+                additionalProperties: false,
+                properties: {
+                  itemKey: { type: 'string', minLength: 1, maxLength: 64 },
+                  rating: { enum: [...VALID_RATINGS] },
+                  version: { type: 'integer', minimum: 0, maximum: MAX_POSTGRES_INTEGER },
+                  criterionId: { type: 'string', maxLength: 36 },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
     if (deadlinePassed()) return badRequest(reply, 'Abgabefrist ist abgelaufen.');
@@ -462,7 +659,9 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     };
 
     if (!pupilId || !classId) return badRequest(reply, 'pupilId und classId sind erforderlich.');
-    const canonicalSubject = normalizeSubject(subjectCode).code;
+    const known = normalizeKnownSubject(subjectCode);
+    if (!known) return badRequest(reply, 'Ungültiges Unterrichtsfach.');
+    const canonicalSubject = known.code;
 
     // Authorization before validation: a caller who may not rate in this class gets
     // a 403, not a 400 about a rubric item key, and does not make the server read
@@ -472,6 +671,11 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!access.canRate) {
       return reply.status(403).send({ error: 'Sie dürfen in dieser Klasse nicht bewerten.' });
     }
+    if (!canRateSubject(access, canonicalSubject)) {
+      return reply.status(403).send({ error: 'Sie dürfen dieses Fach in dieser Klasse nicht bewerten.' });
+    }
+    const teacherId = requireEvaluationActor(user.teacherId, reply);
+    if (teacherId === null) return;
 
     // Every item key is looked up in the rubric and its criterion derived
     // server-side. The client-supplied `criterionId` is ignored, so a batch of
@@ -488,54 +692,110 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
 
-    const updatedItems = await db.transaction(async (tx) => {
-      const [evaluation] = await tx
-        .insert(evaluations)
-        .values({
-          roundId: round.id,
-          pupilId,
-          classId,
-          subjectCode: canonicalSubject,
-          teacherId: user.teacherId ?? 0,
-        })
-        .onConflictDoUpdate({
-          target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
-          set: { updatedAt: new Date() },
-        })
-        .returning();
-
-      const out: Array<typeof evaluationItems.$inferSelect> = [];
-
-      for (const it of validation.items) {
-        const [row] = await tx
-          .insert(evaluationItems)
+    let updatedItems: Array<typeof evaluationItems.$inferSelect>;
+    try {
+      updatedItems = await db.transaction(async (tx) => {
+        const [evaluation] = await tx
+          .insert(evaluations)
           .values({
-            evaluationId: evaluation.id,
-            criterionId: it.criterionId,
-            itemKey: it.itemKey,
-            rating: it.rating,
-            version: 1,
-            updatedByTeacherId: user.teacherId ?? null,
-            updatedAt: new Date(),
+            roundId: round.id,
+            pupilId,
+            classId,
+            subjectCode: canonicalSubject,
+            teacherId,
           })
           .onConflictDoUpdate({
-            target: [evaluationItems.evaluationId, evaluationItems.itemKey],
-            set: {
-              rating: it.rating,
-              // `version + 1` is evaluated by Postgres, so concurrent writers
-              // cannot both read the same version and overwrite each other.
-              version: sql`${evaluationItems.version} + 1`,
-              updatedByTeacherId: user.teacherId ?? null,
-              updatedAt: new Date(),
-            },
+            target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
+            set: { updatedAt: new Date() },
           })
           .returning();
 
-        out.push(row);
-      }
+        const out: Array<typeof evaluationItems.$inferSelect> = [];
 
-      return out;
-    });
+        for (const it of validation.items) {
+          if (it.version !== undefined && it.version > 0) {
+            const [existingItem] = await tx
+              .select({ id: evaluationItems.id })
+              .from(evaluationItems)
+              .where(and(
+                eq(evaluationItems.evaluationId, evaluation.id),
+                eq(evaluationItems.itemKey, it.itemKey),
+              ))
+              .limit(1);
+            if (!existingItem) throw new BatchItemVersionConflict(it.itemKey);
+          }
+
+          const [row] = await tx
+            .insert(evaluationItems)
+            .values({
+              evaluationId: evaluation.id,
+              criterionId: it.criterionId,
+              itemKey: it.itemKey,
+              rating: it.rating,
+              version: 1,
+              updatedByTeacherId: teacherId,
+              updatedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: [evaluationItems.evaluationId, evaluationItems.itemKey],
+              set: {
+                rating: it.rating,
+                // `version + 1` is evaluated by Postgres, so concurrent writers
+                // cannot both read the same version and overwrite each other.
+                version: sql`${evaluationItems.version} + 1`,
+                updatedByTeacherId: teacherId,
+                updatedAt: new Date(),
+              },
+                setWhere: eq(evaluationItems.version, it.version),
+            })
+            .returning();
+
+          if (!row) {
+            if (it.version !== undefined) throw new BatchItemVersionConflict(it.itemKey);
+            throw new Error('Batch item upsert did not return a row.');
+          }
+          out.push(row);
+        }
+
+        return out;
+      });
+    } catch (error) {
+      if (!(error instanceof BatchItemVersionConflict)) throw error;
+
+      const [currentEvaluation] = await db
+        .select({ id: evaluations.id })
+        .from(evaluations)
+        .where(and(
+          eq(evaluations.roundId, round.id),
+          eq(evaluations.pupilId, pupilId),
+          eq(evaluations.classId, classId),
+          eq(evaluations.subjectCode, canonicalSubject),
+        ))
+        .limit(1);
+      const [current] = currentEvaluation
+        ? await db
+            .select()
+            .from(evaluationItems)
+            .where(and(
+              eq(evaluationItems.evaluationId, currentEvaluation.id),
+              eq(evaluationItems.itemKey, error.itemKey),
+            ))
+            .limit(1)
+        : [];
+
+      return reply.status(409).send({
+        error: 'Bewertung wurde zwischenzeitlich geändert.',
+        code: 'CONFLICT',
+        evaluationId: currentEvaluation?.id,
+        pupilId,
+        classId,
+        subjectCode: canonicalSubject,
+        itemKey: error.itemKey,
+        currentRating: current?.rating,
+        currentVersion: current?.version,
+        updatedAt: current?.updatedAt,
+      });
+    }
 
     broadcastToClass(classId, {
       type: 'BATCH_ITEMS_UPDATED',

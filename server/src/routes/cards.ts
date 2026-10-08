@@ -10,8 +10,10 @@ import {
   getClassAccess,
   getGlobalAccess,
   getPupil,
+  MAX_POSTGRES_INTEGER,
   parseIdParam,
   requireAuth,
+  safeTeacherId,
 } from '../lib/guards.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 
@@ -27,7 +29,25 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * Previously any authenticated teacher could file a red card (instant rank loss)
    * against a pupil of any class.
    */
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId', 'cardType'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            cardType: { enum: ['green', 'yellow', 'red'] },
+            note: { type: 'string', nullable: true, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -86,7 +106,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (typedCard === 'red') {
       await db.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
+        actorId: safeTeacherId(user.teacherId),
         action: 'RED_CARD_ISSUED',
         entity: 'pupil',
         entityId: String(pupilId),
@@ -125,7 +145,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * school administration. Previously any authenticated user could withdraw any
    * card, including another teacher's justified red card.
    */
-  fastify.post('/:id/revoke', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post('/:id/revoke', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -150,7 +170,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
 
     const [revoked] = await db
       .update(behaviorCards)
-      .set({ revokedAt: new Date(), revokedBy: user.teacherId ?? null })
+      .set({ revokedAt: new Date(), revokedBy: safeTeacherId(user.teacherId) })
       .where(and(eq(behaviorCards.id, id), isNull(behaviorCards.revokedAt)))
       .returning();
 
@@ -159,7 +179,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'CARD_REVOKED',
       entity: 'pupil',
       entityId: String(existing.pupilId),
@@ -181,7 +201,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * Scoped to the caller's classes. This used to return school-wide counts to any
    * authenticated teacher.
    */
-  fastify.get('/alerts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/alerts', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
 
     const global = await getGlobalAccess(user);
@@ -220,7 +240,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * LEFT JOIN on teachers so cards filed by an account without a teacher id (the
    * administrator) are still returned. The previous INNER JOIN silently dropped them.
    */
-  fastify.get('/class/:classId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/class/:classId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
@@ -255,7 +275,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/cards/pupil/:pupilId — full card history for one pupil. */
-  fastify.get('/pupil/:pupilId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/pupil/:pupilId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { pupilId } = request.params as { pupilId: string };
     const pid = parseIdParam(pupilId, 'pupilId');

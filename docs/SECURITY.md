@@ -92,12 +92,34 @@ Moving or deleting them is **not** a code change and was deliberately left to th
 data. Note that this item is also why a clean checkout on another machine cannot reproduce the
 failure — the archives are not in version control, so a fresh clone has nothing to remove.
 
-**One correction to the original item**: it named two archives, but there are currently **three**
-in the root. `backup.zip` (31,863,901 bytes — roughly 79× the other two, so a different archive,
-not another copy) is present as well. `verify-env.mjs` does **not** check for it, so it neither
-causes the install failure nor appears in any automated guard. It is caught by `.gitignore`'s
-`*.zip` rule and by nothing else. Its contents and retention status are unknown; treat it as
-unreviewed and hold it to the same standard as the other two.
+The guard (`scripts/verify-env.mjs`) has been updated to perform a directory-wide scan for any
+backup files matching `backup*.zip`, `*.dump`, or `*.sql.gz`. All three files (`backup.zip`,
+`backup_date_time.zip`, `backup_2026-10-01_17-39-50.zip`) are now caught by the guard.
+
+### 6. Pin SSH known-hosts for deployment scripts
+
+All Python deployment and inspection scripts under `scripts/` (`deploy.py`, `deploy_to_production.py`,
+`lxc-inspect.py`, `lxc-migration-check.py`, `lxc-predeploy.py`) enforce `paramiko.RejectPolicy()`.
+They will refuse to connect to unverified SSH servers to prevent man-in-the-middle attacks.
+
+**Operator setup:**
+Before running any deployment script, obtain the target host-key fingerprint from a trusted
+out-of-band source (for example, the provider console or an administrator) and compare it with
+the key collected from the network. `ssh-keyscan` alone is not authentication and must never be
+treated as proof of identity:
+```bash
+# Collect the candidate key without trusting it yet:
+ssh-keyscan -t ed25519 <PROXMOX_HOST> > /tmp/smile-host-key-candidate
+
+# Compare the displayed SHA256 fingerprint with the independently verified fingerprint.
+ssh-keygen -lf /tmp/smile-host-key-candidate -E sha256
+
+# Only after the fingerprints match, install the candidate:
+cat /tmp/smile-host-key-candidate >> ~/.ssh/known_hosts
+
+# Or specify a custom pinned known_hosts file:
+export SSH_KNOWN_HOSTS=/path/to/pinned_known_hosts
+```
 
 ---
 
@@ -218,6 +240,12 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
 | Unique-constraint gaps allowed duplicate evaluations and items under concurrent writes | Unique indexes on `(round, pupil, class, subject)`, `(evaluation, item)`, `(round, pupil)`, `(pupil, milestone)` |
 | Missing indexes on hot lookup paths | Added for teaching assignments, cards, timeouts, timetable, final ranks |
 | Security headers plugin was encapsulated, so its hooks applied to no routes | Wrapped in `fastify-plugin` to break encapsulation — caught by the header test |
+| The leaked-credential check on `DATABASE_URL` was a plain substring scan, so a percent-encoded password (`%21` for `!`) slipped past it | `databaseUrl()` now also compares the percent-decoded parsed password; tests cover both the bypass and the non-bypass |
+| Evaluation writes accepted `teacherId: 0` as a real actor, and `/reopen` skipped the actor check entirely | Shared `hasPersistedTeacherActor` predicate rejects non-positive/non-integer ids; `/reopen` now calls `requireEvaluationActor` like every other rating write; nullable actor columns collapse sentinels to `null` via `safeTeacherId` |
+| `POST /submit` mapped *any* unrecognised `proposedStatus` to `Geselle`, silently downgrading a pupil | `resolveProposedRank` keeps an omitted rank as the neutral default but rejects a present-but-invalid one with 400 |
+| A single-cell conflict with nothing to reconcile left the stale value on screen (WebSocket and HTTP batch alike) | Both paths now require a usable version before patching a cell, and otherwise request an authoritative class reload; a vanished item row is reported as an explicit version-`0` tombstone |
+| Conference tallies counted uncast votes as agreement: "yes" was the class roster minus a counter an administrator typed | Tally removed entirely. Participation is measured from submitted evaluations (`submittedTeachers`/`eligibleTeachers`/`teachersMissing`) and the split shown is the hours-weighted one the code already computed. The `votesNo` stepper and its API field are gone |
+| An administrator rating a pupil had no valid `teacher_id` — the column is `NOT NULL` — so the old code wrote the sentinel `0` | Migration `0002` creates one `active: false` teacher row per admin account in the reserved 9000000 range and links it, so attribution is truthful. Refuses to run if that range is occupied. Run [`PREFLIGHT-admin-actor.sql`](PREFLIGHT-admin-actor.sql) first |
 
 ---
 
@@ -238,73 +266,81 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   Production dependencies audit clean (`npm audit --omit=dev` → 0 vulnerabilities).
 - **`PLAN.md` still describes the old stack** (React 18 / Fastify 4 / Node 20, shared
   default passwords). Update it or it will mislead the next reader.
-- **No CI.** The TypeScript suites run locally via `npm test`, which covers both workspaces (server
-  and client); the backup shell scripts carry 54 tests over three suites run via
-  `bash scripts/test/run-all.sh`. Neither is wired to CI.
+- **CI workflow.** `.github/workflows/ci.yml` runs workspace typechecks, server/client tests,
+  the PostgreSQL integration suite against a fresh restricted test database, Python SSH
+  security tests, and the production build. Local PostgreSQL tests require the explicit
+  `TEST_DATABASE_URL`; a local opt-out does not count as integration-test evidence.
 - **Backup caveat: one destination.** One Drive folder holding every copy. A 3-2-1
   arrangement would want a second, independently encrypted target. The key also lives on
   the same host as the data, so a full compromise of LXC 115 exposes historical backups
   as well as live data.
+- ~~**One bootstrap password for every seeded account.**~~ Resolved: administrators issue
+  a per-issuance one-time credential from the new Konten panel
+  (`POST /api/auth/admin/temporary-password`). It is generated server-side, alphanumeric so
+  it survives a printed handover, never a value committed to source control, shown exactly
+  once, never logged, and the account is flagged `mustChangePassword` so every mutating
+  endpoint stays closed until its owner picks their own. The value is *not* the retired
+  shared default, which remains banned in `config.ts`.
+  Still an operator decision: the handover is a person-to-person step, so the school must
+  agree who issues credentials and how they are delivered.
+
+### Open owner decisions
+
+These are not code defects; each needs a decision from the school's owner before it can be
+implemented honestly.
+
+- **Conference quorum.** A rank can still be confirmed when most teachers have not voted.
+  Whether that requires a quorum is school policy: if a teacher is ill, does that block the
+  conference? Current behaviour is unchanged — confirmation is an administrative act, and
+  the screen now states plainly how much input there was.
+- **MED holding two logins.** MED gets school-wide authority through the headmaster
+  short-name rule, and `users.role` is a single value, so MED cannot be both teacher and
+  admin in one account. Whether the teacher login and the admin login should be merged
+  into one identity changes what each sees, so it was left alone.
 
 ---
 
 ## Test coverage
 
-237 tests across 15 files, all passing. `npm test` at the repository root runs **both** workspaces
-(`npm run test --workspaces`): 159 server tests over 11 files, 78 client tests over 4 files.
+The root `npm test` command runs the server and client workspaces. The latest local-safe run
+reported **324 server tests passed, 24 PostgreSQL integration tests skipped, and 132 client tests
+passed**. `python -m unittest discover -s scripts/test -p "test_*.py"` ran 2 SSH security tests.
+Workspace typechecks and the production build also passed in that run.
 
-### Server — 159 tests, 11 files
+A local run must either set `TEST_DATABASE_URL` (a throwaway, loopback, empty `smile_db_test`
+with a restricted role) or set `SKIP_POSTGRES_INTEGRATION=true` explicitly. The guard rejects the
+skipped run as evidence: the integration suite fails loudly rather than silently reporting green.
 
-| File | Covers |
-|---|---|
-| `src/config.test.ts` | Secret validation, including rejection of the leaked JWT secret and DB password |
-| `src/lib/guards.test.ts` | `kvFieldMatches` (including the substring-match regression), `parseIdParam` strictness |
-| `src/lib/access-rules.test.ts` | The statistics-visibility and conference-mode configuration surface, asserted against the route table and the env-derived config rather than hardcoded values; plus a structural assertion that `role === 'pupil'` is refused |
-| `src/lib/ranking.test.ts` | Rating classification, rank thresholds, red-card demotion, rating aggregation |
-| `src/lib/behavior-stages.test.ts` | The `BEHAVIOR_STAGES` definitions and `computePupilBehaviorStage` |
-| `src/lib/rubric.test.ts` | `buildRubricIndex`, `resolveCriterionId`, `isValidRating`, and `validateBatchItems` — including rejection of forged item keys and derivation of `criterionId` server-side |
-| `src/utils/subject.test.ts` | `normalizeSubject` across every canonical code, the legacy aliases, and the unknown-input fallback |
-| `src/ws/auth.test.ts` | End-to-end: the WebSocket upgrade is refused with 401 for missing, malformed, forged, and empty cookies |
-| `src/ws/live-sync.test.ts` | Subscribe authorization for admin / unassigned / forged / no-teacherId cases, plus structural assertions that identity is never read from the payload |
-| `src/index.test.ts` | Every pupil-data endpoint rejects unauthenticated requests, security headers present, CSRF Origin check, dead route removed |
-| `src/routes/evaluations.test.ts` | `routes/evaluations.ts` itself: `shouldBroadcastStatusUpdate` (a comment-only `/status` write must not broadcast), `/status` refusing an invalid rank before any query, and **structural** assertions that `/batch-items` validates through `validateBatchItems` and iterates *its* items, that authorization precedes validation on both write routes, that `/batch-default` takes its targets from the loaded index, and that `/status` gates its broadcast on that decision. The structural half exists because the behavioural half needs a database — see "Not covered" |
+The 24 skipped tests are guarded PostgreSQL behavioral cases (including writes, session revocation,
+and cleanup isolation). They were not run locally: Docker is unavailable, and the ignored scratch
+database was intentionally not used. The CI workflow provisions a fresh restricted test database;
+its zero-skip run remains the required proof for those cases. A local opt-out is not integration
+evidence.
 
-### Client — 78 tests, 4 files
+### Remaining verification limits
 
-Run under jsdom with Testing Library. These render the real components, so a regression in the grid
-fails the build rather than waiting to be found in a lesson.
-
-| File | Covers |
-|---|---|
-| `src/test/harness.test.tsx` | The harness itself: a jsdom render with jest-dom matchers, and a component consuming both `useToast()` and `useConfirm()` under their providers |
-| `src/lib/pupilItems.test.ts` | `isSubjectMatch`, `findItemForSubjects`, `itemVersionForSubject`, `hasSubmittedForSubject`, `isPupilFullySubmitted` — the subject-scoping guarantees of Invariants 4 and 5. **The unit-level home of the no-cross-subject-fallback regression**, not the grid test file |
-| `src/components/BeobachtungsGrid.test.tsx` | Subject-scoped `isSubmitted` in the roster and folder split; **the rendered cell for a subject that holds no evaluation** (no rating, no reset control, `0/18 Punkte`); per-subject `expectedVersion` on the rating write; and the conference-comment autosave flush, including that an in-flight write for one pupil cannot claim the next pupil's stored comment |
-| `src/components/ClassOverview.test.tsx` | The Open/Ranked folder split and the "Eingereicht" card badge, both scoped to the teacher's own subjects |
-
-The WebSocket and route-protection tests exercise real HTTP requests through
-`app.inject()` and a live listener rather than asserting on source text alone.
-
-### Not covered
-
-Three live defects recorded in [`IF_YOU_ARE_AN_AI.md`](../IF_YOU_ARE_AN_AI.md) have **no test that
-would fail on them**, and would not fail here today:
-
-- `GET /api/timeouts/active` is unscoped (above). No test asserts it *is* scoped, so adding the
-  `getGlobalAccess` scoping would not be caught by a regression.
-- `TIMEOUT_ISSUED` and `FINAL_RANK_CONFIRMED` are dropped by the client's `switch` (Invariant 3).
-  No test pairs a server-emitted `type` against the client's `case` labels, so a rename on one side
-  alone stays invisible.
-- **The item-key forgery fix is not covered at the route.** `validateBatchItems` is thoroughly
-  unit-tested, but whether `POST /api/evaluations/batch-items` *calls* it and iterates its output is
-  pinned only by a source assertion in `src/routes/evaluations.test.ts`. That catches the original
-  forgery being pasted back (delete the two calls, restore the inline loop) but nothing else: a
-  wrong call, a discarded result, or a reordered handler would all pass. The reason is
-  infrastructure, not design — the handler reaches PostgreSQL (`loadRubricIndex`, `getClassAccess`,
-  `findPupilInClass`, `getOpenRound`, the transaction) before the decision, and there is no
-  database in CI. **What would close it:** a real PostgreSQL reachable from the test process (a
-  throwaway database created from `server/drizzle/`, or a `pg-mem` instance with a seeded
-  `assessment_rubrics` / `rubric_criteria` row, plus a `school_classes` row and a `teachers` /
-  `teaching_assignments` pair that grants `canRate`); then one `app.inject()` case posting a forged
-  `itemKey` and asserting a 400 with `evaluation_items` still empty, and one posting a valid key
-  with a *wrong* `criterionId` and asserting the stored row carries the server-derived one. The same
-  fixture would cover `/status`'s broadcast suppression, which has the same obstacle.
+- Conference vote/co-teaching semantics, lock scope, rank aggregation, comment ownership, and
+  post-deadline comment policy are product-gated in [`bugfix.md`](../bugfix.md); no outcome is
+  inferred here.
+- The administrator actor strategy is now implemented (placeholder `teachers` row per admin
+  account, `active: false`, reserved id range), but **the production preflight has not been
+  run** — nobody has executed [`PREFLIGHT-admin-actor.sql`](PREFLIGHT-admin-actor.sql) against
+  the live database. Until its output is known, it is unknown whether any row already carries
+  the `teacher_id = 0` sentinel. Migration `0002` refuses to run if the reserved id range is
+  occupied, but the data question needs a human answer.
+- The nullable `votes_yes`/`votes_no`/`total_voters` columns on `final_ranks` are left in
+  place for reversibility. No code reads them, but a deployment still running older code
+  would. Drop them once no deployment does.
+- Every seeded account still shares one `INITIAL_USER_PASSWORD` (each flagged
+  `mustChangePassword`). Issuing per-account credentials needs a delivery channel the app does not
+  have, so this is an open owner decision rather than a code fix; the seed now states the limitation
+  in its output. See "Open owner decisions" above.
+- A conflict with no current version to reconcile (the item row disappeared, or no evaluation
+  survived) now triggers an authoritative class reload on both the WebSocket and HTTP paths instead
+  of leaving a stale cell on screen. The behaviour is unit-tested, but the resulting database state
+  behind those paths is only exercised by the PostgreSQL suite.
+- WebSocket sessions are rechecked before inbound actions and class broadcasts, but the database
+  check and socket send are not held under a shared revocation lock. The cross-worker reset race
+  still requires a concurrency test and an ordered revocation fence before claiming atomic delivery.
+- Operator tasks (credential rotation, verified restore/archive relocation, TLS rollout, and live
+  data preflight) were not performed.

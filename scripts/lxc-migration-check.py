@@ -10,7 +10,10 @@ USER = os.environ.get('PROXMOX_USER', 'root')
 PASSWORD = os.environ.get('PROXMOX_PASSWORD')
 CID = os.environ.get('LXC_CONTAINER_ID', '115')
 
-ssh = paramiko.SSHClient(); ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+sys.path.insert(0, os.path.dirname(__file__))
+from ssh_utils import create_ssh_client
+
+ssh = create_ssh_client()
 ssh.connect(HOST, username=USER, password=PASSWORD, timeout=20)
 
 def run(label, inner, timeout=180):

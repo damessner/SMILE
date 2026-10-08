@@ -42,7 +42,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
    *
    * Pupil logins are excluded outright: this view is for staff.
    */
-  fastify.get('/overview', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/overview', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user: AuthUser = requireAuth(request);
     const { classId } = request.query as { classId?: string };
 
@@ -287,7 +287,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/statistics/rubric — the active rubric definition. */
-  fastify.get('/rubric', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/rubric', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     requireAuth(request);
     const [rubric] = await db
       .select()

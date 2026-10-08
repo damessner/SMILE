@@ -16,15 +16,39 @@ import { databaseUrl } from '../config.js';
  * tested without a database, and defers the credential check to the first query.
  */
 let poolInstance: pg.Pool | null = null;
+let integrationTestPoolConfig: pg.PoolConfig | null = null;
+
+/** Configure the isolated integration pool before the first connection is acquired. */
+export function configureIntegrationTestPool(poolConfig: pg.PoolConfig): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('An integration test pool can only be configured under NODE_ENV=test.');
+  }
+  if (poolInstance) {
+    throw new Error('The database pool has already been initialized.');
+  }
+  const host = typeof poolConfig.host === 'string' ? poolConfig.host.toLowerCase() : '';
+  if (
+    poolConfig.database !== 'smile_db_test' ||
+    !['127.0.0.1', '::1'].includes(host) ||
+    !Number.isInteger(poolConfig.port) || Number(poolConfig.port) < 1 || Number(poolConfig.port) > 65_535 ||
+    !poolConfig.user ||
+    poolConfig.ssl !== false ||
+    poolConfig.options !== '-c search_path=public' ||
+    poolConfig.connectionString !== undefined
+  ) {
+    throw new Error('Integration database pool requires explicit loopback host, test database, and role fields.');
+  }
+  integrationTestPoolConfig = { ...poolConfig };
+}
 
 export function getPool(): pg.Pool {
   if (!poolInstance) {
     poolInstance = new pg.Pool({
-      connectionString: databaseUrl(),
       max: 20,
       idleTimeoutMillis: 30_000,
       // Bound how long a request waits for a connection before erroring out.
       connectionTimeoutMillis: 10_000,
+      ...(integrationTestPoolConfig ?? { connectionString: databaseUrl() }),
     });
   }
   return poolInstance;

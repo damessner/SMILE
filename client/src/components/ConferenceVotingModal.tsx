@@ -20,7 +20,9 @@ import {
 } from 'lucide-react';
 import { SchoolClass, User } from '../types';
 import { getConferenceSummary, voteConference, voteAllConference } from '../services/api';
+import { describeParticipation } from '../lib/conferenceParticipation';
 import { useConfirm } from './ConfirmDialog';
+import { formatConfirmationTimestamp } from '../lib/confirmationTime';
 
 interface TeacherVote {
   teacherId: number;
@@ -59,9 +61,16 @@ interface ConferencePupil {
   finalRank: 'Lehrling' | 'Geselle' | 'Meister';
   isConfirmed: boolean;
   confirmedAt?: string | null;
-  votesYes: number;
-  votesNo: number;
-  totalVoters: number;
+  /**
+   * Measured only from submitted evaluations. The previous votesYes/votesNo/totalVoters
+   * triple was derived from the class roster minus a number an administrator typed, so a
+   * teacher who never voted counted as agreeing.
+   */
+  participation?: {
+    submittedTeachers: number;
+    eligibleTeachers: number;
+    teachersMissing: number;
+  };
   overrideReason?: string | null;
   evaluationsCount: number;
   teacherVotes: TeacherVote[];
@@ -115,22 +124,10 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
   // Local state for vote adjustments per pupil before submitting
   const [pupilVotes, setPupilVotes] = useState<
-    Record<number, { rank: 'Lehrling' | 'Geselle' | 'Meister'; votesNo: number }>
+    Record<number, { rank: 'Lehrling' | 'Geselle' | 'Meister' }>
   >({});
 
-  const formatTimestamp = (dateStr?: string | null) => {
-    if (!dateStr) {
-      const today = new Date();
-      return `${today.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })}, Beschluss erfasst`;
-    }
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return 'Beschluss erfasst';
-      return `${d.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })}, ${d.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} Uhr`;
-    } catch {
-      return 'Beschluss erfasst';
-    }
-  };
+  const formatTimestamp = formatConfirmationTimestamp;
 
   const currentClass = classes.find((c) => c.id === selectedClassId) || classes[0];
   const currentClassIndex = classes.findIndex((c) => c.id === selectedClassId);
@@ -162,11 +159,10 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
       setCurrentPupilIndex(0);
 
       // Initialize local vote state
-      const initialMap: Record<number, { rank: 'Lehrling' | 'Geselle' | 'Meister'; votesNo: number }> = {};
+      const initialMap: Record<number, { rank: 'Lehrling' | 'Geselle' | 'Meister' }> = {};
       for (const p of data.summary || []) {
         initialMap[p.id] = {
           rank: (p.finalRank as any) || p.calculatedRank,
-          votesNo: p.votesNo || 0,
         };
       }
       setPupilVotes(initialMap);
@@ -207,37 +203,9 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
     }));
   };
 
-  const handleGegenstimmenChange = (pupilId: number, delta: number) => {
-    setPupilVotes((prev) => {
-      const current = prev[pupilId] || { rank: 'Lehrling', votesNo: 0 };
-      const nextVotesNo = Math.max(0, Math.min(totalTeachers, current.votesNo + delta));
-      return {
-        ...prev,
-        [pupilId]: {
-          ...current,
-          votesNo: nextVotesNo,
-        },
-      };
-    });
-  };
-
-  const handleSetGegenstimmen = (pupilId: number, count: number) => {
-    setPupilVotes((prev) => {
-      const current = prev[pupilId] || { rank: 'Lehrling', votesNo: 0 };
-      const nextVotesNo = Math.max(0, Math.min(totalTeachers, isNaN(count) ? 0 : count));
-      return {
-        ...prev,
-        [pupilId]: {
-          ...current,
-          votesNo: nextVotesNo,
-        },
-      };
-    });
-  };
-
   // Toggle acceptance (Angenommen / Zurücknehmen)
   const handleToggleVoteSingle = async (p: ConferencePupil) => {
-    const cur = pupilVotes[p.id] || { rank: p.finalRank || p.calculatedRank, votesNo: 0 };
+    const cur = pupilVotes[p.id] || { rank: p.finalRank || p.calculatedRank };
     setSubmittingId(p.id);
     setError(null);
     try {
@@ -247,7 +215,6 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           selectedClassId,
           p.id,
           cur.rank,
-          cur.votesNo,
           undefined,
           'unconfirm'
         );
@@ -257,7 +224,6 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           selectedClassId,
           p.id,
           cur.rank,
-          cur.votesNo,
           `Beschluss der Klassenkonferenz vom ${new Date().toLocaleDateString('de-AT')}`,
           'confirm'
         );
@@ -274,7 +240,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   const handleAcceptAllProposals = async () => {
     const ok = await confirm({
       title: `Alle ${pupils.length} Einstufungen annehmen?`,
-      message: `Alle vorgeschlagenen Einstufungen für Klasse ${currentClass?.name} werden einstimmig (0 Gegenstimmen) bestätigt. Einzelne Entscheidungen lassen sich danach zurücknehmen.`,
+      message: `Alle vorgeschlagenen Einstufungen für Klasse ${currentClass?.name} werden als Beschluss erfasst. Die Beteiligung je Schüler/in bleibt dabei sichtbar. Einzelne Entscheidungen lassen sich danach zurücknehmen.`,
       confirmLabel: 'Alle annehmen',
       tone: 'danger',
     });
@@ -287,7 +253,6 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
         return {
           pupilId: p.id,
           rank: cur?.rank || p.calculatedRank,
-          votesNo: cur?.votesNo || 0,
         };
       });
       await voteAllConference(selectedClassId, items);
@@ -482,12 +447,10 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
             const p = currentPupil;
             const cur = pupilVotes[p.id] || {
               rank: p.finalRank || p.calculatedRank,
-              votesNo: p.votesNo || 0,
             };
 
-            const votesNo = cur.votesNo;
-            const votesYes = Math.max(0, totalTeachers - votesNo);
-            const percentYes = Math.round((votesYes / totalTeachers) * 100);
+            // Derived only from submitted evaluations. No roster-derived headcount.
+            const participation = describeParticipation(p.participation, p.voteStats);
 
             // Color bar & badges
             let barColor = 'bg-rose-500';
@@ -877,58 +840,44 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                       )}
                     </div>
 
-                    {/* Gegenstimmen Counter */}
+                    {/* Participation and hours-weighted split */}
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                        Gegenstimmen
-                      </div>
-                      {isAuthorized ? (
-                        <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 rounded-xl p-1">
-                          <button
-                            type="button"
-                            onClick={() => handleGegenstimmenChange(p.id, -1)}
-                            disabled={votesNo <= 0}
-                            className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 font-bold text-lg flex items-center justify-center disabled:opacity-30 transition"
-                          >
-                            −
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            max={totalTeachers}
-                            value={votesNo}
-                            onChange={(e) => handleSetGegenstimmen(p.id, parseInt(e.target.value, 10))}
-                            className="w-12 text-center bg-transparent text-base font-bold text-slate-50 focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleGegenstimmenChange(p.id, 1)}
-                            disabled={votesNo >= totalTeachers}
-                            className="min-h-[44px] min-w-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-50 font-bold text-lg flex items-center justify-center disabled:opacity-30 transition"
-                          >
-                            +
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-sm font-bold text-slate-200">
-                          {votesNo} Gegenstimmen
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Calculated Live Result */}
-                    <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                        Ergebnis Klassenkonferenz
+                        Beteiligung
                       </div>
                       <div className="text-sm font-bold text-slate-50">
-                        <span className={votesNo > 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                          {votesYes} von {totalTeachers} Stimmen dafür
+                        <span className={participation.missing ? "text-amber-400" : "text-emerald-400"}>
+                          {participation.headline}
                         </span>
-                        <span className="text-slate-400 block text-xs font-normal">
-                          ({percentYes}% Zustimmung)
-                        </span>
+                        {participation.missing && (
+                          <span className="text-slate-400 block text-xs font-normal">
+                            {participation.missing}
+                          </span>
+                        )}
                       </div>
+                    </div>
+
+                    {/* Hours-weighted split, never a roster-derived headcount. */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                        Verteilung nach Unterrichtsstunden
+                      </div>
+                      {participation.hasNoVotes ? (
+                        <div className="text-sm font-bold text-slate-400">
+                          Keine abgegebenen Bewertungen
+                        </div>
+                      ) : (
+                        <div className="text-sm font-bold text-slate-50">
+                          <span className="text-rose-300">Lehrling {participation.share.Lehrling}%</span>
+                          <span className="text-slate-500">{' · '}</span>
+                          <span className="text-blue-300">Geselle {participation.share.Geselle}%</span>
+                          <span className="text-slate-500">{' · '}</span>
+                          <span className="text-amber-300">Meister {participation.share.Meister}%</span>
+                          <span className="text-slate-400 block text-xs font-normal">
+                            {participation.totalVotedHours} gewichtete Stunden
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -994,12 +943,10 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           {pupils.map((pupil, idx) => {
             const cur = pupilVotes[pupil.id] || {
               rank: pupil.finalRank || pupil.calculatedRank,
-              votesNo: pupil.votesNo || 0,
             };
 
-            const votesNo = cur.votesNo;
-            const votesYes = Math.max(0, totalTeachers - votesNo);
-            const percentYes = Math.round((votesYes / totalTeachers) * 100);
+            // Derived only from submitted evaluations. No roster-derived headcount.
+            const participation = describeParticipation(pupil.participation, pupil.voteStats);
 
             let barColor = 'bg-rose-500';
             let badgeBg = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
@@ -1073,7 +1020,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   </div>
                 </div>
 
-                {/* Middle: Rank & Gegenstimmen */}
+                {/* Middle: Rank, participation & weighted split */}
                 <div className="flex flex-wrap items-center gap-5">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
@@ -1127,56 +1074,39 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                      Gegenstimmen
+                      Beteiligung
                     </div>
-                    {isAuthorized ? (
-                      <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-xl p-0.5">
-                        <button
-                          type="button"
-                          onClick={() => handleGegenstimmenChange(pupil.id, -1)}
-                          disabled={votesNo <= 0}
-                          className="w-7 h-7 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-50 font-bold text-sm flex items-center justify-center disabled:opacity-30"
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          max={totalTeachers}
-                          value={votesNo}
-                          onChange={(e) => handleSetGegenstimmen(pupil.id, parseInt(e.target.value, 10))}
-                          className="w-10 text-center bg-transparent text-xs font-bold text-slate-50 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleGegenstimmenChange(pupil.id, 1)}
-                          disabled={votesNo >= totalTeachers}
-                          className="w-7 h-7 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-50 font-bold text-sm flex items-center justify-center disabled:opacity-30"
-                        >
-                          +
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs font-bold text-slate-300">
-                        {pupil.votesNo} Gegenstimmen
+                    <div className="text-xs font-bold text-slate-50">
+                      <span className={participation.missing ? "text-amber-400" : "text-emerald-400"}>
+                        {participation.headline}
                       </span>
-                    )}
+                      {participation.missing && (
+                        <span className="text-slate-400 block text-[10px] font-normal">
+                          {participation.missing}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="min-w-[150px]">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                      Ergebnis
+                      Verteilung (nach Stunden)
                     </div>
-                    <div className="text-xs font-bold text-slate-50">
-                      <span className={votesNo > 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                        {votesYes} von {totalTeachers} dafür
-                      </span>
-                      <span className="text-slate-400 block text-[10px] font-normal">
-                        ({percentYes}% Zustimmung)
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                    {participation.hasNoVotes ? (
+                      <div className="text-xs font-bold text-slate-400">Keine Bewertungen</div>
+                    ) : (
+                      <div className="text-xs font-bold text-slate-50">
+                        <span className="text-rose-300">L {participation.share.Lehrling}%</span>
+                        <span className="text-slate-500">{" · "}</span>
+                        <span className="text-blue-300">G {participation.share.Geselle}%</span>
+                        <span className="text-slate-500">{" · "}</span>
+                        <span className="text-amber-300">M {participation.share.Meister}%</span>
+                        <span className="text-slate-400 block text-[10px] font-normal">
+                          {participation.totalVotedHours} gewichtete Stunden
+                        </span>
+                      </div>
+                    )}
+                  </div>                </div>
 
                 {/* Right: Angenommen Button & Un-accept toggle */}
                 <div className="flex items-center gap-3">

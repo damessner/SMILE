@@ -65,7 +65,7 @@ export function determinePeriodAndDay(customDay?: number, customPeriod?: number)
 
 export const timetableRoutes: FastifyPluginAsync = async (fastify) => {
   /** GET /api/timetable/current — the caller's own lesson right now. */
-  fastify.get('/current', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/current', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const query = request.query as { day?: string; period?: string };
 
@@ -124,7 +124,7 @@ export const timetableRoutes: FastifyPluginAsync = async (fastify) => {
    * parameterised query. Now scoped to self, colleagues in shared classes, and
    * school leadership.
    */
-  fastify.get('/teacher/:teacherId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/teacher/:teacherId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { teacherId } = request.params as { teacherId: string };
     const tid = parseIdParam(teacherId, 'teacherId');

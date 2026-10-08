@@ -9,8 +9,10 @@ import {
   getClassAccess,
   getPupil,
   isRank,
+  MAX_POSTGRES_INTEGER,
   parseIdParam,
   requireAuth,
+  safeTeacherId,
   type AuthUser,
 } from '../lib/guards.js';
 import { calculateRank, demote, summarizeRatings, type RatingLike } from '../lib/ranking.js';
@@ -44,7 +46,23 @@ async function countClassTeachers(classId: number): Promise<number> {
 
 export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
   /** POST /api/conferences/:classId/lock — freeze/unfreeze voting. */
-  fastify.post('/:classId/lock', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post('/:classId/lock', {
+    preValidation: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['classId'],
+        additionalProperties: false,
+        properties: { classId: { type: 'string', pattern: '^[1-9]\\d*$' } },
+      },
+      body: {
+        type: 'object',
+        required: ['isLocked'],
+        additionalProperties: false,
+        properties: { isLocked: { type: 'boolean' } },
+      },
+    },
+  }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -73,7 +91,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: isLocked ? 'VOTING_LOCKED' : 'VOTING_UNLOCKED',
       entity: 'class',
       entityId: String(cid),
@@ -84,7 +102,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       type: 'VOTING_LOCK_CHANGED',
       classId: cid,
       isLocked,
-      changedBy: user.teacherId ?? null,
+      changedBy: safeTeacherId(user.teacherId),
     });
 
     return reply.send({ success: true, isLocked });
@@ -97,7 +115,28 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
    * for class A could confirm a rank for a pupil of class B, because `pupilId` was
    * taken from the body and never checked against `cid`.
    */
-  fastify.post('/:classId/vote', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post('/:classId/vote', {
+    preValidation: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['classId'],
+        additionalProperties: false,
+        properties: { classId: { type: 'string', pattern: '^[1-9]\\d*$' } },
+      },
+      body: {
+        type: 'object',
+        required: ['pupilId'],
+        additionalProperties: false,
+        properties: {
+          pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+          rank: { type: 'string', enum: ['Lehrling', 'Geselle', 'Meister'] },
+          overrideReason: { type: 'string', nullable: true, maxLength: 2000 },
+          action: { type: 'string', enum: ['confirm', 'unconfirm'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -108,13 +147,11 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     const {
       pupilId,
       rank,
-      votesNo = 0,
       overrideReason,
       action = 'confirm',
     } = (request.body ?? {}) as {
       pupilId?: number;
       rank?: string;
-      votesNo?: number;
       overrideReason?: string;
       action?: 'confirm' | 'unconfirm';
     };
@@ -122,6 +159,10 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     if (!pupilId) return badRequest(reply, 'PupilId ist erforderlich');
     if (action !== 'confirm' && action !== 'unconfirm') {
       return badRequest(reply, 'Unbekannte Aktion.');
+    }
+    const confirmationRank = typeof rank === 'string' && isRank(rank) ? rank : null;
+    if (action === 'confirm' && !confirmationRank) {
+      return badRequest(reply, 'Rang muss einer von "Lehrling", "Geselle", "Meister" sein.');
     }
 
     const access = await getClassAccess(user, cid);
@@ -148,7 +189,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.pupilId, pupilId)));
 
       await db.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
+        actorId: safeTeacherId(user.teacherId),
         action: 'CONFERENCE_VOTE_REVOKED',
         entity: 'pupil',
         entityId: String(pupilId),
@@ -159,14 +200,14 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true, isConfirmed: false, pupilId });
     }
 
-    if (!rank || !isRank(rank)) {
+    // `action` is now narrowed to confirm; keep the write value explicitly narrowed
+    // as well so no optional/unvalidated body value reaches Drizzle.
+    if (!confirmationRank) {
       return badRequest(reply, 'Rang muss einer von "Lehrling", "Geselle", "Meister" sein.');
     }
 
-    const totalClassTeachers = await countClassTeachers(cid);
-    const cleanVotesNo = Math.max(0, Math.min(Math.trunc(votesNo) || 0, totalClassTeachers));
-    const cleanVotesYes = Math.max(0, totalClassTeachers - cleanVotesNo);
-    const reason = overrideReason?.trim() || defaultConferenceReason();
+    const confirmation = createConferenceConfirmationMetadata();
+    const reason = overrideReason?.trim() || confirmation.overrideReason;
     if (reason.length > 2000) return badRequest(reply, 'Der Beschlussvermerk ist zu lang.');
 
     // The unique index on (round_id, pupil_id) makes this a real upsert.
@@ -176,43 +217,34 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         roundId: round.id,
         pupilId,
         classId: cid,
-        rank,
-        votesYes: cleanVotesYes,
-        votesNo: cleanVotesNo,
-        totalVoters: totalClassTeachers,
+        rank: confirmationRank,
         overrideReason: reason,
-        confirmedBy: user.teacherId ?? null,
-        confirmedAt: config.officialConferenceDate,
+        confirmedBy: safeTeacherId(user.teacherId),
+        confirmedAt: confirmation.confirmedAt,
       })
       .onConflictDoUpdate({
         target: [finalRanks.roundId, finalRanks.pupilId],
         set: {
-          rank,
-          votesYes: cleanVotesYes,
-          votesNo: cleanVotesNo,
-          totalVoters: totalClassTeachers,
+          rank: confirmationRank,
           overrideReason: reason,
-          confirmedBy: user.teacherId ?? null,
-          confirmedAt: config.officialConferenceDate,
+          confirmedBy: safeTeacherId(user.teacherId),
+          confirmedAt: confirmation.confirmedAt,
         },
       })
       .returning();
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'CONFERENCE_VOTE_CONFIRMED',
       entity: 'pupil',
       entityId: String(pupilId),
-      payload: { rank, votesYes: cleanVotesYes, votesNo: cleanVotesNo, totalVoters: totalClassTeachers, overrideReason: reason },
+      payload: { rank: confirmationRank, overrideReason: reason },
     });
 
     broadcastToClass(cid, {
       type: 'FINAL_RANK_CONFIRMED',
       pupilId,
-      rank,
-      votesYes: cleanVotesYes,
-      votesNo: cleanVotesNo,
-      totalVoters: totalClassTeachers,
+      rank: confirmationRank,
       confirmedAt: confirmed.confirmedAt,
     });
 
@@ -225,7 +257,38 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
    * The previous loop issued ~2N sequential round trips with no transaction, so a
    * failure halfway through left the class partly confirmed.
    */
-  fastify.post('/:classId/vote-all', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post('/:classId/vote-all', {
+    preValidation: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['classId'],
+        additionalProperties: false,
+        properties: { classId: { type: 'string', pattern: '^[1-9]\\d*$' } },
+      },
+      body: {
+        type: 'object',
+        required: ['items'],
+        additionalProperties: false,
+        properties: {
+          items: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 200,
+            items: {
+              type: 'object',
+              required: ['pupilId', 'rank'],
+              additionalProperties: false,
+              properties: {
+                pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+                rank: { type: 'string', enum: ['Lehrling', 'Geselle', 'Meister'] },
+                    },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -234,7 +297,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     if (!cid) return badRequest(reply, 'Ungültige Klassen-ID.');
 
     const { items } = (request.body ?? {}) as {
-      items?: Array<{ pupilId: number; rank: string; votesNo?: number }>;
+      items?: Array<{ pupilId: number; rank: string }>;
     };
     if (!Array.isArray(items) || items.length === 0) {
       return badRequest(reply, 'Es wurden keine Beschlüsse übermittelt.');
@@ -252,8 +315,6 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     const round = await getActiveRound();
     if (!round) return badRequest(reply, 'Kein aktiver Beobachtungszeitraum gefunden');
 
-    const totalClassTeachers = await countClassTeachers(cid);
-
     // Validate every entry before writing anything.
     for (const item of items) {
       if (!item?.pupilId || !isRank(item.rank)) {
@@ -265,13 +326,11 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
-    const reason = defaultConferenceReason();
+    const confirmation = createConferenceConfirmationMetadata();
+    const reason = confirmation.overrideReason;
 
     await db.transaction(async (tx) => {
       for (const item of items) {
-        const cleanVotesNo = Math.max(0, Math.min(Math.trunc(item.votesNo ?? 0) || 0, totalClassTeachers));
-        const cleanVotesYes = Math.max(0, totalClassTeachers - cleanVotesNo);
-
         await tx
           .insert(finalRanks)
           .values({
@@ -279,29 +338,23 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
             pupilId: item.pupilId,
             classId: cid,
             rank: item.rank,
-            votesYes: cleanVotesYes,
-            votesNo: cleanVotesNo,
-            totalVoters: totalClassTeachers,
             overrideReason: reason,
-            confirmedBy: user.teacherId ?? null,
-            confirmedAt: config.officialConferenceDate,
+            confirmedBy: safeTeacherId(user.teacherId),
+            confirmedAt: confirmation.confirmedAt,
           })
           .onConflictDoUpdate({
             target: [finalRanks.roundId, finalRanks.pupilId],
             set: {
               rank: item.rank,
-              votesYes: cleanVotesYes,
-              votesNo: cleanVotesNo,
-              totalVoters: totalClassTeachers,
               overrideReason: reason,
-              confirmedBy: user.teacherId ?? null,
-              confirmedAt: config.officialConferenceDate,
+              confirmedBy: safeTeacherId(user.teacherId),
+              confirmedAt: confirmation.confirmedAt,
             },
           });
       }
 
       await tx.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
+        actorId: safeTeacherId(user.teacherId),
         action: 'CONFERENCE_VOTE_CONFIRMED_BULK',
         entity: 'class',
         entityId: String(cid),
@@ -314,7 +367,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'FINAL_RANK_CONFIRMED',
         pupilId: item.pupilId,
         rank: item.rank,
-        confirmedAt: config.officialConferenceDate,
+        confirmedAt: confirmation.confirmedAt,
       });
     }
 
@@ -329,7 +382,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
    * they are responsible for. The endpoint previously returned every teacher's
    * comments for any class to any authenticated user.
    */
-  fastify.get('/:classId/summary', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/:classId/summary', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user: AuthUser = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
@@ -552,7 +605,18 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         };
       });
 
-      // Calculate hours-weighted statistics
+      // Participation counts distinct teachers who actually submitted, not evaluation rows:
+      // a teacher covering two core subjects in this class submitted twice but is one voter,
+      // and a teacher who submitted nothing must not appear at all.
+      const submittedTeacherIds = new Set<number | null>();
+      for (const tv of teacherVotes) {
+        if (tv.isSubmitted) submittedTeacherIds.add(tv.teacherId);
+      }
+      const submittedTeachers = submittedTeacherIds.size;
+
+      // Hours-weighted split. Weighting is the school's existing rule (weekly lessons,
+      // doubled for a core subject when only one team teacher submitted), so a teacher who
+      // teaches more lessons in this class carries proportionally more of the vote.
       let hoursLehrling = 0;
       let hoursGeselle = 0;
       let hoursMeister = 0;
@@ -605,12 +669,24 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         finalRank: confirmed?.rank || outcome.finalRank,
         isConfirmed: !!confirmed,
         confirmedAt: confirmed?.confirmed_at || null,
-        votesYes: confirmed?.votes_yes ?? totalClassTeachers,
-        votesNo: confirmed?.votes_no ?? 0,
-        totalVoters: confirmed?.total_voters || totalClassTeachers,
         overrideReason: confirmed?.override_reason || null,
         evaluationsCount: counts.evaluationCount,
         teacherVotes,
+        /**
+         * Participation, measured only from evaluations that were actually submitted.
+         *
+         * The previous payload exposed votesYes/votesNo/totalVoters, where the "yes" count
+         * was totalClassTeachers minus a number the administrator typed. That made every
+         * teacher who never opened the app count as agreeing, and it contradicted the
+         * hours-weighted split shown next to it. The tally is no longer stored on the
+         * confirmation: it is derived here from real ballots, and a teacher who has not
+         * voted contributes nothing.
+         */
+        participation: {
+          submittedTeachers,
+          eligibleTeachers: totalClassTeachers,
+          teachersMissing: Math.max(0, totalClassTeachers - submittedTeachers),
+        },
         voteStats: {
           Lehrling: teacherVotes.filter((tv) => tv.proposedStatus === 'Lehrling').length,
           Geselle: teacherVotes.filter((tv) => tv.proposedStatus === 'Geselle').length,
@@ -646,6 +722,16 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
 
 function defaultConferenceReason(): string {
   return `Beschluss der Klassenkonferenz vom ${config.officialConferenceDate.toISOString().slice(0, 10)}`;
+}
+
+export function createConferenceConfirmationMetadata(recordedAt = new Date()): {
+  confirmedAt: Date;
+  overrideReason: string;
+} {
+  return {
+    confirmedAt: recordedAt,
+    overrideReason: defaultConferenceReason(),
+  };
 }
 
 /** Re-export for tests. */

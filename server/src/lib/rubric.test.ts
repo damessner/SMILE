@@ -119,22 +119,45 @@ describe('validateBatchItems', () => {
   ]);
 
   it('accepts a valid item and derives the criterion server-side', () => {
-    const result = validateBatchItems([{ itemKey: 'koop_1', rating: '+' }], index, 200);
+    const result = validateBatchItems([{ itemKey: 'koop_1', rating: '+', version: 0 }], index, 200);
 
     expect(result).toEqual({
       ok: true,
-      items: [{ itemKey: 'koop_1', rating: '+', criterionId: 'crit-2' }],
+      items: [{ itemKey: 'koop_1', rating: '+', criterionId: 'crit-2', version: 0 }],
     });
   });
 
+  it('preserves a valid expected item version for optimistic HTTP fallback writes', () => {
+    const result = validateBatchItems(
+      [{ itemKey: 'org_1', rating: '+', version: 7 }],
+      index,
+      200,
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      items: [{ itemKey: 'org_1', rating: '+', criterionId: 'crit-1', version: 7 }],
+    });
+    expect(validateBatchItems([{ itemKey: 'org_1', rating: '+', version: 1.5 }], index, 200).ok)
+      .toBe(false);
+    expect(validateBatchItems([{ itemKey: 'org_1', rating: '+', version: -1 }], index, 200).ok)
+      .toBe(false);
+  });
+
+  it('rejects an item with no optimistic-concurrency version', () => {
+    const result = validateBatchItems([{ itemKey: 'org_1', rating: '+' }], index, 200);
+
+    expect(rejectionMessage(result)).toBe('Ungültige Bewertungsversion.');
+  });
+
   it('rejects an item key the rubric never defined', () => {
-    const result = validateBatchItems([{ itemKey: 'x1', rating: '+' }], index, 200);
+    const result = validateBatchItems([{ itemKey: 'x1', rating: '+', version: 0 }], index, 200);
 
     expect(rejectionMessage(result)).toContain('Unbekanntes Beobachtungsmerkmal');
   });
 
   it('rejects a rating outside the allowlist', () => {
-    const result = validateBatchItems([{ itemKey: 'org_1', rating: 'excellent' }], index, 200);
+    const result = validateBatchItems([{ itemKey: 'org_1', rating: 'excellent', version: 0 }], index, 200);
 
     expect(rejectionMessage(result)).toContain('Unbekanntes Beobachtungsmerkmal');
   });
@@ -148,6 +171,7 @@ describe('validateBatchItems', () => {
     const forged = Array.from({ length: 200 }, (_, i) => ({
       itemKey: `x${i + 1}`,
       rating: '++',
+      version: 0,
       criterionId: 'crit-1',
     }));
 
@@ -163,14 +187,14 @@ describe('validateBatchItems', () => {
   it('ignores a criterionId supplied on the input and re-derives it', () => {
     const result = validateBatchItems(
       // A client claiming org_1 belongs to a different criterion must not win.
-      [{ itemKey: 'org_1', rating: '++', criterionId: 'crit-2' }],
+      [{ itemKey: 'org_1', rating: '++', version: 0, criterionId: 'crit-2' }],
       index,
       200,
     );
 
     expect(result).toEqual({
       ok: true,
-      items: [{ itemKey: 'org_1', rating: '++', criterionId: 'crit-1' }],
+      items: [{ itemKey: 'org_1', rating: '++', criterionId: 'crit-1', version: 0 }],
     });
     expect(resolveCriterionId(index, 'org_1')).toBe('crit-1');
   });
@@ -188,28 +212,28 @@ describe('validateBatchItems', () => {
 
   it('accepts exactly maxItems and rejects maxItems + 1', () => {
     const three = [
-      { itemKey: 'org_1', rating: '+' },
-      { itemKey: 'org_2', rating: '-' },
-      { itemKey: 'koop_1', rating: 'o' },
+      { itemKey: 'org_1', rating: '+', version: 0 },
+      { itemKey: 'org_2', rating: '-', version: 0 },
+      { itemKey: 'koop_1', rating: 'o', version: 0 },
     ];
 
     expect(validateBatchItems(three, index, three.length)).toEqual({
       ok: true,
       items: [
-        { itemKey: 'org_1', rating: '+', criterionId: 'crit-1' },
-        { itemKey: 'org_2', rating: '-', criterionId: 'crit-1' },
-        { itemKey: 'koop_1', rating: 'o', criterionId: 'crit-2' },
+        { itemKey: 'org_1', rating: '+', criterionId: 'crit-1', version: 0 },
+        { itemKey: 'org_2', rating: '-', criterionId: 'crit-1', version: 0 },
+        { itemKey: 'koop_1', rating: 'o', criterionId: 'crit-2', version: 0 },
       ],
     });
 
-    const four = [...three, { itemKey: 'org_1', rating: 'n.b.' }];
+    const four = [...three, { itemKey: 'org_1', rating: 'n.b.', version: 0 }];
     expect(validateBatchItems(four, index, three.length).ok).toBe(false);
   });
 
   it('rejects a batch of only valid items that exceeds maxItems', () => {
     // Guards the cap itself: the forgery above would also be caught by the cap if
     // the rubric lookup were removed, and this pins that the cap is real.
-    const repeat = Array.from({ length: 4 }, () => ({ itemKey: 'org_1', rating: '+' }));
+    const repeat = Array.from({ length: 4 }, () => ({ itemKey: 'org_1', rating: '+', version: 0 }));
 
     expect(validateBatchItems(repeat, index, 3).ok).toBe(false);
     expect(validateBatchItems(repeat, index, 4).ok).toBe(true);
@@ -225,7 +249,7 @@ describe('validateBatchItems', () => {
     const withBlankKey = buildRubricIndex([{ id: 'crit-1', items: [{ key: '' }] }]);
     expect(resolveCriterionId(withBlankKey, '')).toBe('crit-1');
 
-    const result = validateBatchItems([{ itemKey: '', rating: '+' }], withBlankKey, 200);
+    const result = validateBatchItems([{ itemKey: '', rating: '+', version: 0 }], withBlankKey, 200);
 
     expect(rejectionMessage(result)).toContain('Unbekanntes Beobachtungsmerkmal');
   });
@@ -237,16 +261,16 @@ describe('validateBatchItems', () => {
   });
 
   it('rejects a non-string rating rather than coercing it', () => {
-    expect(validateBatchItems([{ itemKey: 'org_1', rating: 1 }], index, 200).ok).toBe(false);
-    expect(validateBatchItems([{ itemKey: 'org_1', rating: null }], index, 200).ok).toBe(false);
+    expect(validateBatchItems([{ itemKey: 'org_1', rating: 1, version: 0 }], index, 200).ok).toBe(false);
+    expect(validateBatchItems([{ itemKey: 'org_1', rating: null, version: 0 }], index, 200).ok).toBe(false);
   });
 
   it('accepts the empty rating, which clears a cell', () => {
-    const result = validateBatchItems([{ itemKey: 'org_1', rating: '' }], index, 200);
+    const result = validateBatchItems([{ itemKey: 'org_1', rating: '', version: 0 }], index, 200);
 
     expect(result).toEqual({
       ok: true,
-      items: [{ itemKey: 'org_1', rating: '', criterionId: 'crit-1' }],
+      items: [{ itemKey: 'org_1', rating: '', criterionId: 'crit-1', version: 0 }],
     });
   });
 });

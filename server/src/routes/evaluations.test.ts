@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { shouldBroadcastStatusUpdate } from './evaluations.js';
+import { requireEvaluationActor, resolveProposedRank, shouldBroadcastStatusUpdate } from './evaluations.js';
 
 /**
  * Tests for `routes/evaluations.ts` itself.
@@ -52,7 +52,7 @@ beforeAll(async () => {
 
   const { buildServer } = await import('../index.js');
   try {
-    app = await buildServer();
+    app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false }));
   } finally {
     // Restore immediately; the modules have already captured what they need.
     for (const key of Object.keys(process.env)) {
@@ -75,6 +75,7 @@ function sessionCookie(app: FastifyInstance): string {
       role: 'teacher',
       teacherId: 1,
       mustChangePassword: false,
+      sessionVersion: 0,
     },
     { expiresIn: '1h' },
   );
@@ -143,6 +144,63 @@ describe('POST /api/evaluations/status', () => {
   });
 });
 
+describe('Subject code validation and authorization on evaluation routes (Task 1.1)', () => {
+  it('rejects an unknown subject code on /batch-default with 400', async () => {
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/api/evaluations/batch-default',
+      headers: { cookie: `smile_session=${sessionCookie(app!)}` },
+      payload: { classId: 1, subjectCode: 'Astronomie', defaultRating: '+', forceOverwrite: true },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('Ungültiges Unterrichtsfach.');
+  });
+
+  it('rejects an unknown subject code on /status with 400', async () => {
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/api/evaluations/status',
+      headers: { cookie: `smile_session=${sessionCookie(app!)}` },
+      payload: { pupilId: 1, classId: 1, subjectCode: 'Astronomie', proposedStatus: 'Geselle' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('Ungültiges Unterrichtsfach.');
+  });
+
+  it('rejects an unknown subject code on /submit with 400', async () => {
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/api/evaluations/submit',
+      headers: { cookie: `smile_session=${sessionCookie(app!)}` },
+      payload: { pupilId: 1, classId: 1, subjectCode: 'Astronomie' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('Ungültiges Unterrichtsfach.');
+  });
+
+  it('rejects an unknown subject code on /reopen with 400', async () => {
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/api/evaluations/reopen',
+      headers: { cookie: `smile_session=${sessionCookie(app!)}` },
+      payload: { pupilId: 1, classId: 1, subjectCode: 'Astronomie' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('Ungültiges Unterrichtsfach.');
+  });
+
+  it('rejects an unknown subject code on /batch-items with 400', async () => {
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/api/evaluations/batch-items',
+      headers: { cookie: `smile_session=${sessionCookie(app!)}` },
+      payload: { pupilId: 1, classId: 1, subjectCode: 'Astronomie', items: [] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('Ungültiges Unterrichtsfach.');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Structural guards
 //
@@ -157,10 +215,14 @@ function routeCode(route: string): string {
   const src = readFileSync(new URL('./evaluations.ts', import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
-  const start = src.indexOf(`fastify.post('${route}'`);
-  const next = src.indexOf('fastify.post(', start + 1);
-  expect(start, `${route} must be registered`).toBeGreaterThan(-1);
-  return src.slice(start, next === -1 ? undefined : next);
+  const escapedRoute = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`fastify\\.post\\(\\s*['"]${escapedRoute}['"]`).exec(src);
+  expect(match, `${route} must be registered`).not.toBeNull();
+  const start = match!.index;
+  const nextRoute = /fastify\.post\s*\(/g;
+  nextRoute.lastIndex = start + match![0].length;
+  const next = nextRoute.exec(src);
+  return src.slice(start, next?.index);
 }
 
 describe('the item-key forgery fix is wired into /batch-items', () => {
@@ -250,5 +312,54 @@ describe('a comment-only /status write is not broadcast', () => {
     const broadcast = handler.indexOf("type: 'STATUS_UPDATED'");
     expect(gate).toBeGreaterThan(-1);
     expect(broadcast).toBeGreaterThan(gate);
+  });
+});
+
+describe('resolveProposedRank', () => {
+  it('keeps an explicitly chosen rank', () => {
+    expect(resolveProposedRank('Lehrling')).toEqual({ ok: true, rank: 'Lehrling' });
+    expect(resolveProposedRank('Geselle')).toEqual({ ok: true, rank: 'Geselle' });
+    expect(resolveProposedRank('Meister')).toEqual({ ok: true, rank: 'Meister' });
+  });
+
+  it('defaults an omitted rank to the neutral one', () => {
+    // Submitting without picking a rank is a supported flow, not an error.
+    expect(resolveProposedRank(undefined)).toEqual({ ok: true, rank: 'Geselle' });
+    expect(resolveProposedRank(null)).toEqual({ ok: true, rank: 'Geselle' });
+    expect(resolveProposedRank('')).toEqual({ ok: true, rank: 'Geselle' });
+  });
+
+  it('rejects a present-but-invalid rank instead of silently recording Geselle', () => {
+    // The old code mapped every unknown value to 'Geselle', so a mistyped rank or a
+    // value from a newer client schema downgraded the pupil without any signal.
+    for (const bogus of ['geselle', 'GESELLE', 'Meisterin', 'Meister ', 'Lehrling\n', '0', 'Geselle2']) {
+      expect(resolveProposedRank(bogus)).toEqual({ ok: false });
+    }
+  });
+});
+
+describe('evaluation actor foreign-key policy', () => {
+  it('refuses a rating write when the caller has no usable teacher actor', () => {
+    let statusCode = 0;
+    let responseBody: any;
+    const reply = {
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      send(body: unknown) {
+        responseBody = body;
+        return this;
+      },
+    } as any;
+
+    expect(requireEvaluationActor(undefined, reply)).toBeNull();
+    expect(statusCode).toBe(503);
+    expect(responseBody.code).toBe('SYSTEM_ACTOR_NOT_CONFIGURED');
+    expect(requireEvaluationActor(42, reply)).toBe(42);
+    expect(requireEvaluationActor(0, reply)).toBeNull();
+    expect(statusCode).toBe(503);
+    expect(responseBody.code).toBe('SYSTEM_ACTOR_NOT_CONFIGURED');
+    expect(requireEvaluationActor(null, reply)).toBeNull();
   });
 });

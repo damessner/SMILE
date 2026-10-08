@@ -1,6 +1,7 @@
 import type { PupilBehaviorProfile, PupilBehaviorAction } from '../types';
 
 const API_BASE = '/api';
+export const SESSION_EXPIRED_EVENT = 'smile-session-expired';
 
 
 /**
@@ -15,7 +16,7 @@ const API_BASE = '/api';
  * access logs and browser history.
  */
 async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
@@ -23,18 +24,32 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
       ...(options.headers ?? {}),
     },
   });
+  if (
+    typeof window !== 'undefined' &&
+    ((response.status === 401 && path !== '/auth/login') || response.status === 403)
+  ) {
+    const errorBody = await response.clone().json().catch(() => null) as { code?: unknown } | null;
+    const invalidPassword = response.status === 401 && errorBody?.code === 'INVALID_CURRENT_PASSWORD';
+    const resetRequired = response.status === 403 && errorBody?.code === 'PASSWORD_CHANGE_REQUIRED';
+    if (!invalidPassword && (response.status === 401 || resetRequired)) {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+  }
+  return response;
 }
 
 /** Thrown for any non-2xx response so callers get the server's German error message. */
 export class ApiError extends Error {
   status: number;
   code?: string;
+  details: Record<string, unknown>;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -49,8 +64,9 @@ async function unwrap<T = any>(res: Response): Promise<T> {
   }
 
   const err = await res.json().catch(() => ({}));
-  const message = (err as { error?: string }).error || `Anfrage fehlgeschlagen (${res.status})`;
-  throw new ApiError(message, res.status, (err as { code?: string }).code);
+  const { error, code, ...details } = err as { error?: string; code?: string; [key: string]: unknown };
+  const message = error || `Anfrage fehlgeschlagen (${res.status})`;
+  throw new ApiError(message, res.status, code, details);
 }
 
 
@@ -85,6 +101,42 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 export async function requestPasswordReset(username: string, note?: string) {
   const res = await apiFetch('/auth/request-reset', {
+    method: 'POST',
+    body: JSON.stringify({ username, note }),
+  });
+  return unwrap(res);
+}
+
+export interface AdminUserAccount {
+  id: string;
+  username: string;
+  role: 'admin' | 'head_teacher' | 'teacher' | 'pupil';
+  teacherId: number | null;
+  teacherShort: string | null;
+  teacherName: string | null;
+  mustChangePassword: boolean;
+}
+
+/** Account list for the administrator's credential handover. Never carries a hash. */
+export async function getAdminUsers(): Promise<{ users: AdminUserAccount[] }> {
+  const res = await apiFetch('/auth/users');
+  return unwrap(res);
+}
+
+export interface IssuedTemporaryPassword {
+  success: boolean;
+  username: string;
+  /** Shown exactly once by the server; the value is never stored or retrievable again. */
+  temporaryPassword: string;
+  mustChangePassword: boolean;
+  notice: string;
+}
+
+export async function issueTemporaryPassword(
+  username: string,
+  note?: string
+): Promise<IssuedTemporaryPassword> {
+  const res = await apiFetch('/auth/admin/temporary-password', {
     method: 'POST',
     body: JSON.stringify({ username, note }),
   });
@@ -153,8 +205,7 @@ export async function revokeCard(cardId: string) {
 
 export async function getYellowCardAlerts() {
   const res = await apiFetch('/cards/alerts');
-  if (!res.ok) return [];
-  return (await res.json()) as any[];
+  return unwrap<any[]>(res);
 }
 
 export async function getClassCards(classId: number) {
@@ -182,24 +233,32 @@ export async function getConferenceSummary(classId: number) {
   return unwrap(res);
 }
 
+/**
+ * Records a conference decision for one pupil.
+ *
+ * There is deliberately no `votesNo` parameter. It used to be a number the administrator
+ * typed into a stepper, and the server turned it into "yes = everyone else in the class",
+ * which counted teachers who never voted as agreeing. The tally is now derived from the
+ * evaluations that were actually submitted; a confirmation records only the rank, who
+ * confirmed it, and when.
+ */
 export async function voteConference(
   classId: number,
   pupilId: number,
   rank: string,
-  votesNo: number = 0,
   overrideReason?: string,
   action: 'confirm' | 'unconfirm' = 'confirm'
 ) {
   const res = await apiFetch(`/conferences/${classId}/vote`, {
     method: 'POST',
-    body: JSON.stringify({ pupilId, rank, votesNo, overrideReason, action }),
+    body: JSON.stringify({ pupilId, rank, overrideReason, action }),
   });
   return unwrap(res);
 }
 
 export async function voteAllConference(
   classId: number,
-  items: Array<{ pupilId: number; rank: string; votesNo?: number }>
+  items: Array<{ pupilId: number; rank: string }>
 ) {
   const res = await apiFetch(`/conferences/${classId}/vote-all`, {
     method: 'POST',
@@ -284,7 +343,7 @@ export async function batchUpdateItems(
   pupilId: number,
   classId: number,
   subjectCode: string,
-  items: Array<{ criterionId: string; itemKey: string; rating: string }>
+  items: Array<{ criterionId: string; itemKey: string; rating: string; version: number }>
 ) {
   const res = await apiFetch('/evaluations/batch-items', {
     method: 'POST',
@@ -318,7 +377,7 @@ export async function conferenceOverride(
 export async function applyClassDefault(classId: number, subjectCode: string, defaultRating = '+') {
   const res = await apiFetch('/evaluations/batch-default', {
     method: 'POST',
-    body: JSON.stringify({ classId, subjectCode, defaultRating }),
+    body: JSON.stringify({ classId, subjectCode, defaultRating, forceOverwrite: true }),
   });
   return unwrap(res);
 }

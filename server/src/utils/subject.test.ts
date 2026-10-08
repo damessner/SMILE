@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeSubject } from './subject.js';
+import { normalizeKnownSubject, normalizeSubject } from './subject.js';
 
 describe('normalizeSubject', () => {
   it('normalizes core German variants to canonical D', () => {
@@ -86,5 +86,36 @@ describe('normalizeSubject', () => {
       name: 'Unbekannt',
       isCoreSmile: false,
     });
+    // `CANONICAL_MAP` is an ordinary object. An unknown key inherited from
+    // Object.prototype must never masquerade as a real subject entry.
+    expect(normalizeSubject('constructor')).toEqual({
+      code: 'CONSTRUCTOR',
+      name: 'constructor',
+      isCoreSmile: false,
+    });
+  });
+});
+
+describe('normalizeKnownSubject', () => {
+  it('normalizes known aliases to their canonical representation', () => {
+    expect(normalizeKnownSubject('D')).toEqual({ code: 'D', name: 'Deutsch', isCoreSmile: true });
+    expect(normalizeKnownSubject('sd')).toEqual({ code: 'D', name: 'Deutsch', isCoreSmile: true });
+    expect(normalizeKnownSubject('smile deutsch')).toEqual({ code: 'D', name: 'Deutsch', isCoreSmile: true });
+    expect(normalizeKnownSubject('M')).toEqual({ code: 'M', name: 'Mathematik', isCoreSmile: true });
+    expect(normalizeKnownSubject('sm')).toEqual({ code: 'M', name: 'Mathematik', isCoreSmile: true });
+    expect(normalizeKnownSubject('E')).toEqual({ code: 'E', name: 'Englisch', isCoreSmile: true });
+    expect(normalizeKnownSubject('BO')).toEqual({ code: 'BO', name: 'Berufsorientierung', isCoreSmile: false });
+  });
+
+  it('rejects unknown subject codes and non-string or empty inputs', () => {
+    expect(normalizeKnownSubject('Astronomie')).toBeNull();
+    expect(normalizeKnownSubject('XYZ')).toBeNull();
+    expect(normalizeKnownSubject('')).toBeNull();
+    expect(normalizeKnownSubject('   ')).toBeNull();
+    expect(normalizeKnownSubject(null)).toBeNull();
+    expect(normalizeKnownSubject(undefined)).toBeNull();
+    expect(normalizeKnownSubject(123)).toBeNull();
+    expect(normalizeKnownSubject({})).toBeNull();
+    expect(normalizeKnownSubject('constructor')).toBeNull();
   });
 });

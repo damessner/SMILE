@@ -60,9 +60,11 @@ client/dist/
 server/dist/
 *.tsbuildinfo
 
-# Logs
+# Logs and Python cache
 *.log
 npm-debug.log*
+__pycache__/
+*.py[cod]
 
 # Editor / OS
 .vscode/

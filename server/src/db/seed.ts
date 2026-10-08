@@ -5,6 +5,7 @@ import { parse } from 'csv-parse/sync';
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { closePool, db, getPool, runMigrations } from './index.js';
+import { ensureAdminActorTeacher } from '../lib/admin-actor.js';
 import {
   assessmentRubrics,
   observationRounds,
@@ -16,6 +17,7 @@ import {
   users,
 } from './schema.js';
 import { adminBootstrapPassword, config, initialBootstrapPassword } from '../config.js';
+import { safeErrorLogFields } from '../lib/log-safety.js';
 import { invalidateTeacherCache } from '../lib/guards.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -177,9 +179,15 @@ async function seed() {
 
   // 4. User accounts ---------------------------------------------------------
   //
-  // Password policy change: every account gets an individual random password and is
-  // flagged must_change_password. The previous seed assigned the shared default
-  // `smile2026` to all ~47 teachers, so anyone could sign in as anyone.
+  // Password policy: the previously published shared default `smile2026` is banned
+  // outright, and every new account is flagged must_change_password, so the bootstrap
+  // password is a one-time value each account replaces at first login.
+  //
+  // KNOWN LIMITATION, awaiting an owner decision: every new account below is still
+  // hashed from the same INITIAL_USER_PASSWORD. Issuing per-account credentials needs a
+  // delivery channel this app does not have (no mail, no keyring), so the seed cannot
+  // invent one. Until that exists, a teacher who learns the bootstrap password can sign
+  // in as any teacher who has not logged in yet. Tracked in bugfix.md / docs/SECURITY.md.
   console.log('Seeding user accounts...');
   const bootstrapPassword = initialBootstrapPassword();
   const adminPassword = adminBootstrapPassword();
@@ -206,6 +214,7 @@ async function seed() {
       passwordHash: await bcrypt.hash(adminPassword ?? bootstrapPassword, BCRYPT_ROUNDS),
       role: 'admin',
       mustChangePassword: true,
+      teacherId: await ensureAdminActorTeacher('admin'),
     });
     created++;
     console.log(
@@ -227,7 +236,7 @@ async function seed() {
         .where(eq(users.username, username));
       kept++;
     } else {
-      // Individual random password, delivered out of band to the teacher.
+      // Bootstrap password (see the limitation noted above), changed at first login.
       await db.insert(users).values({
         username,
         passwordHash: await bcrypt.hash(bootstrapPassword, BCRYPT_ROUNDS),
@@ -239,6 +248,11 @@ async function seed() {
     }
   }
   console.log(`  ${created} accounts created, ${kept} left untouched.`);
+  if (created > 0) {
+    // Say the one thing an operator must not leave this log without.
+    console.warn('  WARNING: all ' + created + ' new accounts share one bootstrap password.');
+    console.warn('  Hand each teacher their credential privately and have them change it at first login.');
+  }
   console.log(`  New accounts start on the bootstrap password and must change it at first login.`);
 
   invalidateTeacherCache();
@@ -370,7 +384,7 @@ seed()
     process.exit(0);
   })
   .catch(async (err) => {
-    console.error('Seed failed:', err);
+    console.error('Seed failed:', safeErrorLogFields(err));
     await closePool().catch(() => {});
     process.exit(1);
   });

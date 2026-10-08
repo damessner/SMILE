@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   EyeOff,
   BookOpen,
+  KeyRound,
 } from 'lucide-react';
 import { User, SchoolClass, PupilWithData, RubricCriterion } from './types';
 import {
@@ -33,9 +34,11 @@ import {
   getTimeoutEscalations,
   logout,
   exportBackup,
+  SESSION_EXPIRED_EVENT,
 } from './services/api';
 import { useLiveSync } from './hooks/useLiveSync';
 import { LoginModal } from './components/LoginModal';
+import { AdminAccountsModal } from './components/AdminAccountsModal';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useToast } from './components/Toast';
 import { ThemeToggle, useTheme } from './components/ThemeToggle';
@@ -78,10 +81,21 @@ export function App() {
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [pupils, setPupils] = useState<PupilWithData[]>([]);
   const [criteria, setCriteria] = useState<RubricCriterion[]>([]);
+  const [submissionDeadline, setSubmissionDeadline] = useState<string | null>(null);
   const [loadingClass, setLoadingClass] = useState(false);
 
   // Yellow card alerts
   const [yellowAlerts, setYellowAlerts] = useState<any[]>([]);
+  const [yellowAlertError, setYellowAlertError] = useState<string | null>(null);
+
+  const refreshYellowCardAlerts = useCallback(async () => {
+    setYellowAlertError(null);
+    try {
+      setYellowAlerts(await getYellowCardAlerts());
+    } catch (error) {
+      setYellowAlertError(error instanceof Error ? error.message : 'Warnhinweise konnten nicht geladen werden.');
+    }
+  }, []);
 
   // Modals
   const [activeCardDrawer, setActiveCardDrawer] = useState<{ pupilId: number; name: string } | null>(null);
@@ -99,6 +113,7 @@ export function App() {
     return () => forceDark(false);
   }, [conferenceModalOpen, forceDark]);
   const [teacherReportModalOpen, setTeacherReportModalOpen] = useState(false);
+  const [adminAccountsOpen, setAdminAccountsOpen] = useState(false);
   const [timeoutEscalationOpen, setTimeoutEscalationOpen] = useState(false);
   const [pendingTimeoutCount, setPendingTimeoutCount] = useState(0);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
@@ -126,6 +141,25 @@ export function App() {
       .catch(() => setCurrentUser(null))
       .finally(() => setLoadingAuth(false));
   }, []);
+
+  const handleSessionExpired = useCallback(() => {
+    if (currentUser) toast.error('Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.');
+    setCurrentUser(null);
+    setClasses([]);
+    setSelectedClassId(null);
+    setPupils([]);
+    setCriteria([]);
+    setSubmissionDeadline(null);
+    setYellowAlerts([]);
+    setYellowAlertError(null);
+    setLoadingAuth(false);
+    setLoadingClass(false);
+  }, [currentUser, toast]);
+
+  useEffect(() => {
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, [handleSessionExpired]);
 
   const loadClasses = async (user: User) => {
     try {
@@ -159,9 +193,9 @@ export function App() {
         setSelectedClassId(targetClassId);
       }
 
-      // Check yellow card alerts
-      const alerts = await getYellowCardAlerts();
-      setYellowAlerts(alerts);
+      // Alert failures are tracked separately from the class-list request so an
+      // unavailable alert endpoint is never presented as an empty alert list.
+      void refreshYellowCardAlerts();
     } catch (e) {
       console.error(e);
     }
@@ -169,6 +203,7 @@ export function App() {
 
   const loadClassData = async (cid: number) => {
     setLoadingClass(true);
+    setSubmissionDeadline(null);
     try {
       const [pupilData, rubricData] = await Promise.all([
         getClassPupils(cid),
@@ -176,6 +211,9 @@ export function App() {
       ]);
       setPupils(pupilData.pupils);
       setCriteria(rubricData.criteria);
+      setSubmissionDeadline(
+        typeof pupilData.submissionDeadline === 'string' ? pupilData.submissionDeadline : null,
+      );
     } catch (e) {
       console.error(e);
     } finally {
@@ -199,14 +237,14 @@ export function App() {
       data.type === 'PUPIL_RANKING_SUBMITTED' ||
       data.type === 'PUPIL_RANKING_REOPENED' ||
       data.type === 'STATUS_UPDATED' ||
-      data.type === 'TIMEOUT_CREATED' ||
+      data.type === 'TIMEOUT_ISSUED' ||
       data.type === 'TIMEOUT_RESOLVED' ||
-      data.type === 'FINAL_RANK_LOCKED' ||
+      data.type === 'FINAL_RANK_CONFIRMED' ||
       data.type === 'FINAL_RANK_REVOKED'
     ) {
       if (selectedClassId) loadClassData(selectedClassId);
       if (data.type === 'CARD_ISSUED' || data.type === 'CARD_REVOKED') {
-        getYellowCardAlerts().then(setYellowAlerts).catch(console.error);
+        void refreshYellowCardAlerts();
       }
       return;
     }
@@ -253,10 +291,12 @@ export function App() {
         return { ...p, evaluations: updatedEvals };
       });
     });
-  }, [selectedClassId]);
+  }, [selectedClassId, refreshYellowCardAlerts]);
 
   const {
     isConnected,
+    canRate: liveCanRate,
+    connectionError,
     softLocks,
     conflict,
     clearConflict,
@@ -276,6 +316,7 @@ export function App() {
     setClasses([]);
     setPupils([]);
     setCriteria([]);
+    setSubmissionDeadline(null);
     setYellowAlerts([]);
     setSelectedClassId(null);
   };
@@ -313,40 +354,47 @@ export function App() {
     subjectCode?: string
   ) => {
     if (!selectedClassId) return;
-    try {
-      const activeSub = subjectCode || getActiveSubjectCode();
-      await submitEvaluation(pupilId, selectedClassId, activeSub, proposedStatus, undefined, comment);
-      await loadClassData(selectedClassId);
-    } catch (e: any) {
-      toast.error(e.message || 'Fehler beim Einreichen');
+    const activeSub = subjectCode || getActiveSubjectCode();
+    if (!canWriteSubject(activeSub)) {
+      toast.error('Sie dürfen dieses Fach in dieser Klasse nicht bewerten.');
+      throw new Error('Sie dürfen dieses Fach in dieser Klasse nicht bewerten.');
     }
+    await submitEvaluation(pupilId, selectedClassId, activeSub, proposedStatus, undefined, comment);
+    await loadClassData(selectedClassId);
   };
 
   const handleReopenEvaluation = async (pupilId: number, subjectCode?: string) => {
     if (!selectedClassId) return;
-    try {
-      const activeSub = subjectCode || getActiveSubjectCode();
-      await reopenEvaluation(pupilId, selectedClassId, activeSub);
-      await loadClassData(selectedClassId);
-      toast.success('Bewertung wieder geöffnet');
-    } catch (e: any) {
-      toast.error(e.message || 'Fehler beim Öffnen');
+    const activeSub = subjectCode || getActiveSubjectCode();
+    if (!canWriteSubject(activeSub)) {
+      toast.error('Sie dürfen dieses Fach in dieser Klasse nicht bewerten.');
+      throw new Error('Sie dürfen dieses Fach in dieser Klasse nicht bewerten.');
     }
+    await reopenEvaluation(pupilId, selectedClassId, activeSub);
+    await loadClassData(selectedClassId);
+    toast.success('Bewertung wieder geöffnet');
   };
 
   const handleBatchUpdate = async (
     pupilId: number,
-    items: Array<{ criterionId: string; itemKey: string; rating: string }>,
+    items: Array<{ criterionId: string; itemKey: string; rating: string; version: number }>,
     subjectCode?: string
   ) => {
     if (!selectedClassId) return;
-    try {
-      const activeSub = subjectCode || getActiveSubjectCode();
-      await batchUpdateItems(pupilId, selectedClassId, activeSub, items);
-      await loadClassData(selectedClassId);
-    } catch (e: any) {
-      toast.error(e.message || 'Fehler beim Speichern');
+    const activeSub = subjectCode || getActiveSubjectCode();
+    if (!canWriteSubject(activeSub)) {
+      toast.error('Sie dürfen dieses Fach in dieser Klasse nicht bewerten.');
+      throw new Error('Sie dürfen dieses Fach in dieser Klasse nicht bewerten.');
     }
+    try {
+      await batchUpdateItems(pupilId, selectedClassId, activeSub, items);
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code === 'CONFLICT') {
+        await loadClassData(selectedClassId);
+      }
+      throw error;
+    }
+    await loadClassData(selectedClassId);
   };
 
   // Conference authorization check:
@@ -369,6 +417,13 @@ export function App() {
     currentUser?.username?.toUpperCase() === 'SLC';
 
   const isHeadmaster = isSchoolLeadership;
+
+  /**
+   * Credential handover is an administrator capability, not a leadership one. MED and SLC
+   * get school-wide read/record rights, but issuing login credentials is reserved for the
+   * `admin` role so the audit trail has exactly one accountable group.
+   */
+  const isAccountAdministrator = currentUser?.role === 'admin';
 
   const isAnyKv = classes.some((cls) => {
     const kv1 = (cls.headTeacher1 || '').toUpperCase();
@@ -405,6 +460,13 @@ export function App() {
   */
   const canAccessConference = isSchoolLeadership;
   const currentClass = classes.find((c) => c.id === selectedClassId) || classes[0] || null;
+  const canRateCurrentClass = currentClass?.canRate === true && liveCanRate !== false;
+  const canWriteSubject = (subjectCode?: string) => {
+    if (!canRateCurrentClass) return false;
+    if (isHeadmaster) return true;
+    const requestedSubject = subjectCode || getActiveSubjectCode();
+    return currentClass?.mySubjects?.some((subject) => subject.code === requestedSubject) === true;
+  };
 
   if (loadingAuth) {
     return (
@@ -583,11 +645,11 @@ export function App() {
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
             <span
               className={`w-2 h-2 rounded-full ${
-                isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+                connectionError ? 'bg-rose-400' : isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'
               }`}
             />
-            <span className="text-[11px] text-slate-400">
-              {isConnected ? 'Live Sync' : 'Verbinde...'}
+            <span className="text-[11px] text-slate-400" title={connectionError || undefined}>
+              {connectionError ? 'Live Sync gestört' : isConnected ? 'Live Sync' : 'Verbinde...'}
             </span>
           </div>
 
@@ -605,6 +667,17 @@ export function App() {
           )}
 
           {/* Time-Out Escalation Button (Schulleitung SLC/MED + Admin: Mahnstufen 3, 6, 9...) */}
+          {isAccountAdministrator && (
+            <button
+              onClick={() => setAdminAccountsOpen(true)}
+              className="pressable focus-ring min-h-[44px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 hover:text-slate-50 hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
+              title="Konten ansehen und einmalige Zugangsdaten übergeben"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-accent" />
+              <span className="hidden lg:inline">Konten</span>
+            </button>
+          )}
+
           {isSchoolLeadership && (
             <button
               onClick={() => setTimeoutEscalationOpen(true)}
@@ -692,7 +765,22 @@ export function App() {
       </header>
 
       {/* Homeroom Yellow Card Alert Banner */}
-      {yellowAlerts.length > 0 && (
+      {yellowAlertError && (
+        <div
+          role="alert"
+          className="bg-rose-500/15 border-b border-rose-500/30 px-6 py-2 text-xs text-rose-200 flex items-center justify-between gap-3"
+        >
+          <span>Gelbe-Karten-Alarm konnte nicht geladen werden: {yellowAlertError}</span>
+          <button
+            type="button"
+            onClick={() => void refreshYellowCardAlerts()}
+            className="underline underline-offset-2 font-bold shrink-0"
+          >
+            Erneut versuchen
+          </button>
+        </div>
+      )}
+      {!yellowAlertError && yellowAlerts.length > 0 && (
         <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-2 text-xs text-amber-300 flex items-center justify-between">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -752,7 +840,9 @@ export function App() {
             onOpenCardDrawer={(pupilId, name) => setActiveCardDrawer({ pupilId, name })}
             onOpenKelReport={(pupil) => setActiveKelPupil(pupil)}
             isLockedByConference={isLockedByConference}
+            canRate={canRateCurrentClass}
             canAccessRaster={currentClass?.canAccessRaster}
+            submissionDeadline={submissionDeadline}
             mySubjects={currentClass?.mySubjects}
             selectedPupilIdProp={ratingPupilId}
             onSubmitPupil={handleSubmitPupil}
@@ -784,6 +874,10 @@ export function App() {
           currentUser={currentUser}
           onClose={() => setTeacherReportModalOpen(false)}
         />
+      )}
+
+      {adminAccountsOpen && isAccountAdministrator && (
+        <AdminAccountsModal onClose={() => setAdminAccountsOpen(false)} />
       )}
 
       {activeCardDrawer && selectedClassId && (

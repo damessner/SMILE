@@ -215,8 +215,9 @@ export function findItemForSubjects<T extends { itemKey: string }>(
 }
 
 /**
- * The version a write for one subject must expect, or 1 when that subject has no
- * item row yet (the server inserts at version 1 and ignores the value).
+ * The version a write for one subject must expect, or 0 when that subject has no
+ * item row. Zero represents absence, so a concurrent first insert is not mistaken
+ * for an allowed update of the row another writer has just created.
  *
  * Every subject's write must carry its own version. Resolving one version for
  * the whole grid and sending it for every subject makes the server's
@@ -230,7 +231,7 @@ export function itemVersionForSubject<T extends { itemKey: string; version: numb
 ): number {
   // `??`, not `||`: version 0 is a legitimate value to send, and it is also the
   // one value that would match the row.
-  return findItemForSubjects(evaluations, [code], itemKey)?.version ?? 1;
+  return findItemForSubjects(evaluations, [code], itemKey)?.version ?? 0;
 }
 
 /**

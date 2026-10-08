@@ -185,12 +185,12 @@ describe('itemVersionForSubject', () => {
     expect(mVersion).not.toBe(itemVersionForSubject(versions, 'D', 'org_1'));
   });
 
-  it('returns 1 when the subject has no evaluation for that item', () => {
-    // The server inserts at version 1 and ignores expectedVersion on that path,
-    // so 1 is the safe default. It must not be another subject's version.
-    expect(itemVersionForSubject(versions, 'M', 'org_9')).toBe(1);
-    expect(itemVersionForSubject(versions, 'BO', 'org_1')).toBe(1);
-    expect(itemVersionForSubject([], 'M', 'org_1')).toBe(1);
+  it('returns 0 when the subject has no item row', () => {
+    // Zero represents absence, so a concurrent first insert conflicts rather
+    // than being treated as an update to a row another writer just created.
+    expect(itemVersionForSubject(versions, 'M', 'org_9')).toBe(0);
+    expect(itemVersionForSubject(versions, 'BO', 'org_1')).toBe(0);
+    expect(itemVersionForSubject([], 'M', 'org_1')).toBe(0);
   });
 
   it('returns a version of 0 unchanged rather than substituting 1', () => {

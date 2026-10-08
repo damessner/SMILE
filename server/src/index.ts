@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import cors from '@fastify/cors';
 import fastifyCookie from '@fastify/cookie';
 import fastifyJwt from '@fastify/jwt';
@@ -10,8 +10,9 @@ import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 import { assertServerConfig, config, ConfigError, jwtSecret } from './config.js';
-import { buildAuthenticate, buildRequireRole, getTeacher } from './lib/guards.js';
-import { extractToken } from './lib/session.js';
+import { buildAuthenticate, buildRequireRole, buildSessionGuard, getTeacher } from './lib/guards.js';
+import { rateLimitKey } from './lib/rate-limit.js';
+import { safeErrorLogFields } from './lib/log-safety.js';
 import { securityPlugin } from './plugins/security.js';
 import { runMigrations, closePool } from './db/index.js';
 
@@ -35,7 +36,11 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export async function buildServer() {
+export { safeErrorLogFields } from './lib/log-safety.js';
+
+export async function buildServer(
+  sessionStateReader?: (userId: string) => Promise<{ sessionVersion: number; mustChangePassword: boolean } | null>,
+) {
   // Fail fast on a misconfigured or compromised environment rather than silently
   // falling back to the hardcoded secrets that used to live in this file.
   assertServerConfig();
@@ -59,6 +64,15 @@ export async function buildServer() {
     },
     bodyLimit: config.bodyLimitBytes,
     trustProxy: config.trustProxy,
+    // Request schemas are a security boundary: don't silently coerce values or
+    // strip unknown fields and then execute a write with a different payload.
+    ajv: {
+      customOptions: {
+        coerceTypes: false,
+        removeAdditional: false,
+        useDefaults: false,
+      },
+    },
   });
 
   // --- Security headers, CSP and CSRF Origin check -------------------------
@@ -92,14 +106,69 @@ export async function buildServer() {
     global: true,
     max: config.globalRateLimit.max,
     timeWindow: `${config.globalRateLimit.windowSeconds}s`,
+    hook: 'preHandler',
     // Authenticated users are limited per account rather than per IP, otherwise a
     // whole school behind one NAT address shares a single bucket.
-    keyGenerator: (request) => {
-      const authUser = request.authUser;
-      if (authUser?.id) return `user:${authUser.id}`;
-      return request.ip;
-    },
+    keyGenerator: (request) => rateLimitKey(request.authUser, request.ip),
     allowList: (request) => request.url === '/health',
+  });
+
+  // JWT verification establishes identity in preValidation. Validate the durable
+  // account/session version in preHandler, after schema validation but before any
+  // protected handler or database write.
+  fastify.addHook('preHandler', buildSessionGuard(sessionStateReader));
+
+  fastify.setErrorHandler((error: FastifyError, request, reply) => {
+    const correlationId = request.id || 'req-unknown';
+    // Log the registered route pattern where possible; never copy query strings
+    // (which can contain bearer tokens or reset codes) into server logs.
+    const safePath = request.routeOptions.url ?? request.url.split('?', 1)[0];
+
+    request.log.error(
+      {
+        ...safeErrorLogFields(error),
+        correlationId,
+        url: safePath,
+        method: request.method,
+      },
+      'Request error occurred',
+    );
+
+    if (error.validation) {
+      return reply.status(400).send({
+        error: 'Ungültige Eingabedaten.',
+        code: 'VALIDATION_ERROR',
+        correlationId,
+      });
+    }
+
+    const statusCode = error.statusCode && error.statusCode >= 400 && error.statusCode < 500
+      ? error.statusCode
+      : 500;
+
+    if (statusCode < 500) {
+      return reply.status(statusCode).send({
+        error: 'Anfrage konnte nicht verarbeitet werden.',
+        code: statusCode === 429
+          ? 'RATE_LIMITED'
+          : statusCode === 413
+            ? 'PAYLOAD_TOO_LARGE'
+            : statusCode === 404
+              ? 'NOT_FOUND'
+              : statusCode === 401
+                ? 'UNAUTHORIZED'
+                : statusCode === 403
+                  ? 'FORBIDDEN'
+                  : 'BAD_REQUEST',
+        correlationId,
+      });
+    }
+
+    return reply.status(500).send({
+      error: 'Ein interner Serverfehler ist aufgetreten. Bitte versuchen Sie es später erneut.',
+      code: 'INTERNAL_SERVER_ERROR',
+      correlationId,
+    });
   });
 
   // Expose the login limits to the route module without a second config read.
@@ -127,7 +196,7 @@ export async function buildServer() {
    * plain 401 before the connection is upgraded. The previous implementation
    * upgraded unconditionally and trusted the identity supplied in the first message.
    */
-  fastify.get('/ws', { websocket: true, preHandler: [fastify.authenticate] }, async (socket, request) => {
+  fastify.get('/ws', { websocket: true, preValidation: [fastify.authenticate] }, async (socket, request) => {
     const authUser = request.authUser;
     if (!authUser) {
       socket.close(1008, 'unauthenticated');
@@ -209,7 +278,7 @@ export async function start() {
       await runMigrations();
       fastify.log.info('Database migrations up to date');
     } catch (err) {
-      fastify.log.error({ err }, 'Database migration failed');
+      fastify.log.error(safeErrorLogFields(err), 'Database migration failed');
       process.exit(1);
     }
   }

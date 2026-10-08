@@ -50,9 +50,11 @@ try:
             if os.path.exists(full_path):
                 tar.add(full_path, arcname=item)
 
+    sys.path.insert(0, os.path.dirname(__file__))
+    from ssh_utils import create_ssh_client
+
     print(f"Connecting to Proxmox host {proxmox_host}...")
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh = create_ssh_client()
     ssh.connect(proxmox_host, username=proxmox_user, password=proxmox_pass, timeout=15)
 
     print("Uploading bundle...")

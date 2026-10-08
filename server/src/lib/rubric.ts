@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { assessmentRubrics, rubricCriteria } from '../db/schema.js';
+import { MAX_POSTGRES_INTEGER } from './guards.js';
 
 // ---------------------------------------------------------------------------
 // Rubric allowlists — the item keys and rating values a write may use.
@@ -83,6 +84,8 @@ export function isValidRating(index: RubricIndex, rating: string): boolean {
 export interface BatchItemInput {
   itemKey: string;
   rating: string;
+  /** Required OCC precondition; 0 denotes an item that was absent when read. */
+  version: number;
 }
 
 export interface ValidatedBatchItem {
@@ -90,6 +93,8 @@ export interface ValidatedBatchItem {
   rating: string;
   /** Derived from the rubric, never taken from the request body. */
   criterionId: string;
+  /** Preserved so the write path can enforce optimistic concurrency. */
+  version: number;
 }
 
 export type BatchValidation =
@@ -149,6 +154,7 @@ export function validateBatchItems(
     const rating = typeof (raw as BatchItemInput)?.rating === 'string'
       ? (raw as BatchItemInput).rating
       : null;
+    const version = (raw as BatchItemInput | null)?.version;
 
     // An empty key is rejected by this check rather than left to the lookup below,
     // so a blank key in the rubric data cannot become a writable target. The
@@ -167,7 +173,16 @@ export function validateBatchItems(
       return { ok: false, error: REJECTED_ITEM_ERROR };
     }
 
-    items.push({ itemKey, rating, criterionId });
+    if (
+      typeof version !== 'number' ||
+      !Number.isSafeInteger(version) ||
+      version < 0 ||
+      version > MAX_POSTGRES_INTEGER
+    ) {
+      return { ok: false, error: 'Ungültige Bewertungsversion.' };
+    }
+
+    items.push({ itemKey, rating, criterionId, version });
   }
 
   return { ok: true, items };

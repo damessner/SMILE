@@ -27,8 +27,10 @@ if not PASSWORD:
     print('PROXMOX_PASSWORD not set', file=sys.stderr)
     sys.exit(1)
 
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+sys.path.insert(0, os.path.dirname(__file__))
+from ssh_utils import create_ssh_client
+
+ssh = create_ssh_client()
 ssh.connect(HOST, username=USER, password=PASSWORD, timeout=20)
 
 def run(label, cmd, timeout=180):

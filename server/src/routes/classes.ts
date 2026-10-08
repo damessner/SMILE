@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { config } from '../config.js';
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
+import { safeErrorLogFields } from '../lib/log-safety.js';
 import {
   assessmentRubrics,
   behaviorCards,
@@ -41,7 +43,7 @@ function normaliseSubjects(raw: string[]) {
 
 export const classRoutes: FastifyPluginAsync = async (fastify) => {
   /** GET /api/classes — the classes this user may open. */
-  fastify.get('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const global = await getGlobalAccess(user);
 
@@ -72,7 +74,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
           teacherHoursMap.set(key, (teacherHoursMap.get(key) || 0) + h.hours);
         }
       } catch (err) {
-        fastify.log.warn({ err }, 'Failed to query timetable lessons for classes');
+        fastify.log.warn(safeErrorLogFields(err), 'Failed to query timetable lessons for classes');
       }
     }
 
@@ -133,7 +135,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/classes/:classId/rubric */
-  fastify.get('/:classId/rubric', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/:classId/rubric', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
@@ -178,7 +180,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
    *   eq(col, null) -> `where  = $1` [null]      (matches zero rows)
    *   isNull(col)   -> `where  is null`          (correct)
    */
-  fastify.get('/:classId/pupils', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/:classId/pupils', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
@@ -188,6 +190,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       const [cls] = await db.select().from(schoolClasses).where(eq(schoolClasses.id, 999)).limit(1);
       return reply.send({
         class: cls ?? { id: 999, name: 'LW', grade: 0 },
+        submissionDeadline: config.submissionDeadline.toISOString(),
         pupils: [],
         canAccessRaster: false,
         isKv: false,
@@ -280,7 +283,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
           userHoursMap.set(norm, (userHoursMap.get(norm) || 0) + h.hours);
         }
       } catch (err) {
-        fastify.log.warn({ err }, 'Failed to query timetable lessons for class pupils');
+        fastify.log.warn(safeErrorLogFields(err), 'Failed to query timetable lessons for class pupils');
       }
     }
 
@@ -299,6 +302,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       isCoreTeacher: access.isCoreTeacher,
       canRate: access.canRate,
       isKv: access.isKv,
+      submissionDeadline: config.submissionDeadline.toISOString(),
       mySubjects: mySubjectsWithHours,
       pupils: pupilsWithData,
     });

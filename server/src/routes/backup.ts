@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { db, getPool } from '../db/index.js';
+import { safeErrorLogFields } from '../lib/log-safety.js';
 import {
   assessmentRubrics,
   auditLogs,
@@ -36,7 +37,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get(
     '/export-json',
-    { preHandler: [fastify.requireRole('admin')] },
+    { preValidation: [fastify.requireRole('admin')] },
     async (request, reply) => {
       const user = requireAuth(request);
       if (!assertPasswordCurrent(user, reply)) return;
@@ -123,7 +124,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get(
     '/verify',
-    { preHandler: [fastify.requireRole('admin')] },
+    { preValidation: [fastify.requireRole('admin')] },
     async (request, reply) => {
       requireAuth(request);
       try {
@@ -145,7 +146,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
           checkedAt: new Date().toISOString(),
         });
       } catch (err) {
-        request.log.error({ err }, 'Backup verification query failed');
+        request.log.error(safeErrorLogFields(err), 'Backup verification query failed');
         return reply.status(503).send({ error: 'Datenbank nicht erreichbar.' });
       }
     },
@@ -159,7 +160,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get(
     '/audit-log',
-    { preHandler: [fastify.requireRole('admin')] },
+    { preValidation: [fastify.requireRole('admin')] },
     async (request, reply) => {
       requireAuth(request);
       const { limit, offset, action } = request.query as {

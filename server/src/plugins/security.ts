@@ -27,12 +27,49 @@ const CSP = [
 /** Methods that can change state and therefore need an Origin check. */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-function isAllowedOrigin(origin: string | undefined): boolean {
-  // No Origin header: same-origin navigation, non-browser client, or a
-  // same-origin fetch that omitted it. The host check below still applies.
+export function isAllowedOrigin(
+  origin: string | undefined,
+  request: FastifyRequest,
+  allowedOrigins: readonly string[] = config.corsAllowedOrigins,
+): boolean {
+  // Browsers attach Origin to state-changing requests and WebSocket handshakes. Keep
+  // non-browser bearer clients that omit it usable; cookie sessions remain protected
+  // by SameSite=Strict as well as this check when Origin is present.
   if (!origin) return true;
-  if (config.corsAllowedOrigins.length === 0) return true;
-  return config.corsAllowedOrigins.includes(origin.replace(/\/$/, ''));
+
+  const normalizedOrigin = origin.replace(/\/$/, '');
+  let parsedOrigin: URL;
+  try {
+    parsedOrigin = new URL(normalizedOrigin);
+  } catch {
+    return false;
+  }
+
+  if (parsedOrigin.origin !== normalizedOrigin.toLowerCase()) return false;
+
+  const forwardedHost = request.headers['x-forwarded-host'];
+  const forwardedHostValue = typeof forwardedHost === 'string' ? forwardedHost : null;
+  // Resolve host: only trust X-Forwarded-Host if TRUST_PROXY is explicitly enabled.
+  const host =
+    (config.trustProxy ? forwardedHostValue : null) ||
+    request.headers.host;
+
+  const requestProtocol = request.protocol.endsWith(':')
+    ? request.protocol.toLowerCase()
+    : `${request.protocol.toLowerCase()}:`;
+
+  if (config.cookieSecure && parsedOrigin.protocol !== 'https:') return false;
+
+  const isSameOrigin = Boolean(
+    host &&
+      parsedOrigin.host.toLowerCase() === host.toLowerCase() &&
+      parsedOrigin.protocol === requestProtocol,
+  );
+  if (isSameOrigin) return true;
+
+  // An explicit allowlist adds deliberate split-origin clients; it never replaces
+  // the server's own origin check.
+  return allowedOrigins.some((allowed) => allowed.toLowerCase() === parsedOrigin.origin);
 }
 
 /**
@@ -71,10 +108,19 @@ export const securityPlugin = fp(async (fastify) => {
    * request whose Origin is not allowed, and reject cross-origin WebSocket upgrades.
    */
   fastify.addHook('onRequest', async (request, reply) => {
-    if (SAFE_METHODS.has(request.method)) return;
+    const isWsUpgrade =
+      request.url.startsWith('/ws') &&
+      (request.headers.upgrade?.toLowerCase() === 'websocket' ||
+        request.headers.connection?.toLowerCase().includes('upgrade'));
 
-    if (!isAllowedOrigin(request.headers.origin)) {
-      request.log.warn({ origin: request.headers.origin }, 'Blocked cross-origin state change');
+    if (SAFE_METHODS.has(request.method) && !isWsUpgrade) return;
+
+    if (!isAllowedOrigin(request.headers.origin, request)) {
+      const safePath = request.routeOptions.url ?? request.url.split('?', 1)[0];
+      request.log.warn(
+        { url: safePath, method: request.method },
+        'Blocked cross-origin request',
+      );
       return reply.status(403).send({ error: 'Cross-Origin-Anfrage abgelehnt.' });
     }
   });

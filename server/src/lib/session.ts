@@ -1,8 +1,29 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { config } from '../config.js';
+import { db } from '../db/index.js';
+import { users } from '../db/schema.js';
 import type { AuthUser } from './guards.js';
 
 export const SESSION_COOKIE = 'smile_session';
+
+export interface PersistedUserSessionState {
+  sessionVersion: number;
+  mustChangePassword: boolean;
+}
+
+/** Read the revocation state from the database, the source of truth across workers. */
+export async function getPersistedUserSessionState(userId: string): Promise<PersistedUserSessionState | null> {
+  const [state] = await db
+    .select({
+      sessionVersion: users.sessionVersion,
+      mustChangePassword: users.mustChangePassword,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return state ?? null;
+}
 
 /**
  * Cookie attributes for the session token.
@@ -63,6 +84,7 @@ export function issueSessionToken(
     teacherId?: number | null;
     pupilId?: number | null;
     mustChangePassword?: boolean;
+    sessionVersion?: number;
   },
 ): string {
   return sign(
@@ -73,17 +95,29 @@ export function issueSessionToken(
       teacherId: user.teacherId ?? undefined,
       pupilId: user.pupilId ?? undefined,
       mustChangePassword: user.mustChangePassword ?? false,
+      sessionVersion: user.sessionVersion ?? 0,
     },
     { expiresIn: `${config.sessionTtlSeconds}s` },
   );
 }
 
+const forcedPasswordChangeUsers = new Set<string>();
+
+export function markUserMustChangePassword(userId: string): void {
+  forcedPasswordChangeUsers.add(String(userId));
+}
+
+export function clearUserMustChangePassword(userId: string): void {
+  forcedPasswordChangeUsers.delete(String(userId));
+}
+
+export function isUserForcedToChangePassword(userId: string): boolean {
+  return forcedPasswordChangeUsers.has(String(userId));
+}
+
 /**
- * Reject state-changing requests from accounts still on their bootstrap password.
- *
- * This is what turns "every teacher shares `smile2026`" from a permanent condition
- * into a bounded one: the account can sign in and read, but cannot alter any pupil
- * record until the user picks their own password.
+ * Reject state-changing requests from accounts still on their bootstrap password
+ * or whose password reset was triggered by an administrator.
  */
 export function assertPasswordCurrent(
   user: AuthUser,

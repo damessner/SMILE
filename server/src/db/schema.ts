@@ -70,9 +70,11 @@ export const users = pgTable('users', {
    * Set on every freshly seeded account. Until the user picks their own password the
    * account may log in and read, but every mutating endpoint is rejected — this is what
    * stops the old shared default ("smile2026") from being a permanent school-wide secret.
-   */
+  */
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  /** Incremented on reset/change so all previously issued JWTs become stale. */
+  sessionVersion: integer('session_version').default(0).notNull(),
 });
 
 /**

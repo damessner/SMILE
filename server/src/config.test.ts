@@ -68,6 +68,31 @@ describe('config secret validation', () => {
     expect(() => databaseUrl()).toThrow(/compromised/);
   });
 
+  it('rejects the leaked password when it is percent-encoded in the URL', async () => {
+    // "!" survives url-encoding untouched, so an operator (or a well-meaning deploy
+    // script) could smuggle the compromised password past a plain substring check.
+    process.env.DATABASE_URL =
+      'postgres://smile_user:smile_secure_pass_2026%21@192.168.178.54:5432/smile_db';
+    const { databaseUrl, ConfigError } = await loadConfig();
+    expect(() => databaseUrl()).toThrow(ConfigError);
+    expect(() => databaseUrl()).toThrow(/compromised/);
+  });
+
+  it('still rejects a leaked secret that appears outside the password field', async () => {
+    // Guards against the decode-then-compare fix weakening the original raw scan.
+    process.env.DATABASE_URL =
+      'postgres://smile:brandnew@db.internal:5432/smile_db?note=smile_secure_pass_2026!';
+    const { databaseUrl, ConfigError } = await loadConfig();
+    expect(() => databaseUrl()).toThrow(ConfigError);
+    expect(() => databaseUrl()).toThrow(/compromised/);
+  });
+
+  it('accepts a percent-encoded password that is not a known leaked secret', async () => {
+    process.env.DATABASE_URL = 'postgres://smile:brand%21new@db.internal:5432/smile_db';
+    const { databaseUrl } = await loadConfig();
+    expect(databaseUrl()).toBe('postgres://smile:brand%21new@db.internal:5432/smile_db');
+  });
+
   it('accepts a normal connection string', async () => {
     process.env.DATABASE_URL = 'postgres://smile:brandnew@db.internal:5432/smile_db';
     const { databaseUrl } = await loadConfig();
@@ -78,5 +103,136 @@ describe('config secret validation', () => {
     delete process.env.INITIAL_USER_PASSWORD;
     const { initialBootstrapPassword, ConfigError } = await loadConfig();
     expect(() => initialBootstrapPassword()).toThrow(ConfigError);
+  });
+});
+
+describe('strict config parsing', () => {
+  const savedEnv = { ...process.env };
+
+  beforeEach(() => {
+    // Never let dotenv read the developer's local .env from a parser unit test.
+    process.env.SMILE_ENV_FILE = path.join(os.tmpdir(), 'smile-test-no-such-env-file');
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    process.env = { ...savedEnv };
+    vi.resetModules();
+  });
+
+  it('readInt rejects partial and decimal forms and non-integers', async () => {
+    const { readInt, ConfigError } = await import('./config.js');
+    process.env.TEST_INT = '12abc';
+    expect(() => readInt('TEST_INT', 0)).toThrow(ConfigError);
+    expect(() => readInt('TEST_INT', 0)).toThrow('Environment variable TEST_INT must be an integer.');
+
+    process.env.TEST_INT = '12.5';
+    expect(() => readInt('TEST_INT', 0)).toThrow(ConfigError);
+
+    process.env.TEST_INT = 'not-a-number';
+    expect(() => readInt('TEST_INT', 0)).toThrow(ConfigError);
+
+    process.env.TEST_INT = '42';
+    expect(readInt('TEST_INT', 0)).toBe(42);
+
+    process.env.TEST_INT = '-5';
+    expect(readInt('TEST_INT', 0)).toBe(-5);
+
+    delete process.env.TEST_INT;
+    expect(readInt('TEST_INT', 100)).toBe(100);
+  });
+
+  it('readBool rejects typos and non-boolean strings', async () => {
+    const { readBool, ConfigError } = await import('./config.js');
+    process.env.TEST_BOOL = 'tru';
+    expect(() => readBool('TEST_BOOL', false)).toThrow(ConfigError);
+    expect(() => readBool('TEST_BOOL', false)).toThrow(
+      'Environment variable TEST_BOOL must be a boolean (true/false, 1/0, yes/no, on/off).',
+    );
+
+    process.env.TEST_BOOL = 'falze';
+    expect(() => readBool('TEST_BOOL', false)).toThrow(ConfigError);
+
+    process.env.TEST_BOOL = 'true';
+    expect(readBool('TEST_BOOL', false)).toBe(true);
+
+    process.env.TEST_BOOL = 'false';
+    expect(readBool('TEST_BOOL', true)).toBe(false);
+
+    process.env.TEST_BOOL = '1';
+    expect(readBool('TEST_BOOL', false)).toBe(true);
+
+    process.env.TEST_BOOL = '0';
+    expect(readBool('TEST_BOOL', true)).toBe(false);
+
+    delete process.env.TEST_BOOL;
+    expect(readBool('TEST_BOOL', true)).toBe(true);
+  });
+
+  it('readTimestamp validates ISO-8601 formatting', async () => {
+    const { readTimestamp, ConfigError } = await import('./config.js');
+    process.env.TEST_TS = '2026-10-30T21:59:59.000Z';
+    expect(readTimestamp('TEST_TS', '').toISOString()).toBe('2026-10-30T21:59:59.000Z');
+
+    process.env.TEST_TS = '2026-10-30T22:59:59+01:00';
+    expect(readTimestamp('TEST_TS', '').toISOString()).toBe('2026-10-30T21:59:59.000Z');
+
+    process.env.TEST_TS = 'invalid-date-string';
+    expect(() => readTimestamp('TEST_TS', '')).toThrow(ConfigError);
+    expect(() => readTimestamp('TEST_TS', '')).toThrow(
+      'Environment variable TEST_TS must be an ISO-8601 timestamp.',
+    );
+
+    process.env.TEST_TS = '30.10.2026';
+    expect(() => readTimestamp('TEST_TS', '')).toThrow(ConfigError);
+
+    process.env.TEST_TS = '2026-10-30T21:59:59';
+    expect(() => readTimestamp('TEST_TS', '')).toThrow(ConfigError);
+
+    process.env.TEST_TS = '2026-02-30T21:59:59Z';
+    expect(() => readTimestamp('TEST_TS', '')).toThrow(ConfigError);
+
+    process.env.TEST_TS = '2026-10-30T21:59:59+25:00';
+    expect(() => readTimestamp('TEST_TS', '')).toThrow(ConfigError);
+  });
+
+  it('readRankAggregation rejects invalid rank modes', async () => {
+    const { readRankAggregation, ConfigError } = await import('./config.js');
+    process.env.RANK_AGGREGATION = 'total';
+    expect(readRankAggregation('RANK_AGGREGATION')).toBe('total');
+
+    process.env.RANK_AGGREGATION = 'normalized';
+    expect(readRankAggregation('RANK_AGGREGATION')).toBe('normalized');
+
+    process.env.RANK_AGGREGATION = 'unbounded';
+    expect(() => readRankAggregation('RANK_AGGREGATION')).toThrow(ConfigError);
+    expect(() => readRankAggregation('RANK_AGGREGATION')).toThrow(
+      "Environment variable RANK_AGGREGATION must be 'total' or 'normalized'.",
+    );
+  });
+
+  it.each([
+    ['PORT', '0'],
+    ['LOGIN_RATE_LIMIT_MAX', '0'],
+    ['LOGIN_RATE_LIMIT_WINDOW_SECONDS', '-1'],
+    ['GLOBAL_RATE_LIMIT_MAX', '0'],
+    ['GLOBAL_RATE_LIMIT_WINDOW_SECONDS', '0'],
+    ['SESSION_TTL_SECONDS', '0'],
+    ['SESSION_GRACE_SECONDS', '-1'],
+    ['BODY_LIMIT_BYTES', '0'],
+    ['WS_ROOM_MAX_CLIENTS', '0'],
+    ['WS_SOFT_LOCK_TTL_MS', '0'],
+    ['YELLOW_CARD_ALERT_THRESHOLD', '0'],
+    ['YELLOW_CARD_ALERT_WINDOW_DAYS', '0'],
+    ['ESCALATION_STEP', '0'],
+    ['RUBRIC_ITEM_COUNT', '0'],
+    ['RANK_THRESHOLD_GESELLE', '-1'],
+  ])('assertServerConfig rejects out-of-range %s', async (name, value) => {
+    process.env.JWT_SECRET = 'test-secret-that-is-long-enough-to-pass-validation-1234';
+    process.env.DATABASE_URL = 'postgres://test:test@127.0.0.1:1/smile_db_test';
+    process.env[name] = value;
+    vi.resetModules();
+    const { assertServerConfig, ConfigError } = await import('./config.js');
+    expect(() => assertServerConfig()).toThrow(ConfigError);
   });
 });

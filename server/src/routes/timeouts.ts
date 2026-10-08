@@ -7,13 +7,16 @@ import {
   assertPasswordCurrent,
   badRequest,
   findPupilInClass,
+  forbid,
   getClassAccess,
   getGlobalAccess,
   getPupil,
   getTeacher,
   isHeadmasterUser,
+  MAX_POSTGRES_INTEGER,
   parseIdParam,
   requireAuth,
+  safeTeacherId,
   type Identity,
 } from '../lib/guards.js';
 import { broadcastToClass } from '../ws/live-sync.js';
@@ -35,7 +38,24 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
    * Writes happen in one transaction so a pupil can never end up with a red card but
    * no timeout record (the previous two-step write could fail halfway).
    */
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId', 'taskAssignment'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            taskAssignment: { type: 'string', minLength: 1, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -96,7 +116,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       const totalTimeouts = countRow?.count ?? 1;
 
       await tx.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
+        actorId: safeTeacherId(user.teacherId),
         action: 'TIMEOUT_ISSUED',
         entity: 'pupil',
         entityId: String(pupilId),
@@ -146,8 +166,11 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
    * on duty, but the underlying data (pupil name, reason for the timeout) is
    * inherently shared. Pupil names are returned; internal notes are not.
    */
-  fastify.get('/active', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    requireAuth(request);
+  fastify.get('/active', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    if (user.role === 'pupil') {
+      return forbid(reply);
+    }
     const rows = await getPool().query(
       `SELECT ti.id,
               ti.pupil_id,
@@ -166,7 +189,8 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
          JOIN school_classes sc ON sc.id = ti.class_id
          LEFT JOIN teachers t  ON t.id  = ti.sent_by_teacher_id
         WHERE ti.status = 'active'
-        ORDER BY ti.sent_at DESC`,
+        ORDER BY ti.sent_at DESC
+        LIMIT 100`,
     );
     return reply.send(rows.rows);
   });
@@ -177,7 +201,21 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
    * Any teacher may close an active timeout (that is the LW duty roster), but only
    * within a class they are responsible for, or with school-wide authority.
    */
-  fastify.post('/:id/resolve', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/:id/resolve',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            resolutionNote: { type: 'string', nullable: true, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -204,7 +242,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       .set({
         status: 'resolved',
         resolvedAt: new Date(),
-        resolvedBy: user.teacherId ?? null,
+        resolvedBy: safeTeacherId(user.teacherId),
         resolutionNote: cleanNote || 'Arbeitsauftrag in Lernwerkstatt erledigt',
       })
       .where(and(eq(timeoutIncidents.id, id), eq(timeoutIncidents.status, 'active')))
@@ -213,7 +251,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     if (!resolved) return badRequest(reply, 'Dieser Time-Out wurde soeben abgeschlossen.');
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'TIMEOUT_RESOLVED',
       entity: 'timeout_incident',
       entityId: id,
@@ -227,7 +265,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/timeouts/history — recent timeouts, scoped to the caller's classes. */
-  fastify.get('/history', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/history', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const global = await getGlobalAccess(user);
     if (global.classIds !== null && global.classIds.length === 0) return reply.send([]);
@@ -267,7 +305,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
    * Restricted to school leadership: this is the pupil-consequence view that drives
    * parent contact. It was previously readable by every teacher.
    */
-  fastify.get('/escalations', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/escalations', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
 
     if (!(await isSchoolLeader(user))) {
@@ -359,7 +397,21 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post(
     '/escalations/acknowledge',
-    { preHandler: [fastify.authenticate] },
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'milestoneCount'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            milestoneCount: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER, multipleOf: config.escalationStep },
+            notes: { type: 'string', nullable: true, maxLength: 2000 },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const user = requireAuth(request);
       if (!assertPasswordCurrent(user, reply)) return;
@@ -370,11 +422,16 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         notes?: string;
       };
 
-      if (!pupilId || !milestoneCount) {
+      if (!pupilId || milestoneCount === undefined || milestoneCount === null) {
         return badRequest(reply, 'PupilId und Meilenstein (3, 6, 9...) sind erforderlich.');
       }
-      if (milestoneCount % config.escalationStep !== 0) {
-        return badRequest(reply, `Der Meilenstein muss ein Vielfaches von ${config.escalationStep} sein.`);
+      if (
+        typeof milestoneCount !== 'number' ||
+        !Number.isSafeInteger(milestoneCount) ||
+        milestoneCount <= 0 ||
+        milestoneCount % config.escalationStep !== 0
+      ) {
+        return badRequest(reply, `Der Meilenstein muss eine positive Zahl und ein Vielfaches von ${config.escalationStep} sein.`);
       }
 
       const pupil = await getPupil(pupilId);
@@ -405,7 +462,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         .returning();
 
       await db.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
+        actorId: safeTeacherId(user.teacherId),
         action: 'TIMEOUT_ESCALATION_RESOLVED',
         entity: 'pupil',
         entityId: String(pupilId),

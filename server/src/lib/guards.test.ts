@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kvFieldMatches, parseIdParam } from './guards.js';
+import { canRateSubject, getGlobalAccess, hasPersistedTeacherActor, kvFieldMatches, parseIdParam, parsePositiveInt, safeTeacherId, type ClassAccess } from './guards.js';
 
 /**
  * Homeroom matching is a security boundary: it decides who may edit a class roster and
@@ -80,5 +80,152 @@ describe('parseIdParam', () => {
 
   it('rejects unsafe integers', () => {
     expect(parseIdParam('99999999999999999999')).toBeNull();
+    // PostgreSQL `integer` identifiers are signed 32-bit values even when a
+    // larger request value is still safe to represent in JavaScript.
+    expect(parseIdParam('2147483648')).toBeNull();
+  });
+});
+
+describe('parsePositiveInt', () => {
+  it('accepts numbers and valid string integers', () => {
+    expect(parsePositiveInt(42)).toBe(42);
+    expect(parsePositiveInt('42')).toBe(42);
+    expect(parsePositiveInt(1)).toBe(1);
+    expect(parsePositiveInt('1')).toBe(1);
+  });
+
+  it('rejects floats, zeroes, negatives and non-digit strings', () => {
+    expect(parsePositiveInt(0)).toBeNull();
+    expect(parsePositiveInt('0')).toBeNull();
+    expect(parsePositiveInt(-10)).toBeNull();
+    expect(parsePositiveInt('-10')).toBeNull();
+    expect(parsePositiveInt(3.14)).toBeNull();
+    expect(parsePositiveInt('3.14')).toBeNull();
+    expect(parsePositiveInt('1junk')).toBeNull();
+    expect(parsePositiveInt(null)).toBeNull();
+    expect(parsePositiveInt(undefined)).toBeNull();
+    expect(parsePositiveInt({})).toBeNull();
+    expect(parsePositiveInt(2147483648)).toBeNull();
+  });
+});
+
+describe('hasPersistedTeacherActor', () => {
+  it('accepts a real teacher id', () => {
+    expect(hasPersistedTeacherActor(42)).toBe(true);
+    expect(hasPersistedTeacherActor(1)).toBe(true);
+  });
+
+  it('rejects every value that must not become a foreign key', () => {
+    // 0 is a legal primary key, so persisting it would attach the write to a phantom
+    // teacher rather than failing the way a missing actor does.
+    expect(hasPersistedTeacherActor(0)).toBe(false);
+    expect(hasPersistedTeacherActor(null)).toBe(false);
+    expect(hasPersistedTeacherActor(undefined)).toBe(false);
+    expect(hasPersistedTeacherActor(-3)).toBe(false);
+    expect(hasPersistedTeacherActor(3.5)).toBe(false);
+    expect(hasPersistedTeacherActor(Number.NaN)).toBe(false);
+    expect(hasPersistedTeacherActor(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+describe('safeTeacherId', () => {
+  it('passes a usable id through unchanged', () => {
+    expect(safeTeacherId(42)).toBe(42);
+  });
+
+  it('collapses unusable ids to null instead of writing a sentinel', () => {
+    expect(safeTeacherId(0)).toBeNull();
+    expect(safeTeacherId(null)).toBeNull();
+    expect(safeTeacherId(undefined)).toBeNull();
+    expect(safeTeacherId(Number.NaN)).toBeNull();
+  });
+});
+
+describe('canRateSubject', () => {
+  const baseAccess: ClassAccess = {
+    classId: 1,
+    exists: true,
+    isAdmin: false,
+    isHeadmaster: false,
+    isKv: false,
+    teaches: true,
+    isCoreTeacher: true,
+    subjects: [{ code: 'D', name: 'Deutsch', isCoreSmile: true }],
+    canRead: true,
+    canRecord: true,
+    canRate: true,
+    canManagePupils: false,
+    canRunConference: false,
+  };
+
+  it('allows a teacher to write their assigned subject', () => {
+    expect(canRateSubject(baseAccess, 'D')).toBe(true);
+    expect(canRateSubject(baseAccess, 'sd')).toBe(true); // known alias normalizes to D
+  });
+
+  it('rejects writing a subject that is not assigned to the teacher', () => {
+    expect(canRateSubject(baseAccess, 'M')).toBe(false);
+    expect(canRateSubject(baseAccess, 'E')).toBe(false);
+  });
+
+  it('refuses writes if canRate is false', () => {
+    const noRateAccess = { ...baseAccess, canRate: false };
+    expect(canRateSubject(noRateAccess, 'D')).toBe(false);
+  });
+
+  it('allows administrators and headmasters to write any subject', () => {
+    const adminAccess = { ...baseAccess, isAdmin: true, subjects: [] };
+    expect(canRateSubject(adminAccess, 'D')).toBe(true);
+    expect(canRateSubject(adminAccess, 'M')).toBe(true);
+
+    const headmasterAccess = { ...baseAccess, isHeadmaster: true, subjects: [] };
+    expect(canRateSubject(headmasterAccess, 'D')).toBe(true);
+    expect(canRateSubject(headmasterAccess, 'M')).toBe(true);
+  });
+
+  it('never treats an unknown subject as rateable, even for school leadership', () => {
+    const adminAccess = { ...baseAccess, isAdmin: true, subjects: [] };
+    const headmasterAccess = { ...baseAccess, isHeadmaster: true, subjects: [] };
+    expect(canRateSubject(adminAccess, 'Astronomie')).toBe(false);
+    expect(canRateSubject(headmasterAccess, 'constructor')).toBe(false);
+  });
+
+  it('limits a KV without a teaching assignment to assigned subjects only', () => {
+    const kvWithoutAssignment = {
+      ...baseAccess,
+      isKv: true,
+      teaches: false,
+      subjects: [],
+    };
+    expect(canRateSubject(kvWithoutAssignment, 'D')).toBe(false);
+
+    const kvWithGermanAssignment = {
+      ...kvWithoutAssignment,
+      subjects: [{ code: 'D', name: 'Deutsch', isCoreSmile: true }],
+    };
+    expect(canRateSubject(kvWithGermanAssignment, 'SD')).toBe(true);
+    expect(canRateSubject(kvWithGermanAssignment, 'M')).toBe(false);
+  });
+});
+
+describe('getGlobalAccess fail-closed policy (Task 2.1)', () => {
+  it('grants unrestricted classIds: null to administrator', async () => {
+    const access = await getGlobalAccess({ role: 'admin' });
+    expect(access.isAdmin).toBe(true);
+    expect(access.classIds).toBeNull();
+  });
+
+  it('fails closed for non-admin user without linked teacherId', async () => {
+    const access = await getGlobalAccess({ role: 'teacher', teacherId: undefined });
+    expect(access.isAdmin).toBe(false);
+    expect(access.isHeadmaster).toBe(false);
+    expect(access.classIds).toEqual([]);
+  });
+
+  it('fails closed for pupil account', async () => {
+    const access = await getGlobalAccess({ role: 'pupil' } as any);
+    expect(access.isAdmin).toBe(false);
+    expect(access.isHeadmaster).toBe(false);
+    expect(access.classIds).toEqual([]);
   });
 });

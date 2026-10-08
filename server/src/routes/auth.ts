@@ -1,18 +1,22 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { passwordResets, teachers, users } from '../db/schema.js';
 import { badRequest, forbid, invalidateTeacherCache, requireAuth } from '../lib/guards.js';
 import {
   assertPasswordCurrent,
   clearSessionCookie,
+  clearUserMustChangePassword,
   extractToken,
   issueSessionToken,
+  markUserMustChangePassword,
   SESSION_COOKIE,
   sessionExpiresAt,
   setSessionCookie,
 } from '../lib/session.js';
+import { generateTemporaryPassword } from '../lib/temporary-credential.js';
+import { closeUserWebSockets } from '../ws/live-sync.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -55,6 +59,17 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/login',
     {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['username', 'password'],
+          additionalProperties: false,
+          properties: {
+            username: { type: 'string', minLength: 1, maxLength: 64 },
+            password: { type: 'string', minLength: 1, maxLength: 256 },
+          },
+        },
+      },
       config: {
         rateLimit: {
           max: fastify.rateLimitLoginMax,
@@ -97,13 +112,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         teacherId: user.teacherId,
         pupilId: user.pupilId,
         mustChangePassword: user.mustChangePassword,
+        sessionVersion: user.sessionVersion,
       });
 
       setSessionCookie(reply, token);
       request.log.info({ username, role: user.role }, 'Login');
 
       return reply.send({
-        token,
         user: await publicUser(user),
         expiresAt: sessionExpiresAt(),
       });
@@ -117,14 +132,30 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
    * `mustChangePassword` state. Requires the current password so a stolen session
    * cookie alone cannot lock the real owner out.
    */
-  fastify.post('/password', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/password',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['newPassword'],
+          additionalProperties: false,
+          properties: {
+            currentPassword: { type: 'string', maxLength: 256 },
+            newPassword: { type: 'string', minLength: 1, maxLength: 256 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const authUser = requireAuth(request);
-    const body = (request.body ?? {}) as { currentPassword?: string; newPassword?: string };
+    const { currentPassword, newPassword } = (request.body ?? {}) as { currentPassword?: string; newPassword?: string };
 
-    if (!body.newPassword) {
+    if (!newPassword) {
       return badRequest(reply, 'Ein neues Passwort ist erforderlich.');
     }
-    const problem = validateNewPassword(body.newPassword);
+    const problem = validateNewPassword(newPassword);
     if (problem) return badRequest(reply, problem);
 
     const [user] = await db.select().from(users).where(eq(users.id, authUser.id)).limit(1);
@@ -132,35 +163,58 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (user.mustChangePassword) {
       // First-time set: the bootstrap password is still on file, so require it.
-      if (!body.currentPassword) {
+      if (!currentPassword) {
         return badRequest(reply, 'Bitte geben Sie Ihr bisheriges Passwort an.');
       }
-      if (!(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
-        return reply.status(401).send({ error: 'Das bisherige Passwort ist nicht korrekt.' });
+      if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+        return reply.status(401).send({
+          error: 'Das bisherige Passwort ist nicht korrekt.',
+          code: 'INVALID_CURRENT_PASSWORD',
+        });
       }
     } else {
-      if (!body.currentPassword) {
+      if (!currentPassword) {
         return badRequest(reply, 'Bitte geben Sie Ihr aktuelles Passwort an.');
       }
-      if (!(await bcrypt.compare(body.currentPassword, user.passwordHash))) {
-        return reply.status(401).send({ error: 'Das aktuelle Passwort ist nicht korrekt.' });
+      if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+        return reply.status(401).send({
+          error: 'Das aktuelle Passwort ist nicht korrekt.',
+          code: 'INVALID_CURRENT_PASSWORD',
+        });
       }
-      if (await bcrypt.compare(body.newPassword, user.passwordHash)) {
+      if (await bcrypt.compare(newPassword, user.passwordHash)) {
         return badRequest(reply, 'Das neue Passwort muss sich vom bisherigen unterscheiden.');
       }
     }
 
-    await db
-      .update(users)
-      .set({ passwordHash: await bcrypt.hash(body.newPassword, BCRYPT_ROUNDS), mustChangePassword: false })
-      .where(eq(users.id, authUser.id));
+    let newSessionVersion = user.sessionVersion;
+    let passwordChangeApplied = false;
+    await db.transaction(async (tx) => {
+      const [updatedUser] = await tx
+        .update(users)
+        .set({
+          passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
+          mustChangePassword: false,
+          sessionVersion: sql`${users.sessionVersion} + 1`,
+        })
+        .where(and(eq(users.id, authUser.id), eq(users.sessionVersion, user.sessionVersion)))
+        .returning({ sessionVersion: users.sessionVersion });
+      if (!updatedUser) return;
+      newSessionVersion = updatedUser.sessionVersion;
+      passwordChangeApplied = true;
 
-    // Close any outstanding reset request.
-    await db
-      .update(passwordResets)
-      .set({ completedAt: sql`NOW()` })
-      .where(sql`${passwordResets.userId} = ${authUser.id} AND ${passwordResets.completedAt} IS NULL`);
+      // Close any outstanding reset request.
+      await tx
+        .update(passwordResets)
+        .set({ completedAt: sql`NOW()` })
+        .where(sql`${passwordResets.userId} = ${authUser.id} AND ${passwordResets.completedAt} IS NULL`);
+    });
 
+    if (!passwordChangeApplied) {
+      return reply.status(409).send({ error: 'Die Sitzung wurde zurückgesetzt. Bitte laden Sie die Seite neu.' });
+    }
+
+    clearUserMustChangePassword(authUser.id);
     invalidateTeacherCache();
 
     // Re-issue so the new token carries mustChangePassword: false.
@@ -171,11 +225,161 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       teacherId: user.teacherId,
       pupilId: user.pupilId,
       mustChangePassword: false,
+      sessionVersion: newSessionVersion,
     });
     setSessionCookie(reply, token);
 
-    return reply.send({ success: true, token, user: { ...(await publicUser(user)), mustChangePassword: false } });
+    return reply.send({ success: true, user: { ...(await publicUser(user)), mustChangePassword: false } });
   });
+
+  /**
+   * GET /api/auth/users — account list for the administrator's credential handover.
+   *
+   * Administrator-only, and deliberately narrow: it exists so an administrator can see
+   * which accounts still need a credential, not to be a general user directory. The
+   * password hash is never selected, so it cannot leak through a careless later edit.
+   * `mustChangePassword` is included because that is the state the panel acts on.
+   */
+  fastify.get(
+    '/users',
+    {
+      preValidation: [fastify.requireRole('admin')],
+    },
+    async (request, reply) => {
+      const requester = requireAuth(request);
+      if (!assertPasswordCurrent(requester, reply)) return;
+
+      const rows = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          role: users.role,
+          teacherId: users.teacherId,
+          mustChangePassword: users.mustChangePassword,
+          teacherShort: teachers.shortName,
+          teacherName: teachers.fullName,
+        })
+        .from(users)
+        .leftJoin(teachers, eq(teachers.id, users.teacherId))
+        .orderBy(users.username);
+
+      return reply.send({
+        users: rows.map((row) => ({
+          id: row.id,
+          username: row.username,
+          role: row.role,
+          teacherId: row.teacherId,
+          teacherShort: row.teacherShort ?? null,
+          teacherName: row.teacherName ?? null,
+          mustChangePassword: row.mustChangePassword,
+        })),
+      });
+    },
+  );
+
+  /**
+   * POST /api/auth/admin/temporary-password — issue a one-time credential for an account.
+   *
+   * This is the delivery channel that replaces the shared bootstrap password. There is no
+   * mail on this LAN, so the administrator receives the generated value once and relays it
+   * out of band; the account is flagged `mustChangePassword`, so every mutating endpoint
+   * stays closed until its owner picks their own value.
+   *
+   * The plaintext is returned exactly once, here. It is never stored, never logged and
+   * never retrievable again — a later request for the same account generates a *new*
+   * value rather than showing the old one, so a lost response cannot be replayed.
+   */
+  fastify.post(
+    '/admin/temporary-password',
+    {
+      preValidation: [fastify.requireRole('admin')],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['username'],
+          additionalProperties: false,
+          properties: {
+            username: { type: 'string', minLength: 1, maxLength: 64 },
+            note: { type: 'string', nullable: true, maxLength: 500 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const requester = requireAuth(request);
+      if (!assertPasswordCurrent(requester, reply)) return;
+      const { username, note } = (request.body ?? {}) as { username?: string; note?: string };
+
+      if (!requester.teacherId) {
+        // The audit row records who issued the credential. An administrator without a
+        // linked teacher record cannot be attributed, so refuse rather than write a
+        // fabricated actor.
+        return reply.status(503).send({
+          error:
+            'Das Ausstellen von Zugangsdaten ist nicht verfügbar, weil Ihrem Administratorkonto kein Lehrkraftdatensatz zugeordnet ist.',
+          code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
+        });
+      }
+      if (!username) return badRequest(reply, 'Benutzername ist erforderlich.');
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, username.trim().toLowerCase()))
+        .limit(1);
+      if (!user) return reply.status(404).send({ error: 'Benutzer nicht gefunden' });
+
+      const temporaryPassword = generateTemporaryPassword();
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({
+            passwordHash: await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS),
+            mustChangePassword: true,
+            sessionVersion: sql`${users.sessionVersion} + 1`,
+          })
+          .where(eq(users.id, user.id));
+
+        // Close any earlier, still-open request so the audit history has one live line.
+        await tx
+          .update(passwordResets)
+          .set({ completedAt: sql`NOW()` })
+          .where(
+            and(
+              sql`${passwordResets.userId} = ${user.id}`,
+              sql`${passwordResets.completedAt} IS NULL`,
+            ),
+          );
+
+        await tx.insert(passwordResets).values({
+          userId: user.id,
+          requestedBy: requester.teacherId,
+          note: note?.trim() ?? 'Zugangsdaten vom Administrator übergeben',
+        });
+      });
+
+      markUserMustChangePassword(user.id);
+      invalidateTeacherCache();
+      closeUserWebSockets(user.id);
+
+      // Deliberately not logged: request.log would capture the only copy of a credential
+      // that exists outside the administrator's screen.
+      request.log.info(
+        { username: user.username, issuedBy: requester.teacherId },
+        'Issued a one-time login credential',
+      );
+
+      return reply.status(201).send({
+        success: true,
+        username: user.username,
+        temporaryPassword,
+        mustChangePassword: true,
+        notice:
+          'Dieses Passwort wird genau einmal angezeigt. Bitte jetzt notieren und persönlich übergeben — danach muss es beim ersten Anmelden geändert werden.',
+      });
+    },
+  );
 
   // POST /api/auth/logout
   fastify.post('/logout', async (request, reply) => {
@@ -184,7 +388,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/auth/me */
-  fastify.get('/me', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/me', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const authUser = requireAuth(request);
     const [user] = await db.select().from(users).where(eq(users.id, authUser.id)).limit(1);
 
@@ -203,8 +407,23 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post(
     '/request-reset',
-    { preHandler: [fastify.requireRole('admin')] },
+    {
+      preValidation: [fastify.requireRole('admin')],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['username'],
+          additionalProperties: false,
+          properties: {
+            username: { type: 'string', minLength: 1, maxLength: 64 },
+            note: { type: 'string', nullable: true, maxLength: 500 },
+          },
+        },
+      },
+    },
     async (request: FastifyRequest, reply) => {
+      const requester = requireAuth(request);
+      if (!assertPasswordCurrent(requester, reply)) return;
       const { username, note } = (request.body ?? {}) as { username?: string; note?: string };
       if (!username) return badRequest(reply, 'Benutzername ist erforderlich.');
 
@@ -215,7 +434,24 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(1);
       if (!user) return reply.status(404).send({ error: 'Benutzer nicht gefunden' });
 
-      const [row] = await db.insert(passwordResets).values({ userId: user.id, note: note?.trim() }).returning();
+      // Atomically update user to require password change and record reset row
+      const [row] = await db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({
+            mustChangePassword: true,
+            sessionVersion: sql`${users.sessionVersion} + 1`,
+          })
+          .where(eq(users.id, user.id));
+
+        return await tx
+          .insert(passwordResets)
+          .values({ userId: user.id, note: note?.trim() })
+          .returning();
+      });
+
+      markUserMustChangePassword(user.id);
+      closeUserWebSockets(user.id);
       return reply.status(201).send({ success: true, reset: row });
     },
   );
@@ -224,7 +460,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
    * GET /api/auth/session — cheap liveness probe used by the client to decide whether
    * to show the login screen. Never throws, so the UI has one predictable call.
    */
-  fastify.get('/session', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/session', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const authUser = requireAuth(request);
     return reply.send({
       authenticated: true,
@@ -246,6 +482,7 @@ export interface JwtPayload {
   teacherId?: number;
   pupilId?: number;
   mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 export function verifyToken(
@@ -260,6 +497,7 @@ export function verifyToken(
     teacherId?: number;
     pupilId?: number;
     mustChangePassword?: boolean;
+    sessionVersion?: number;
   };
   if (!payload.id || !payload.role) throw new Error('malformed token');
   return payload as JwtPayload;

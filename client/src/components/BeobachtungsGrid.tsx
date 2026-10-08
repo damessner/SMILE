@@ -32,14 +32,22 @@ import { useToast } from './Toast';
 /** Debounce window for the conference comment autosave. */
 const COMMENT_SAVE_DEBOUNCE_MS = 800;
 
+async function settleAllWrites(writes: Promise<unknown>[]): Promise<void> {
+  const results = await Promise.allSettled(writes);
+  const failedWrite = results.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  );
+  if (failedWrite) throw failedWrite.reason;
+}
+
 interface BeobachtungsGridProps {
   pupils: PupilWithData[];
   criteria: RubricCriterion[];
   softLocks: Map<string, SoftLock>;
   conflict: ConflictEvent | null;
   onClearConflict: () => void;
-  onSendFocus: (pupilId: number, itemKey: string) => void;
-  onSendBlur: (pupilId: number, itemKey: string) => void;
+  onSendFocus: (pupilId: number, itemKey: string, subjectCode: string) => void;
+  onSendBlur: (pupilId: number, itemKey: string, subjectCode: string) => void;
   onRate: (
     pupilId: number,
     criterionId: string,
@@ -47,16 +55,18 @@ interface BeobachtungsGridProps {
     rating: string,
     expectedVersion: number,
     subjectCode?: string
-  ) => void;
+  ) => void | Promise<void>;
   onOpenCardDrawer: (pupilId: number, name: string) => void;
   onOpenKelReport: (pupil: PupilWithData) => void;
   isLockedByConference: boolean;
+  canRate?: boolean;
   canAccessRaster?: boolean;
+  submissionDeadline?: string | null;
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean; hours?: number }>;
   selectedPupilIdProp?: number | null;
   onSubmitPupil?: (pupilId: number, proposedStatus?: string, comment?: string, subjectCode?: string) => Promise<void>;
   onReopenPupil?: (pupilId: number, subjectCode?: string) => Promise<void>;
-  onBatchUpdate?: (pupilId: number, items: Array<{ criterionId: string; itemKey: string; rating: string }>, subjectCode?: string) => Promise<void>;
+  onBatchUpdate?: (pupilId: number, items: Array<{ criterionId: string; itemKey: string; rating: string; version: number }>, subjectCode?: string) => Promise<void>;
   onOpenReportModal?: () => void;
 }
 
@@ -96,7 +106,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   onOpenCardDrawer,
   onOpenKelReport,
   isLockedByConference,
+  canRate = true,
   canAccessRaster = true,
+  submissionDeadline = null,
   mySubjects = [],
   selectedPupilIdProp,
   onSubmitPupil,
@@ -140,8 +152,12 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     : (mySubjects.find((s) => s.code === selectedSubjectCode) || primarySubject);
 
   const mySubjectCode = mySubject.code;
-  const isSubjectCore = mySubject.isCoreSmile || (canAccessRaster && mySubjects.length === 0);
+  const isSubjectCore = mySubjects.length > 0 ? mySubject.isCoreSmile : canAccessRaster;
   const effectiveCanAccessRaster = isSubjectCore;
+  // A class may be visible to a KV who has no teaching assignment. Class-level
+  // visibility alone does not grant a subject write; administrators/headteachers
+  // receive `canAccessRaster` from the server and retain their explicit exception.
+  const canWrite = canRate && (mySubjects.length > 0 || canAccessRaster);
 
   // Non-core rating & observation state
   const [unlockedRasterPupils, setUnlockedRasterPupils] = useState<Set<number>>(new Set());
@@ -150,10 +166,16 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const [votedComment, setVotedComment] = useState<string>('');
   const [isSavingVote, setIsSavingVote] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const pendingCommentRef = useRef<PendingComment | null>(null);
 
   // Autosave and feedback state
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  const [ratingSaveError, setRatingSaveError] = useState<string | null>(null);
+  const pendingSaveCountRef = useRef(0);
+  const saveGenerationRef = useRef(0);
+  const saveFailedRef = useRef(false);
+  const saveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [submitToast, setSubmitToast] = useState<{
     pupilName: string;
     nextPupilName: string | null;
@@ -271,8 +293,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }, [selectedPupil?.id, mySubjectCode, isAllSubjectsMode, primarySubject.code]);
 
   // Deadline: 30.10.2026 23:59:59
-  const deadline = new Date(2026, 9, 30, 23, 59, 59);
-  const isPastDeadline = new Date() > deadline;
+  const deadlineAt = submissionDeadline === null ? Number.NaN : new Date(submissionDeadline).getTime();
+  const isPastDeadline = !Number.isFinite(deadlineAt) || Date.now() > deadlineAt;
 
   // Helper to extract rating and version for a specific item.
   // Scoped to the subjects in view: a pupil with no evaluation for the active
@@ -314,22 +336,116 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     };
   }, []);
 
-  // Auto-save feedback helper
-  //
-  // Reachable from an unmounted tree: the flush effect's cleanup issues the
-  // write and the component is gone before the write resolves. React 19 drops
-  // such a `setState` without complaining, so the guard is not about a warning:
-  // it keeps the 350ms badge timer - which outlives the component whether or
-  // not its `setState` lands - from being scheduled at all, and stops the
-  // closure from holding this state alive that long.
-  const markSaved = () => {
-    if (!isMountedRef.current) return;
+  const cancelSavedFeedback = useCallback(() => {
+    if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current);
+    saveFeedbackTimerRef.current = null;
+    saveGenerationRef.current++;
+  }, []);
+
+  const beginSave = useCallback(() => {
+    cancelSavedFeedback();
+    if (pendingSaveCountRef.current === 0 && pendingCommentRef.current === null) {
+      saveFailedRef.current = false;
+      if (isMountedRef.current) setRatingSaveError(null);
+    }
+    pendingSaveCountRef.current++;
+    if (isMountedRef.current) {
+      setIsSaving(true);
+      setLastSavedTime(null);
+    }
+  }, [cancelSavedFeedback]);
+
+  const markPendingComment = useCallback(() => {
+    cancelSavedFeedback();
+    if (pendingSaveCountRef.current === 0) {
+      saveFailedRef.current = false;
+      setRatingSaveError(null);
+    }
     setIsSaving(true);
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
+    setLastSavedTime(null);
+  }, [cancelSavedFeedback]);
+
+  const clearPendingCommentFeedback = useCallback(() => {
+    cancelSavedFeedback();
+    if (pendingSaveCountRef.current === 0) setIsSaving(false);
+  }, [cancelSavedFeedback]);
+
+  const markSaved = useCallback(() => {
+    if (!isMountedRef.current) return;
+    if (pendingSaveCountRef.current > 0 || pendingCommentRef.current !== null) {
+      setIsSaving(true);
+      return;
+    }
+    if (saveFailedRef.current) {
+      setIsSaving(false);
+      return;
+    }
+
+    cancelSavedFeedback();
+    const generation = saveGenerationRef.current;
+    setIsSaving(true);
+    saveFeedbackTimerRef.current = setTimeout(() => {
+      if (
+        !isMountedRef.current ||
+        generation !== saveGenerationRef.current ||
+        pendingSaveCountRef.current > 0 ||
+        pendingCommentRef.current !== null
+      ) return;
+      saveFeedbackTimerRef.current = null;
       setIsSaving(false);
       setLastSavedTime(new Date());
+      setRatingSaveError(null);
     }, 350);
+  }, []);
+
+  const finishSave = useCallback((error?: unknown) => {
+    pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1);
+    if (error) {
+      saveFailedRef.current = true;
+      if (isMountedRef.current) {
+        setRatingSaveError(error instanceof Error ? error.message : 'Speichern fehlgeschlagen.');
+      }
+    }
+    if (!isMountedRef.current) return;
+    if (pendingSaveCountRef.current > 0) {
+      setIsSaving(true);
+      return;
+    }
+    if (saveFailedRef.current) {
+      setIsSaving(false);
+      setLastSavedTime(null);
+      return;
+    }
+    markSaved();
+  }, [markSaved]);
+
+  const saveCellRating = async (
+    pupil: PupilWithData,
+    criterionId: string,
+    itemKey: string,
+    rating: string,
+  ) => {
+    if (!canWrite) return;
+    beginSave();
+
+    try {
+      const writes = targetSubjectCodes.map((subjectCode) =>
+        Promise.resolve(onRate(
+          pupil.id,
+          criterionId,
+          itemKey,
+          rating,
+          itemVersionForSubject(pupil.evaluations, subjectCode, itemKey),
+          subjectCode,
+        )),
+      );
+      await settleAllWrites(writes);
+      finishSave();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bewertung konnte nicht gespeichert werden.';
+      finishSave(error);
+      toast.error(message);
+    }
   };
 
   // --- Conference comment autosave ---
@@ -342,7 +458,6 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   // The pending text lives in a ref, not state, because `handleCommentChange`
   // runs on every keystroke while the flush is a single deferred write - state
   // would race with it, and only one comment can be in flight at a time.
-  const pendingCommentRef = useRef<PendingComment | null>(null);
   const commentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
@@ -381,6 +496,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
    */
   const flushComment = useCallback(async () => {
     clearCommentTimer();
+    if (!canWrite) {
+      pendingCommentRef.current = null;
+      clearPendingCommentFeedback();
+      return;
+    }
     const pending = pendingCommentRef.current;
     if (!pending) return;
     // Claim it before the first `await`: a keystroke or a second caller can
@@ -398,10 +518,17 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       // The ref still describes the pending's own scope here: React runs every
       // cleanup before any effect body, and a scope-change flush is itself a
       // cleanup, so the re-sync above has not re-seeded it yet.
-      if (pending.comment !== '' || !pending.clearRequested) return;
-      if (lastStoredCommentRef.current.trim() === '') return;
+      if (pending.comment !== '' || !pending.clearRequested) {
+        clearPendingCommentFeedback();
+        return;
+      }
+      if (lastStoredCommentRef.current.trim() === '') {
+        clearPendingCommentFeedback();
+        return;
+      }
     }
 
+    beginSave();
     try {
       for (const subjectCode of pending.subjectCodes) {
         await saveEvaluationComment(pending.pupilId, pending.classId, subjectCode, pending.comment);
@@ -420,7 +547,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       if (pending.scopeKey === commentScopeKeyRef.current) {
         lastStoredCommentRef.current = pending.comment;
       }
-      markSaved();
+      finishSave();
     } catch (err) {
       // "Bitte erneut versuchen" has to be followable: the teacher only has to
       // leave the box again. Skip the restore if a newer keystroke already
@@ -429,10 +556,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       // pending *debounce*, it is waiting for a deliberate boundary, so it must
       // not start a retry timer of its own.
       if (pendingCommentRef.current === null) pendingCommentRef.current = pending;
+      finishSave(err);
       console.error(err);
       toast.error('Kommentar konnte nicht gespeichert werden. Bitte erneut versuchen.');
     }
-  }, [clearCommentTimer, toast]);
+  }, [beginSave, canWrite, clearCommentTimer, clearPendingCommentFeedback, finishSave, toast]);
 
   const scheduleCommentFlush = useCallback(() => {
     clearCommentTimer();
@@ -465,11 +593,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }, [commentScopeKey]);
 
   const handleCommentChange = (value: string) => {
+    if (!canWrite) return;
     setVotedComment(value);
     setSaveSuccessMsg(null);
 
     if (!selectedPupil) {
       pendingCommentRef.current = null;
+      clearCommentTimer();
+      clearPendingCommentFeedback();
       return;
     }
 
@@ -503,7 +634,13 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           ? { ...scope, comment: '', clearRequested: true }
           : null;
 
-    if (pendingCommentRef.current) scheduleCommentFlush();
+    if (pendingCommentRef.current) {
+      markPendingComment();
+      scheduleCommentFlush();
+    } else {
+      clearCommentTimer();
+      clearPendingCommentFeedback();
+    }
   };
 
   // Auto-dismiss submit toast after 4.5 seconds
@@ -518,9 +655,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Instant Rank Handlers
   const handleInstantRank = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
-    if (!selectedPupil) return;
+    if (!canWrite || !selectedPupil) return;
     setVotedRank(targetRank);
-    setIsSaving(true);
+    beginSave();
 
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     let count = 0;
@@ -543,22 +680,35 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     try {
       for (const subCode of targetSubjectCodes) {
         if (onBatchUpdate) {
-          await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
+          const versionedItems = allCritItems.map((item) => ({
+            ...item,
+            version: itemVersionForSubject(selectedPupil.evaluations, subCode, item.itemKey),
+          }));
+          await onBatchUpdate(selectedPupil.id, versionedItems, subCode);
         } else {
-          for (const it of allCritItems) {
-            onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
-          }
+          await settleAllWrites(allCritItems.map((it) =>
+            Promise.resolve(onRate(
+              selectedPupil.id,
+              it.criterionId,
+              it.itemKey,
+              it.rating,
+              itemVersionForSubject(selectedPupil.evaluations, subCode, it.itemKey),
+              subCode,
+            )),
+          ));
         }
       }
-      setLastSavedTime(new Date());
-    } finally {
-      setIsSaving(false);
+      finishSave();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bewertung konnte nicht gespeichert werden.';
+      finishSave(error);
+      toast.error(message);
     }
   };
 
   // Reset all 18 criteria for pupil
   const handleResetAll = async () => {
-    if (!selectedPupil) return;
+    if (!canWrite || !selectedPupil) return;
     const ok = await confirm({
       title: 'Alle Bewertungen leeren?',
       message: isAllSubjectsMode
@@ -570,7 +720,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     if (!ok) return;
 
     setVotedRank(null);
-    setIsSaving(true);
+    beginSave();
     const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     for (const crit of criteria) {
       for (const it of crit.items) {
@@ -581,23 +731,36 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     try {
       for (const subCode of targetSubjectCodes) {
         if (onBatchUpdate) {
-          await onBatchUpdate(selectedPupil.id, allCritItems, subCode);
+          const versionedItems = allCritItems.map((item) => ({
+            ...item,
+            version: itemVersionForSubject(selectedPupil.evaluations, subCode, item.itemKey),
+          }));
+          await onBatchUpdate(selectedPupil.id, versionedItems, subCode);
         } else {
-          for (const it of allCritItems) {
-            onRate(selectedPupil.id, it.criterionId, it.itemKey, '', 1, subCode);
-          }
+          await settleAllWrites(allCritItems.map((it) =>
+            Promise.resolve(onRate(
+              selectedPupil.id,
+              it.criterionId,
+              it.itemKey,
+              '',
+              itemVersionForSubject(selectedPupil.evaluations, subCode, it.itemKey),
+              subCode,
+            )),
+          ));
         }
       }
-      setLastSavedTime(new Date());
-    } finally {
-      setIsSaving(false);
+      finishSave();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bewertungen konnten nicht geleert werden.';
+      finishSave(error);
+      toast.error(message);
     }
   };
 
   // Quick fill entire category (3 items)
   const handleQuickFillCategory = async (crit: RubricCriterion, rating: string) => {
-    if (!selectedPupil) return;
-    setIsSaving(true);
+    if (!canWrite || !selectedPupil) return;
+    beginSave();
     const catItems = crit.items.map((it) => ({
       criterionId: crit.id,
       itemKey: it.key,
@@ -607,22 +770,35 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     try {
       for (const subCode of targetSubjectCodes) {
         if (onBatchUpdate) {
-          await onBatchUpdate(selectedPupil.id, catItems, subCode);
+          const versionedItems = catItems.map((item) => ({
+            ...item,
+            version: itemVersionForSubject(selectedPupil.evaluations, subCode, item.itemKey),
+          }));
+          await onBatchUpdate(selectedPupil.id, versionedItems, subCode);
         } else {
-          for (const it of catItems) {
-            onRate(selectedPupil.id, it.criterionId, it.itemKey, it.rating, 1, subCode);
-          }
+          await settleAllWrites(catItems.map((it) =>
+            Promise.resolve(onRate(
+              selectedPupil.id,
+              it.criterionId,
+              it.itemKey,
+              it.rating,
+              itemVersionForSubject(selectedPupil.evaluations, subCode, it.itemKey),
+              subCode,
+            )),
+          ));
         }
       }
-      setLastSavedTime(new Date());
-    } finally {
-      setIsSaving(false);
+      finishSave();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bewertung konnte nicht gespeichert werden.';
+      finishSave(error);
+      toast.error(message);
     }
   };
 
   // Submit Ranking & Advance sequentially to next pupil on list
   const handleSubmitPupil = async () => {
-    if (!selectedPupil) return;
+    if (!canWrite || !selectedPupil) return;
 
     // Find position in openPupils
     const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
@@ -630,13 +806,20 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     const { rank } = calculateRank(selectedPupil);
     const finalRankToSubmit = effectiveCanAccessRaster ? rank : (votedRank || rank || 'Geselle');
 
-    if (onSubmitPupil) {
-      for (const subCode of targetSubjectCodes) {
-        await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment, subCode);
+    beginSave();
+    try {
+      if (onSubmitPupil) {
+        for (const subCode of targetSubjectCodes) {
+          await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment, subCode);
+        }
       }
+      finishSave();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Einreichung konnte nicht gespeichert werden.';
+      finishSave(error);
+      toast.error(message);
+      return;
     }
-
-    markSaved();
 
     // Advance to next sequential pupil in the open list
     const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
@@ -661,8 +844,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Non-core vote submission
   const handleSaveNonCoreVote = async () => {
-    if (!selectedPupil || !votedRank) return;
+    if (!canWrite || !selectedPupil || !votedRank) return;
     setIsSavingVote(true);
+    beginSave();
     try {
       if (onSubmitPupil) {
         for (const subCode of targetSubjectCodes) {
@@ -674,7 +858,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           ? `Votum „${votedRank}“ für ${selectedPupil.fullName} in allen Fächern (${mySubjects.map((s) => s.code).join(', ')}) gespeichert!`
           : `Votum „${votedRank}“ für ${selectedPupil.fullName} erfolgreich gespeichert!`
       );
-      markSaved();
+      finishSave();
       const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
       const remainingOpen = openPupils.filter((p) => p.id !== selectedPupil.id);
       if (remainingOpen.length > 0) {
@@ -694,21 +878,31 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         });
       }
     } catch (err) {
-      console.error(err);
+      const message = err instanceof Error ? err.message : 'Votum konnte nicht gespeichert werden.';
+      finishSave(err);
+      toast.error(message);
     } finally {
       setIsSavingVote(false);
     }
   };
 
   const handleReopenPupil = async () => {
-    if (!onReopenPupil || !selectedPupil) return;
-    for (const subCode of targetSubjectCodes) {
-      await onReopenPupil(selectedPupil.id, subCode);
+    if (!canWrite || !onReopenPupil || !selectedPupil) return;
+    beginSave();
+    try {
+      for (const subCode of targetSubjectCodes) {
+        await onReopenPupil(selectedPupil.id, subCode);
+      }
+      finishSave();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bewertung konnte nicht wieder geöffnet werden.';
+      finishSave(error);
+      toast.error(message);
     }
   };
 
   const handleOpenDetailedRasterClick = () => {
-    if (!selectedPupil) return;
+    if (!canWrite || !selectedPupil) return;
     setShowNonCoreModal(true);
   };
 
@@ -1055,7 +1249,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               {(effectiveCanAccessRaster || unlockedRasterPupils.has(selectedPupil.id)) && (
                 <button
                   onClick={handleSubmitPupil}
-                  disabled={isLockedByConference || isPastDeadline}
+                  disabled={!canWrite || isLockedByConference || isPastDeadline}
                   title="Ranking einreichen und zum nächsten Schüler wechseln"
                   className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95 disabled:opacity-40 shrink-0 ${
                     isSubmitted
@@ -1136,7 +1330,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-950/70 border border-slate-800 text-xs shadow-sm transition-all"
                 title="Automatisches Speichern: Alle Bewertungen und Eingaben werden sofort gesichert."
               >
-                {isSaving ? (
+                {ratingSaveError ? (
+                  <span role="alert" className="text-rose-300 font-medium text-[11px]">
+                    Speichern fehlgeschlagen: {ratingSaveError}
+                  </span>
+                ) : isSaving ? (
                   <>
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
@@ -1185,7 +1383,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <button
                   type="button"
                   onClick={() => handleInstantRank('Lehrling')}
-                  disabled={isLockedByConference || isPastDeadline}
+                   disabled={!canWrite || isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Lehrling ausfüllen (< 8 Punkte)"
                   className="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
@@ -1195,7 +1393,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <button
                   type="button"
                   onClick={() => handleInstantRank('Geselle')}
-                  disabled={isLockedByConference || isPastDeadline}
+                   disabled={!canWrite || isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Geselle ausfüllen (8–13 Punkte)"
                   className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
@@ -1205,7 +1403,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <button
                   type="button"
                   onClick={() => handleInstantRank('Meister')}
-                  disabled={isLockedByConference || isPastDeadline}
+                   disabled={!canWrite || isLockedByConference || isPastDeadline}
                   title="Kriterien für Rang Meister ausfüllen (≥ 14 Punkte)"
                   className="px-2 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 border border-amber-400/30 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
                 >
@@ -1215,7 +1413,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <button
                   type="button"
                   onClick={handleResetAll}
-                  disabled={isLockedByConference || isPastDeadline}
+                   disabled={!canWrite || isLockedByConference || isPastDeadline}
                   title="Alle 18 Bewertungen leeren / zurücksetzen"
                   className="px-1.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-[11px] font-bold transition active:scale-95 flex items-center gap-1 ml-0.5 disabled:opacity-40"
                 >
@@ -1282,7 +1480,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 onBlur={() => {
                   void flushComment();
                 }}
-                disabled={isLockedByConference || isPastDeadline}
+                disabled={!canWrite || isLockedByConference || isPastDeadline}
                 rows={2}
                 placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet verlässlich in Gruppen..."
                 className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none transition"
@@ -1358,7 +1556,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         setVotedRank(opt.rank);
                         setSaveSuccessMsg(null);
                       }}
-                      disabled={isLockedByConference || isPastDeadline}
+                       disabled={!canWrite || isLockedByConference || isPastDeadline}
                       className={`p-3.5 rounded-2xl border text-left transition flex flex-col justify-between min-h-[88px] ${
                         isSelected
                           ? opt.active
@@ -1392,7 +1590,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <textarea
                   value={votedComment}
                   onChange={(e) => handleCommentChange(e.target.value)}
-                  disabled={isLockedByConference || isPastDeadline}
+                  disabled={!canWrite || isLockedByConference || isPastDeadline}
                   rows={2}
                   placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet zuverlässig in Gruppen..."
                   className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none"
@@ -1421,7 +1619,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveNonCoreVote}
-                  disabled={isLockedByConference || isPastDeadline || !votedRank || isSavingVote}
+                  disabled={!canWrite || isLockedByConference || isPastDeadline || !votedRank || isSavingVote}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-md shadow-emerald-500/20 transition active:scale-95 disabled:opacity-40"
                 >
                   <CheckCircle2 className="w-4 h-4" />
@@ -1458,7 +1656,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                           setVotedRank(r);
                           setSaveSuccessMsg(null);
                         }}
-                        disabled={isLockedByConference || isPastDeadline}
+                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1 ${
                           isSelected
                             ? r === 'Lehrling'
@@ -1484,7 +1682,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveNonCoreVote}
-                    disabled={isLockedByConference || isPastDeadline || isSavingVote}
+                    disabled={!canWrite || isLockedByConference || isPastDeadline || isSavingVote}
                     className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center gap-1 shadow-sm"
                   >
                     <Check className="w-3.5 h-3.5" />
@@ -1531,7 +1729,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       <span className="text-[9px] text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
                       <button
                         type="button"
-                        disabled={isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'crown')}
                         title="Alle Merkmale dieser Kategorie mit Krone (👑) füllen"
                         className="pressable focus-ring w-6 h-6 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
@@ -1540,7 +1738,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'smile')}
                         title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen"
                         className="w-6 h-6 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1549,7 +1747,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'struggle')}
                         title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen"
                         className="w-6 h-6 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1558,7 +1756,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'sad')}
                         title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen"
                         className="w-6 h-6 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1567,7 +1765,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'newstart')}
                         title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen"
                         className="w-6 h-6 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1576,7 +1774,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, '')}
                         title="Kategorie leeren"
                         className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1597,8 +1795,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       const currentRating = itemData?.rating;
 
                       // Soft lock check
-                      const lockKey = `${selectedPupil.id}_${it.key}`;
-                      const softLock = softLocks.get(lockKey);
+                       const softLock = targetSubjectCodes
+                         .map((subjectCode) => softLocks.get(`${subjectCode}|${selectedPupil.id}|${it.key}`))
+                         .find((lock) => lock !== undefined);
 
                       // 5 Smileys buttons
                       const ratingButtons = [
@@ -1683,24 +1882,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                 <button
                                   key={btn.val}
                                   type="button"
-                                  disabled={isLockedByConference || !!softLock || isPastDeadline}
+                                  disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline}
                                   title={btn.title}
-                                  onFocus={() => onSendFocus(selectedPupil.id, it.key)}
-                                  onBlur={() => onSendBlur(selectedPupil.id, it.key)}
+                                   onFocus={() => targetSubjectCodes.forEach((subjectCode) => onSendFocus(selectedPupil.id, it.key, subjectCode))}
+                                   onBlur={() => targetSubjectCodes.forEach((subjectCode) => onSendBlur(selectedPupil.id, it.key, subjectCode))}
                                   onClick={() => {
                                     // Tapping the active button deselects it to blank!
                                     const nextVal = isActive ? '' : btn.val;
-                                    for (const subCode of targetSubjectCodes) {
-                                      onRate(
-                                        selectedPupil.id,
-                                        crit.id,
-                                        it.key,
-                                        nextVal,
-                                        itemVersionForSubject(selectedPupil.evaluations, subCode, it.key),
-                                        subCode
-                                      );
-                                    }
-                                    markSaved();
+                                    void saveCellRating(selectedPupil, crit.id, it.key, nextVal);
                                   }}
                                   className={`flex-1 min-w-0 max-w-[40px] h-8 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
                                     isActive
@@ -1717,21 +1906,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                             {currentRating && currentRating !== 'n.b.' && currentRating !== '' && (
                               <button
                                 type="button"
-                                disabled={isLockedByConference || !!softLock || isPastDeadline}
+                                disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline}
                                 title="Bewertung löschen (Leer)"
-                                onClick={() => {
-                                  for (const subCode of targetSubjectCodes) {
-                                    onRate(
-                                      selectedPupil.id,
-                                      crit.id,
-                                      it.key,
-                                      '',
-                                      itemVersionForSubject(selectedPupil.evaluations, subCode, it.key),
-                                      subCode
-                                    );
-                                  }
-                                  markSaved();
-                                }}
+                                onClick={() => void saveCellRating(selectedPupil, crit.id, it.key, '')}
                                 className="w-6 h-6 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
                               >
                                 ✕

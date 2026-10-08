@@ -1,0 +1,304 @@
+import { readFileSync } from 'fs';
+import { describe, expect, it, vi } from 'vitest';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import {
+  assertPasswordCurrent,
+  buildAuthenticate,
+  buildRequireRole,
+  clearUserMustChangePassword,
+  isUserForcedToChangePassword,
+  markUserMustChangePassword,
+} from '../lib/guards.js';
+import * as guardModule from '../lib/guards.js';
+import type { AuthUser } from '../lib/guards.js';
+
+describe('Auth session and password reset immediate revocation (Task 2.5)', () => {
+  const userId = '11111111-2222-3333-4444-555555555555';
+
+  it('marks and clears forced password change in memory', () => {
+    expect(isUserForcedToChangePassword(userId)).toBe(false);
+    markUserMustChangePassword(userId);
+    expect(isUserForcedToChangePassword(userId)).toBe(true);
+    clearUserMustChangePassword(userId);
+    expect(isUserForcedToChangePassword(userId)).toBe(false);
+  });
+
+  it('buildAuthenticate intercepts active session when admin requests reset', async () => {
+    // Simulated token payload where mustChangePassword was initially false when token was issued
+    const fakePayload: AuthUser = {
+      id: userId,
+      username: 'testteacher',
+      role: 'teacher',
+      teacherId: 42,
+      mustChangePassword: false,
+    };
+
+    const jwtVerify = async () => fakePayload;
+    const authenticate = buildAuthenticate(jwtVerify);
+
+    const req1 = {} as FastifyRequest;
+    const reply1 = {
+      status: () => reply1,
+      send: () => reply1,
+    } as unknown as FastifyReply;
+
+    // 1. Normal state: mustChangePassword is false
+    clearUserMustChangePassword(userId);
+    await (authenticate as any)(req1, reply1);
+    expect(req1.authUser).toBeDefined();
+    expect(req1.authUser?.mustChangePassword).toBe(false);
+
+    // assertPasswordCurrent succeeds
+    let rejected1 = false;
+    const mockReplySuccess = {
+      status: () => ({ send: () => { rejected1 = true; } }),
+    } as unknown as FastifyReply;
+    const allowed = assertPasswordCurrent(req1.authUser!, mockReplySuccess);
+    expect(allowed).toBe(true);
+    expect(rejected1).toBe(false);
+
+    // 2. Admin issues reset for this user
+    markUserMustChangePassword(userId);
+
+    const req2 = {} as FastifyRequest;
+    await (authenticate as any)(req2, reply1);
+    expect(req2.authUser?.mustChangePassword).toBe(true);
+
+    // assertPasswordCurrent immediately fails closed
+    let statusCode = 0;
+    let sentPayload: any = null;
+    const mockReplyBlocked = {
+      status: (code: number) => {
+        statusCode = code;
+        return {
+          send: (body: any) => {
+            sentPayload = body;
+          },
+        };
+      },
+    } as unknown as FastifyReply;
+
+    const blocked = assertPasswordCurrent(req2.authUser!, mockReplyBlocked);
+    expect(blocked).toBe(false);
+    expect(statusCode).toBe(403);
+    expect(sentPayload).toEqual({
+      error: 'Bitte setzen Sie zuerst ein neues Passwort.',
+      code: 'PASSWORD_CHANGE_REQUIRED',
+    });
+
+    // 3. User updates password -> clearing forced state restores access
+    clearUserMustChangePassword(userId);
+    const req3 = {} as FastifyRequest;
+    await (authenticate as any)(req3, reply1);
+    expect(req3.authUser?.mustChangePassword).toBe(false);
+
+    const allowedAgain = assertPasswordCurrent(req3.authUser!, mockReplySuccess);
+    expect(allowedAgain).toBe(true);
+  });
+
+  it('rejects a token whose durable session version was revoked', async () => {
+    const fakePayload = {
+      id: userId,
+      username: 'testteacher',
+      role: 'teacher',
+      teacherId: 42,
+      mustChangePassword: false,
+      sessionVersion: 3,
+    };
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    expect(buildSessionGuard).toBeTypeOf('function');
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: false }));
+    const req = {
+      authUser: fakePayload,
+      method: 'POST',
+      url: '/api/auth/password',
+      routeOptions: { url: '/api/auth/password' },
+    } as unknown as FastifyRequest;
+    let statusCode = 0;
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return reply;
+      },
+      send: () => reply,
+      clearCookie: vi.fn(),
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(statusCode).toBe(401);
+    expect((reply.clearCookie as any)).toHaveBeenCalled();
+  });
+
+  it('allows a revoked token only into forced-password-change state while the DB reset is pending', async () => {
+    const fakePayload = {
+      id: userId,
+      username: 'testteacher',
+      role: 'teacher',
+      teacherId: 42,
+      mustChangePassword: false,
+      sessionVersion: 3,
+    };
+    clearUserMustChangePassword(userId);
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    expect(buildSessionGuard).toBeTypeOf('function');
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const req = {
+      authUser: fakePayload,
+      method: 'POST',
+      url: '/api/auth/password',
+      routeOptions: { url: '/api/auth/password' },
+    } as unknown as FastifyRequest;
+    const reply = {
+      status: () => reply,
+      send: () => reply,
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(req.authUser).toMatchObject({ mustChangePassword: true, sessionVersion: 4 });
+  });
+
+  it('blocks protected reads for a reset-pending stale token but permits the password endpoint', async () => {
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const req = {
+      authUser: {
+        id: userId,
+        username: 'testteacher',
+        role: 'teacher',
+        mustChangePassword: false,
+        sessionVersion: 3,
+      },
+      method: 'GET',
+      routeOptions: { url: '/api/classes/:classId/pupils' },
+    } as unknown as FastifyRequest;
+    let statusCode = 0;
+    let responseBody: unknown;
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return reply;
+      },
+      send: (body: unknown) => {
+        responseBody = body;
+        return reply;
+      },
+      clearCookie: vi.fn(),
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(statusCode).toBe(403);
+    expect(responseBody).toMatchObject({ code: 'PASSWORD_CHANGE_REQUIRED' });
+    expect(req.authUser?.mustChangePassword).toBe(true);
+  });
+
+  it('uses persisted account state instead of a stale worker-local reset flag', async () => {
+    markUserMustChangePassword(userId);
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: false }));
+    const req = {
+      authUser: {
+        id: userId,
+        username: 'testteacher',
+        role: 'teacher',
+        mustChangePassword: false,
+        sessionVersion: 4,
+      },
+    } as unknown as FastifyRequest;
+    const reply = {
+      status: () => reply,
+      send: () => reply,
+    } as unknown as FastifyReply;
+    const mockReplySuccess = {
+      status: () => ({ send: vi.fn() }),
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(req.authUser?.mustChangePassword).toBe(false);
+    expect(assertPasswordCurrent(req.authUser!, mockReplySuccess)).toBe(true);
+    clearUserMustChangePassword(userId);
+  });
+
+  it('buildRequireRole also intercepts forced password change immediately', async () => {
+    const fakePayload: AuthUser = {
+      id: userId,
+      username: 'testteacher',
+      role: 'teacher',
+      teacherId: 42,
+      mustChangePassword: false,
+    };
+
+    const jwtVerify = async () => fakePayload;
+    const requireTeacher = buildRequireRole(jwtVerify)('teacher');
+
+    markUserMustChangePassword(userId);
+
+    const req = {} as FastifyRequest;
+    const reply = {
+      status: () => reply,
+      send: () => reply,
+    } as unknown as FastifyReply;
+
+    await (requireTeacher as any)(req, reply);
+    expect(req.authUser?.mustChangePassword).toBe(true);
+
+    clearUserMustChangePassword(userId);
+  });
+
+  it('restricts the credential endpoints to administrators', () => {
+    const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
+
+    // A missing role guard here would let any teacher mint credentials for any account.
+    for (const route of ['/users', '/admin/temporary-password']) {
+      const routeBlock = new RegExp(
+        `fastify\\.(?:get|post)\\(\\s*['"]${route.replace('/', '\\/')}['"][\\s\\S]*?\\n  \\);`,
+      ).exec(source);
+      expect(routeBlock, `no handler found for ${route}`).toBeTruthy();
+      expect(routeBlock![0]).toMatch(/requireRole\('admin'\)/);
+    }
+  });
+
+  it('never selects or returns the password hash', () => {
+    const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
+    const usersRoute = /fastify\.get\(\s*['"]\/users['"][\s\S]*?\n  \);/.exec(source);
+    expect(usersRoute).toBeTruthy();
+    // The account list must not even SELECT passwordHash, so a later edit that forwards
+    // the row cannot leak it.
+    expect(usersRoute![0]).not.toMatch(/passwordHash/);
+  });
+
+  it('never logs the issued credential', () => {
+    const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
+    const issueRoute = /fastify\.post\(\s*['"]\/admin\/temporary-password['"][\s\S]*?\n  \);/.exec(source);
+    expect(issueRoute).toBeTruthy();
+    const block = issueRoute![0];
+    // The plaintext must reach exactly one destination: the response body.
+    expect(block).toMatch(/temporaryPassword/);
+    const logCalls = block.match(/request\.log\.[a-z]+\(([\s\S]*?)\);/g) ?? [];
+    for (const call of logCalls) {
+      expect(call).not.toMatch(/temporaryPassword/);
+    }
+  });
+
+  it('verifies auth.ts does not return session token in login or password responses', () => {
+    const authSource = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
+
+    // /login response must not include token property
+    const loginHandlerMatch = authSource.match(/fastify\.post\(\s*['"]\/login['"][\s\S]*?return reply\.send\((\{[\s\S]*?\})\);/);
+    expect(loginHandlerMatch).toBeTruthy();
+    const loginPayload = loginHandlerMatch![1];
+    expect(loginPayload).not.toMatch(/\btoken\b/);
+
+    // /password response must not include token property
+    const passwordHandlerMatch = authSource.match(/fastify\.post\(\s*['"]\/password['"][\s\S]*?return reply\.send\((\{[\s\S]*?\})\);/);
+    expect(passwordHandlerMatch).toBeTruthy();
+    const passwordPayload = passwordHandlerMatch![1];
+    expect(passwordPayload).not.toMatch(/\btoken\b/);
+
+    // Ensure HttpOnly cookies are used instead
+    expect(authSource).toContain('setSessionCookie(reply, token)');
+  });
+});
