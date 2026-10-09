@@ -1,8 +1,9 @@
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler, preValidationHookHandler } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { pupils, schoolClasses, teachingAssignments, teachers } from '../db/schema.js';
+import { pupils, schoolClasses, teachingAssignments, teachers, timetableLessons } from '../db/schema.js';
 import { normalizeKnownSubject, normalizeSubject, type NormalizedSubject } from '../utils/subject.js';
+import { currentPeriod } from './period-times.js';
 import { clearSessionCookie, getPersistedUserSessionState, isUserForcedToChangePassword } from './session.js';
 
 export type Role = 'admin' | 'head_teacher' | 'teacher' | 'pupil';
@@ -157,7 +158,48 @@ export interface GlobalAccess {
   isHeadmaster: boolean;
   teacherId?: number;
   /** null = unrestricted (admin/headmaster); otherwise the explicit allowlist. */
-  classIds: number[] | null;
+classIds: number[] | null;
+}
+
+/**
+* The Lernwerkstatt "class" — a real `school_classes` row (name `LW`, `grade` 0) that is
+* filtered out of the normal class lists in `routes/classes.ts` and used instead as the
+* WebSocket room of the Lernwerkstatt. Pupils are never members of it; it exists so the
+* duty teacher has one place to be sent live updates.
+*/
+export const LW_CLASS_ID = 999;
+
+/** True for the administrator and the headmasters (SLC, MED). */
+export async function isSchoolLeader(user: Identity): Promise<boolean> {
+if (user.role === 'admin') return true;
+if (!user.teacherId) return false;
+return isHeadmasterUser(user, await getTeacher(user.teacherId));
+}
+
+
+/**
+* Does this teacher hold the Lernwerkstatt slot in the period that is running right now?
+*
+* The duty roster is the timetable itself: `timetable_lessons` carries one LW lesson per
+* period (class 999), so "who is in the room" is a lookup rather than a separate table that
+* could fall out of step with the plan. Outside the bell schedule this is always false —
+* reading a roster at 22:00 must not match Monday's period 10.
+*/
+export async function hasLwDutySlot(teacherId: number, now: Date = new Date()): Promise<boolean> {
+const { dayOfWeek, period, isSchoolHours } = currentPeriod(now);
+if (!isSchoolHours) return false;
+const rows = await db
+.select({ teacherId: timetableLessons.teacherId })
+.from(timetableLessons)
+.where(
+and(
+eq(timetableLessons.classId, LW_CLASS_ID),
+eq(timetableLessons.dayOfWeek, dayOfWeek),
+eq(timetableLessons.period, period),
+),
+)
+.limit(1);
+return rows[0]?.teacherId === teacherId;
 }
 
 export async function getGlobalAccess(user: Identity): Promise<GlobalAccess> {
@@ -210,7 +252,7 @@ export async function canAccessClass(user: Identity, classId: number): Promise<b
  * Resolve everything a handler needs to make an authorization decision for one class,
  * in a fixed number of queries. Prefer this over ad-hoc checks so the rules stay in one place.
  */
-export async function getClassAccess(user: AuthUser, classId: number): Promise<ClassAccess> {
+export async function getClassAccess(user: Identity, classId: number): Promise<ClassAccess> {
   const base: ClassAccess = {
     classId,
     exists: false,
@@ -274,9 +316,11 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
   if (user.role === 'pupil') return base; // pupil logins are not wired up yet
 
   const isResponsible = base.teaches || base.isKv;
+  const isLwDuty =
+    classId === LW_CLASS_ID && user.teacherId ? await hasLwDutySlot(user.teacherId) : false;
   return {
     ...base,
-    canRead: isResponsible,
+    canRead: isResponsible || isLwDuty,
     canRecord: isResponsible,
     canRate: isResponsible,
     canManagePupils: base.isKv,

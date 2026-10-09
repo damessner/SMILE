@@ -1,5 +1,5 @@
 import { pgTable, text, integer, boolean, timestamp, uuid, jsonb, numeric, serial, bigserial, index, uniqueIndex, pgSequence } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 /**
  * Source of IDs for pupils created inside SMILE.
@@ -245,10 +245,14 @@ export const timeoutIncidents = pgTable('timeout_incidents', {
   resolvedBy: integer('resolved_by').references(() => teachers.id),
   resolutionNote: text('resolution_note'),
   redCardId: uuid('red_card_id').references(() => behaviorCards.id),
+  expiresAt: timestamp('expires_at'),
 }, (t) => ({
   // Escalation counting and the LW live view.
   pupilIdx: index('timeout_incidents_pupil_idx').on(t.pupilId),
   statusSentIdx: index('timeout_incidents_status_sent_idx').on(t.status, t.sentAt),
+  expiresAtActiveIdx: index('timeout_incidents_expires_at_active_idx')
+    .on(t.expiresAt)
+    .where(sql`status = 'active'`),
 }));
 
 // 15. Timeout Escalations (Handled by SLC at 3, 6, 9... timeouts)

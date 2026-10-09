@@ -51,7 +51,7 @@ function rejectPendingRatingWrites(pendingWrites: Map<string, PendingRatingWrite
 }
 
 export function useLiveSync(
-  classId: number | null,
+  classId: number | number[] | null,
   user: User | null,
   onRatingUpdated?: (data: any) => void
 ) {
@@ -64,11 +64,19 @@ export function useLiveSync(
   const [canRate, setCanRate] = useState<boolean | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
+  const classIds = Array.isArray(classId)
+    ? classId.filter((id): id is number => typeof id === 'number' && id > 0)
+    : typeof classId === 'number' && classId > 0
+      ? [classId]
+      : [];
+  const primaryClassId = classIds[0] ?? null;
+  const classIdKey = classIds.join(',');
+
   useEffect(() => {
     setCanRate(null);
     setConnectionError(null);
     setSoftLocks(new Map());
-    if (!classId || !user) return;
+    if (classIds.length === 0 || !user) return;
 
     // Do not open a socket while the account still needs a password change: the server
     // rejects those handshakes with close code 1008.
@@ -126,7 +134,9 @@ export function useLiveSync(
 
         ws.onopen = () => {
           setIsConnected(true);
-          ws.send(JSON.stringify({ type: 'SUBSCRIBE_CLASS', payload: { classId } }));
+          for (const cid of classIds) {
+            ws.send(JSON.stringify({ type: 'SUBSCRIBE_CLASS', payload: { classId: cid } }));
+          }
         };
 
         ws.onmessage = (event) => {
@@ -303,28 +313,28 @@ export function useLiveSync(
       if (socket) socket.close(1000, 'unmount');
       rejectPendingRatingWrites(pendingRatingWritesRef.current, 'Live-Verbindung beendet.');
     };
-  }, [classId, user?.id, user?.mustChangePassword, onRatingUpdated]);
+  }, [classIdKey, user?.id, user?.mustChangePassword, onRatingUpdated]);
 
   const sendFocus = useCallback(
     (pupilId: number, itemKey: string, subjectCode: string) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN && classId) {
+      if (wsRef.current?.readyState === WebSocket.OPEN && primaryClassId) {
         wsRef.current.send(
-          JSON.stringify({ type: 'CELL_FOCUS', payload: { classId, pupilId, itemKey, subjectCode } })
+          JSON.stringify({ type: 'CELL_FOCUS', payload: { classId: primaryClassId, pupilId, itemKey, subjectCode } })
         );
       }
     },
-    [classId]
+    [primaryClassId]
   );
 
   const sendBlur = useCallback(
     (pupilId: number, itemKey: string, subjectCode: string) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN && classId) {
+      if (wsRef.current?.readyState === WebSocket.OPEN && primaryClassId) {
         wsRef.current.send(
-          JSON.stringify({ type: 'CELL_BLUR', payload: { classId, pupilId, itemKey, subjectCode } })
+          JSON.stringify({ type: 'CELL_BLUR', payload: { classId: primaryClassId, pupilId, itemKey, subjectCode } })
         );
       }
     },
-    [classId]
+    [primaryClassId]
   );
 
   const sendRating = useCallback(
@@ -336,7 +346,7 @@ export function useLiveSync(
       expectedVersion: number,
       subjectCode: string = 'D'
     ): Promise<void> => {
-      if (!classId) return Promise.reject(new Error('Keine Klasse für die Bewertung ausgewählt.'));
+      if (!primaryClassId) return Promise.reject(new Error('Keine Klasse für die Bewertung ausgewählt.'));
 
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
@@ -356,7 +366,7 @@ export function useLiveSync(
               JSON.stringify({
                 type: 'UPDATE_RATING',
                 payload: {
-                  classId,
+                  classId: primaryClassId,
                   pupilId,
                   criterionId,
                   itemKey,
@@ -377,7 +387,7 @@ export function useLiveSync(
         });
       }
 
-      return batchUpdateItems(pupilId, classId, subjectCode, [
+      return batchUpdateItems(pupilId, primaryClassId, subjectCode, [
         { criterionId, itemKey, rating, version: expectedVersion },
       ]).then((result: any) => {
         const updatedItem = Array.isArray(result?.items)
@@ -448,7 +458,7 @@ export function useLiveSync(
         throw error;
       });
     },
-    [classId, onRatingUpdated]
+    [primaryClassId, onRatingUpdated]
   );
 
   return {

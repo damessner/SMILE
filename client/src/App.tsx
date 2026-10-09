@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   GraduationCap,
   Users,
@@ -272,6 +272,9 @@ export function App() {
       if (data.type === 'CARD_ISSUED' || data.type === 'CARD_REVOKED') {
         void refreshYellowCardAlerts();
       }
+      if (data.type === 'TIMEOUT_ISSUED' || data.type === 'TIMEOUT_RESOLVED') {
+        window.dispatchEvent(new CustomEvent('smile:timeouts-updated'));
+      }
       return;
     }
 
@@ -319,6 +322,10 @@ export function App() {
     });
   }, [selectedClassId, refreshYellowCardAlerts]);
 
+  const liveSyncClassIds = useMemo(() => {
+    return selectedClassId ? [selectedClassId, 999] : null;
+  }, [selectedClassId]);
+
   const {
     isConnected,
     canRate: liveCanRate,
@@ -330,7 +337,7 @@ export function App() {
     sendFocus,
     sendBlur,
     sendRating,
-  } = useLiveSync(selectedClassId, currentUser, handleRatingUpdated);
+  } = useLiveSync(liveSyncClassIds, currentUser, handleRatingUpdated);
 
   const handleLogout = async () => {
     try {

@@ -49,6 +49,7 @@ m365_token.txt
 # Third-party clones & scratch scripts
 UntisPlus-main/
 scratch/
+.pi/
 _*.mjs
 _*.js
 

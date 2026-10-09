@@ -562,4 +562,43 @@ describe('useLiveSync event handling symmetry', () => {
       version: 9,
     }));
   });
+
+  it('subscribes to multiple classes when classId is an array, e.g. [101, 999]', async () => {
+    const onRatingUpdated = vi.fn();
+    renderHook(() => useLiveSync([101, 999], mockUser, onRatingUpdated));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    expect(ws).toBeDefined();
+
+    const sent = ws.send.mock.calls.map(([m]) => JSON.parse(m as string));
+    expect(sent).toEqual([
+      { type: 'SUBSCRIBE_CLASS', payload: { classId: 101 } },
+      { type: 'SUBSCRIBE_CLASS', payload: { classId: 999 } },
+    ]);
+
+    // Dispatches TIMEOUT_ISSUED and TIMEOUT_RESOLVED
+    act(() => {
+      ws.simulateMessage({
+        type: 'TIMEOUT_ISSUED',
+        incident: { id: 'inc-1', pupilId: 1, classId: 101 },
+      });
+    });
+    expect(onRatingUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'TIMEOUT_ISSUED' }),
+    );
+
+    act(() => {
+      ws.simulateMessage({
+        type: 'TIMEOUT_RESOLVED',
+        incident: { id: 'inc-1', pupilId: 1, classId: 101 },
+      });
+    });
+    expect(onRatingUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'TIMEOUT_RESOLVED' }),
+    );
+  });
 });

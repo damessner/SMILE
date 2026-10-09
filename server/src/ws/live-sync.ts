@@ -9,7 +9,7 @@ import {
 import { config } from '../config.js';
 import { getPersistedUserSessionState } from '../lib/session.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
-import { getClassAccess, findPupilInClass, canRateSubject, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parsePositiveInt, type AuthUser } from '../lib/guards.js';
+import { getClassAccess, findPupilInClass, canRateSubject, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parsePositiveInt, LW_CLASS_ID, type AuthUser } from '../lib/guards.js';
 import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterionId } from '../lib/rubric.js';
 import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
 
@@ -297,11 +297,13 @@ async function onSubscribe(client: ClientConnection, payload: any): Promise<void
     return;
   }
   if (!access.canRead) {
-    sendTo(client, {
+    if (classId !== LW_CLASS_ID) {
+      sendTo(client, {
       type: 'ERROR',
       message: 'Zugriff verweigert: Sie sind in dieser Klasse nicht eingeteilt.',
     });
-    ws_disconnect(client);
+      ws_disconnect(client);
+    }
     return;
   }
 

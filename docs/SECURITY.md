@@ -144,7 +144,7 @@ export SSH_KNOWN_HOSTS=/path/to/pinned_known_hosts
 | Any user could revoke any teacher's card by id | Restricted to the issuing teacher, that class's homeroom heads, or school leadership |
 | `pupilId` and `classId` were never cross-validated | `findPupilInClass()` on every write path; mismatches return 400 |
 | A KV could confirm a conference rank for a pupil in a *different* class | `pupil.classId !== cid` is rejected in `/vote` and `/vote-all` |
-| School-wide data readable by any teacher (statistics, card alerts, timeout history) | **Mostly** scoped to the caller's classes via `getGlobalAccess()`; `/timeouts/escalations` restricted to school leadership. **Gap: `GET /api/timeouts/active` is not scoped** — see below |
+| School-wide data readable by any teacher (statistics, card alerts, timeout history) | Scoped to caller's classes via `getGlobalAccess()` and `lw-duty.ts`; `/timeouts/escalations` restricted to school leadership; `/timeouts/active` scoped to duty teacher or own classes |
 | `head_teacher` (~20 accounts) could download a full database dump | Backup export restricted to `admin`; audit log no longer truncated to 500 rows |
 | KV matching used `field.includes(shortName)` — substring false positives granted homeroom rights | `kvFieldMatches()` with exact / parenthesised-code / separator / trailing-token matching. Covered by tests |
 | Schema drift: `seed.ts` never created `timeout_incidents`, `timeout_escalations`, `timetable_lessons`, or several used columns | Schema owned by generated Drizzle migrations; hand-written DDL deleted |
@@ -168,7 +168,7 @@ Current state, verified against the code:
 | `GET /api/statistics/overview` | Only when `STATISTICS_SCHOOL_WIDE=false` | The shipped default is **school-wide**: `config.ts` defaults `statisticsSchoolWide` to `true`, and `statistics.ts` then passes `classIds: null` without calling `getGlobalAccess`. Set the flag to `false` and it scopes normally. `pupil`-role accounts are refused outright, ahead of any scoping. **Both policy toggles are now documented in `.env.example`** — they were previously absent, which made the most consequential privacy switch in the system undiscoverable for operators. |
 | `GET /api/cards/alerts` | Yes | Calls `getGlobalAccess(user)`, short-circuits an empty scope, filters by `global.classIds` |
 | `GET /api/timeouts/history` | Yes | Calls `getGlobalAccess(user)`, short-circuits an empty scope, filters by `global.classIds`, `LIMIT 50` |
-| `GET /api/timeouts/active` | Partially — **see below** | Refuses `role === 'pupil'` outright, and the query is `LIMIT 100`. It is deliberately **not** class-scoped. |
+| `GET /api/timeouts/active` | Yes — **fixed 2026-10-09** | Scoped via `lib/lw-duty.ts`: duty teacher & school leadership get school-wide view; other teachers see only their assigned classes in SQL before `LIMIT 100`; filters `expires_at > NOW()`. |
 | `GET /api/conferences/:classId/summary` | **Yes — fixed 2026-10-08** | See below. |
 
 **Two of these were live defects and are now closed.**
@@ -189,13 +189,13 @@ Current state, verified against the code:
    actor and row counts — counts only, because copying pupil names into the one table every
    administrator can read would reproduce the exposure.
 
-**Still open, and deliberately so.** `/api/timeouts/active` remains readable by any non-pupil staff
-account school-wide. A comment in the route argues this is intentional, on the grounds that the
-Lernwerkstatt supervisor may be any teacher on duty and the data is inherently shared. That is a
-school policy question, not a code defect, and the roadmapping decision is still open: restrict to
-a scheduled supervisor role, or keep it open to staff. It is now **bounded** (`LIMIT 100`) and
-**pupil-proof**, which is what the old text said was missing. Do not "fix" the scoping without that
-decision.
+**Resolved (2026-10-09).** `/api/timeouts/active` and `/:id/resolve` are now unified under one shared authorization rule (`lib/lw-duty.ts`):
+
+1. **Duty roster derived from timetable**: The on-duty teacher is resolved from `timetable_lessons` (class 999, period matching `currentPeriod()`). Duty teachers and school leadership receive unrestricted visibility of the active Lernwerkstatt board.
+2. **Class-scoped for other teachers**: Teachers not on duty see only active timeouts for their own assigned classes, filtered in SQL before `LIMIT 100` (`($1::bool OR sc.id = ANY($2::int[]))`). Teachers with no classes receive `[]` immediately without querying. Pupils are refused with 403.
+3. **Resolve parity**: Resolving an incident uses the identical predicate (`canActOnTimeout`), eliminating the previous 403 defect that prevented the on-duty supervisor from releasing pupils from other classes.
+4. **LiveSync room 999 symmetry**: `getClassAccess(user, 999).canRead` is true for the duty teacher and leadership. `useLiveSync` supports room arrays (`[selectedClassId, 999]`), enabling live updates for the duty supervisor. Non-duty teachers attempting room 999 are safely ignored rather than disconnected.
+5. **Release at the bell**: Timeouts receive an `expires_at` timestamp (end of current period, or end of next period if issued during a break; `null` outside school hours). A background sweeper (`lib/timeout-sweeper.ts`) auto-resolves expired timeouts with `resolved_by = null` and audit action `TIME_OUT_AUTO_RESOLVED`. The `/active` query additionally filters `(expires_at IS NULL OR expires_at > NOW())` to eliminate ghost entries across missed ticks. Auto-resolved timeouts continue to count toward milestone escalations (milestones 3, 6, 9...).
 
 ### Confirmed functional bug
 

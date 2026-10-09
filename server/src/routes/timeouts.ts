@@ -4,32 +4,26 @@ import { db, getPool } from '../db/index.js';
 import { auditLogs, behaviorCards, timeoutEscalations, timeoutIncidents } from '../db/schema.js';
 import { config } from '../config.js';
 import {
-  assertPasswordCurrent,
-  badRequest,
-  findPupilInClass,
-  forbid,
-  getClassAccess,
-  getGlobalAccess,
-  getPupil,
-  getTeacher,
-  isHeadmasterUser,
-  MAX_POSTGRES_INTEGER,
-  parseIdParam,
-  requireAuth,
-  safeTeacherId,
-  type Identity,
+assertPasswordCurrent,
+badRequest,
+findPupilInClass,
+forbid,
+getClassAccess,
+getGlobalAccess,
+getPupil,
+getTeacher,
+isHeadmasterUser,
+isSchoolLeader,
+LW_CLASS_ID,
+MAX_POSTGRES_INTEGER,
+parseIdParam,
+requireAuth,
+safeTeacherId,
+type Identity,
 } from '../lib/guards.js';
+import { canActOnTimeout, timeoutVisibility } from '../lib/lw-duty.js';
+import { timeoutExpiry } from '../lib/period-times.js';
 import { broadcastToClass } from '../ws/live-sync.js';
-
-/** Pseudo-class id for the Lernwerkstatt supervision view. */
-const LW_CLASS_ID = 999;
-
-/** True for the administrator and the headmasters (SLC, MED). */
-async function isSchoolLeader(user: Identity): Promise<boolean> {
-  if (user.role === 'admin') return true;
-  if (!user.teacherId) return false;
-  return isHeadmasterUser(user, await getTeacher(user.teacherId));
-}
 
 export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -106,6 +100,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           taskAssignment: cleanTask,
           status: 'active',
           redCardId: redCard.id,
+          expiresAt: timeoutExpiry(),
         })
         .returning();
 
@@ -159,48 +154,68 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
-  /**
-   * GET /api/timeouts/active — live LW list.
-   *
-   * Open to every authenticated teacher because the LW supervisor may be any teacher
-   * on duty, but the underlying data (pupil name, reason for the timeout) is
-   * inherently shared. Pupil names are returned; internal notes are not.
-   */
-  fastify.get('/active', { preValidation: [fastify.authenticate] }, async (request, reply) => {
-    const user = requireAuth(request);
-    if (user.role === 'pupil') {
-      return forbid(reply);
-    }
-    const rows = await getPool().query(
-      `SELECT ti.id,
-              ti.pupil_id,
-              ti.class_id,
-              ti.sent_by_teacher_id,
-              ti.sent_at,
-              ti.task_assignment,
-              ti.status,
-              ti.red_card_id,
-              p.full_name AS pupil_name,
-              sc.name   AS class_name,
-              COALESCE(t.short_name, 'SL') AS sent_by_short,
-              COALESCE(t.full_name, 'Schulleitung') AS sent_by_name
-         FROM timeout_incidents ti
-         JOIN pupils p         ON p.id  = ti.pupil_id
-         JOIN school_classes sc ON sc.id = ti.class_id
-         LEFT JOIN teachers t  ON t.id  = ti.sent_by_teacher_id
-        WHERE ti.status = 'active'
-        ORDER BY ti.sent_at DESC
-        LIMIT 100`,
-    );
-    return reply.send(rows.rows);
-  });
+/**
+* GET /api/timeouts/active — live LW list.
+*
+* The Lernwerkstatt is a room, not a class: pupils arrive there from whichever class
+* the teacher who clicked was standing in. So school-wide visibility is granted by being
+* on duty in the running period (`timetable_lessons`, class 999), not by teaching the
+* offending class — see `lib/lw-duty.ts` for why the obvious alternative breaks the board.
+* Every other teacher sees only their own classes, which is what `/history` already does.
+*
+* The scope is applied in SQL *before* `LIMIT`, never by filtering rows afterwards:
+* filtering after the limit silently drops the caller's rows that fall outside the
+* globally newest 100.
+*/
+fastify.get('/active', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+const user = requireAuth(request);
+const scope = await timeoutVisibility(user);
+if (scope.forbidden) {
+return forbid(reply);
+}
+// A teacher who is not on duty and has no classes at all cannot be shown anything;
+// answering without a query keeps "no access" indistinguishable from "nothing going on".
+if (!scope.onDuty && scope.classIds?.length === 0) {
+return reply.send([]);
+}
 
-  /**
-   * POST /api/timeouts/:id/resolve — LW supervisor closes the timeout.
-   *
-   * Any teacher may close an active timeout (that is the LW duty roster), but only
-   * within a class they are responsible for, or with school-wide authority.
-   */
+const rows = await getPool().query(
+`SELECT ti.id,
+ti.pupil_id,
+ti.class_id,
+ti.sent_by_teacher_id,
+ti.sent_at,
+ti.expires_at,
+ti.task_assignment,
+ti.status,
+ti.red_card_id,
+p.full_name AS pupil_name,
+sc.name   AS class_name,
+COALESCE(t.short_name, 'SL') AS sent_by_short,
+COALESCE(t.full_name, 'Schulleitung') AS sent_by_name
+FROM timeout_incidents ti
+JOIN pupils p         ON p.id  = ti.pupil_id
+JOIN school_classes sc ON sc.id = ti.class_id
+LEFT JOIN teachers t  ON t.id  = ti.sent_by_teacher_id
+WHERE ti.status = 'active'
+AND (ti.expires_at IS NULL OR ti.expires_at > NOW())
+AND ($1::bool OR sc.id = ANY($2::int[]))
+ORDER BY ti.sent_at DESC
+LIMIT 100`,
+[scope.onDuty, scope.classIds],
+);
+return reply.send(rows.rows);
+});
+
+/**
+* POST /api/timeouts/:id/resolve — the duty teacher releases the pupil.
+*
+* Same rule as `GET /active`, deliberately: a supervisor who can see a pupil in the
+* room must be able to release them. The previous check was `getClassAccess(...).canRecord`,
+* which read as if any teacher could do this ("that is the LW duty roster") but in fact
+* refused the on-duty supervisor for every class they do not teach — the duty board showed
+* the pupil and then answered 403.
+*/
   fastify.post(
     '/:id/resolve',
     {
@@ -230,12 +245,12 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     if (!existing) return reply.status(404).send({ error: 'Time-Out Eintrag nicht gefunden' });
     if (existing.status !== 'active') return badRequest(reply, 'Dieser Time-Out ist bereits abgeschlossen.');
 
-    const access = await getClassAccess(user, existing.classId);
-    if (!access.canRecord) {
-      return reply.status(403).send({
-        error: 'Sie unterrichten diese Klasse nicht und dürfen diesen Time-Out nicht abschließen.',
-      });
-    }
+if (!(await canActOnTimeout(user, existing.classId))) {
+return reply.status(403).send({
+error:
+'Sie sind für diese Klasse nicht zuständig und haben heute keine Lernwerkstatt-Aufsicht.',
+});
+}
 
     const [resolved] = await db
       .update(timeoutIncidents)

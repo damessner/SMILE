@@ -26,6 +26,7 @@ import { backupRoutes } from './routes/backup.js';
 import { statisticsRoutes } from './routes/statistics.js';
 import { timetableRoutes } from './routes/timetable.js';
 import { timeoutRoutes } from './routes/timeouts.js';
+import { registerTimeoutSweeper } from './lib/timeout-sweeper.js';
 import {
   closeAllWebSockets,
   handleWebSocketConnection,
@@ -254,6 +255,11 @@ export async function buildServer(
       }
       return reply.status(404).send({ error: 'Endpoint not found' });
     });
+  }
+
+  // Release expired timeouts at the bell.
+  if (config.env !== 'test') {
+    registerTimeoutSweeper(fastify);
   }
 
   return fastify;

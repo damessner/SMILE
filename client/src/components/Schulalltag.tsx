@@ -200,7 +200,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   useEffect(() => {
     loadTimeoutsData();
     const interval = setInterval(loadTimeoutsData, 15000); // Poll every 15s for live updates
-    return () => clearInterval(interval);
+    const handleTimeoutsUpdated = () => {
+      void loadTimeoutsData();
+    };
+    window.addEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
+    };
   }, []);
 
   // Compute live rank per pupil (taking red cards into account)
