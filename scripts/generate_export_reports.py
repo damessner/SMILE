@@ -74,6 +74,8 @@ def fetch_school_data(conn):
         if row and row[0] > 0:
             rubric_total = row[0]
     except Exception:
+        conn.rollback()
+        cur = conn.cursor()
         rubric_total = 18
 
     # 2. Classes
@@ -478,6 +480,7 @@ def main():
     db_uri = get_db_uri()
     try:
         conn = psycopg2.connect(db_uri)
+        conn.set_client_encoding('UTF8')
     except Exception as e:
         sys.stderr.write(f"Database connection failed: {e}\n")
         sys.exit(1)

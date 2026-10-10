@@ -207,7 +207,8 @@ psql "$DATABASE_URL" -tAc "SELECT count(*) FROM drizzle.__drizzle_migrations"'''
     if not healthy:
         print('\n  SERVICE DID NOT COME UP — rolling back')
         host(f'pct exec {CID} -- bash -c "rm -rf /opt/smile && mkdir -p /opt/smile && '
-             f'tar xzf /var/backups/smile/opt-smile-{STAMP}.tar.gz -C /opt"')
+             f'tar xzf /var/backups/smile/opt-smile-{STAMP}.tar.gz -C /opt && '
+             f'cp -a /var/backups/smile/env-backup-{STAMP} /opt/smile/.env"')
         ex('systemctl restart smile.service', timeout=120, label='rollback restart')
         time.sleep(10)
         ex('systemctl status smile.service --no-pager -n 15; '
