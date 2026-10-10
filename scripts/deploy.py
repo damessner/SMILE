@@ -72,7 +72,16 @@ if PASSWORD:
     connect_kwargs['password'] = PASSWORD
 elif os.path.exists(key_file):
     connect_kwargs['key_filename'] = key_file
-ssh.connect(HOST, username=USER, **connect_kwargs)
+
+try:
+    ssh.connect(HOST, username=USER, **connect_kwargs)
+except paramiko.AuthenticationException:
+    if not PASSWORD:
+        import getpass
+        PASSWORD = getpass.getpass(f"SSH key authentication failed. Enter SSH password for {USER}@{HOST}: ")
+        ssh.connect(HOST, username=USER, password=PASSWORD, timeout=25)
+    else:
+        raise
 
 
 def ex(script: str, timeout=300, label=None):
