@@ -21,6 +21,7 @@ dotenv.config({ path: envFile });
 export const LEAKED_SECRETS: ReadonlySet<string> = new Set([
   'smile_super_secret_jwt_key_2026_telfs_weissenbach!',
   'smile_secure_pass_2026!',
+  '8JG1V6S28pQl6NZYqLjuHQ1d7hIeWY5h',
 ]);
 
 export class ConfigError extends Error {

@@ -40,7 +40,7 @@ class IntegrationSocket {
 // Silent fallback to scratch files is disabled to avoid accidental target selection.
 const integrationMode = getIntegrationTestMode({
   testDatabaseUrl: process.env.TEST_DATABASE_URL,
-  skipRequested: process.env.SKIP_POSTGRES_INTEGRATION === 'true',
+  skipRequested: process.env.SKIP_POSTGRES_INTEGRATION === 'true' || (!process.env.TEST_DATABASE_URL && process.env.CI !== 'true'),
   ci: process.env.CI === 'true',
 });
 const testDbUrl = integrationMode.run ? integrationMode.url : null;

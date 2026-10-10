@@ -17,8 +17,24 @@ if not DB_URI and os.path.exists("/opt/smile/.env"):
                 DB_URI = line.strip().split("=", 1)[1].strip('"').strip("'")
                 break
 
+if not DB_URI and os.path.exists("/etc/smile/backup.env"):
+    vals = {}
+    with open("/etc/smile/backup.env", "r") as f:
+        for line in f:
+            parts = line.strip().split("=", 1)
+            if len(parts) == 2:
+                vals[parts[0].strip()] = parts[1].strip('"').strip("'")
+    if "DB_NAME" in vals:
+        user = vals.get('DB_USER', 'smile_backup')
+        pwd = vals.get('DB_PASSWORD', os.environ.get('PGPASSWORD', ''))
+        auth = f"{user}:{pwd}" if pwd else user
+        host = vals.get('DB_HOST', '127.0.0.1')
+        port = vals.get('DB_PORT', '5432')
+        DB_URI = f"postgresql://{auth}@{host}:{port}/{vals['DB_NAME']}"
+
 if not DB_URI:
-    DB_URI = "postgresql://smile_user:8JG1V6S28pQl6NZYqLjuHQ1d7hIeWY5h@127.0.0.1:5432/smile_db"
+    sys.stderr.write("ERROR: DATABASE_URL is not set.\n")
+    sys.exit(1)
 
 OUTPUT_FILE = sys.argv[1] if len(sys.argv) > 1 else "/var/backups/smile/SMILE_Aktuelle_Gesamtuebersicht.xlsx"
 

@@ -454,6 +454,34 @@ export async function acknowledgeTimeoutEscalation(
 
 // --- Backup -----------------------------------------------------------------
 
+export interface BackupFileItem {
+  id: string;
+  filename: string;
+  timestamp: string;
+  sizeBytes: number;
+  sizeFormatted: string;
+  isSafetySnapshot?: boolean;
+  isEncrypted?: boolean;
+}
+
+export async function listBackups(): Promise<{ backups: BackupFileItem[] }> {
+  const res = await apiFetch('/backup/list');
+  return unwrap(res);
+}
+
+export async function restoreBackup(backupId: string): Promise<{
+  success: boolean;
+  message: string;
+  preRestoreBackup?: string;
+  restoredAt?: string;
+}> {
+  const res = await apiFetch('/backup/restore', {
+    method: 'POST',
+    body: JSON.stringify({ backupId }),
+  });
+  return unwrap(res);
+}
+
 /** Administrator only. Returns the complete data bundle including the full audit log. */
 export async function exportBackup() {
   const res = await apiFetch('/backup/export-json');

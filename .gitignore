@@ -37,6 +37,7 @@ Beobachtungsraster_Lehrling_Geselle_Meister_Vorschlag1.docx
 
 # Backups and archives (contain complete pupil database dumps)
 backup_*
+!scripts/backup_*.py
 *.zip
 *.tar.gz
 *.tgz

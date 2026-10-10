@@ -1402,15 +1402,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   desc: 'Eigenständig / Spitzenleistung',
                 },
               ].map((opt) => {
-                // One card is selected: the rank that will actually be
-                // submitted. The manual proposal wins when it exists, because
-                // that is what the submit loop writes for this subject;
-                // otherwise the calculated rank is the whole story. OR-ing the
-                // two lit a second card whenever a teacher hand-edited the
-                // raster after picking a rank, which told the room two
-                // different things about one pupil.
-                const activeSelectedRank = votedRank ?? rank;
-                const isSelected = activeSelectedRank === opt.rank;
+                // The quick-grade cards represent an explicit teacher proposal.
+                // A card is only selected when the teacher explicitly clicked it,
+                // or when a manual proposal already exists on the record.
+                // An unrated pupil starts clean with no prior selection.
+                const isSelected = votedRank === opt.rank;
                 return (
                   <button
                     key={opt.rank}

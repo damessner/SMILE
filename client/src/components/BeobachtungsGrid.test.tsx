@@ -1430,9 +1430,9 @@ describe('Quick-grade selection reflects the rank that will be submitted', () =>
     expect(quickGradeButton('Meister').className).not.toContain('ring-amber-400/50');
   });
 
-  it('selects the calculated rank when there is no manual proposal', () => {
-    // With no proposal the raster is the whole story, and Meister must be the
-    // single selected card - the fallback the old code replaced.
+  it('does not pre-select any quick-grade card when there is no manual proposal', () => {
+    // When a teacher opens the view, no rank card should be pre-selected as "Gewählt"
+    // before the teacher explicitly makes a proposal.
     const anna = pupil(1, 'Anna Muster', [meisterEval(null)]);
 
     renderGrid({
@@ -1442,8 +1442,11 @@ describe('Quick-grade selection reflects the rank that will be submitted', () =>
       selectedPupilIdProp: 1,
     });
 
-    expect(screen.getAllByText('Gewählt')).toHaveLength(1);
-    expect(quickGradeButton('Meister').className).toContain('ring-amber-400/50');
+    // Zero "Gewählt" badges, and none of the quick-grade cards have active ring styles.
+    expect(screen.queryByText('Gewählt')).toBeNull();
+    expect(quickGradeButton('Meister').className).not.toContain('ring-amber-400/50');
+    expect(quickGradeButton('Geselle').className).not.toContain('ring-blue-500/50');
+    expect(quickGradeButton('Lehrling').className).not.toContain('ring-rose-500/50');
   });
 });
 

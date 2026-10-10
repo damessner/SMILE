@@ -317,6 +317,14 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now smile.service
+
+# Install and enable 10-minute automated M365 backup timer
+if [ -f "/opt/smile/scripts/systemd/smile-m365-backup.service" ]; then
+  install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
+  install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now smile-m365-backup.timer
+fi
 '
 
 # 13. Verify health

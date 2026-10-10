@@ -18,6 +18,7 @@ import {
   EyeOff,
   BookOpen,
   KeyRound,
+  RotateCcw,
 } from 'lucide-react';
 import { User, SchoolClass, PupilWithData, RubricCriterion } from './types';
 import {
@@ -38,6 +39,7 @@ import {
 import { useLiveSync } from './hooks/useLiveSync';
 import { LoginModal } from './components/LoginModal';
 import { AdminAccountsModal } from './components/AdminAccountsModal';
+import { AdminRestoreModal } from './components/AdminRestoreModal';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useToast } from './components/Toast';
 import { setActiveRubricConfig } from './lib/rubricConfig';
@@ -117,16 +119,10 @@ export function App() {
   const [teacherReportModalOpen, setTeacherReportModalOpen] = useState(false);
   const [allClassesExportOpen, setAllClassesExportOpen] = useState(false);
   const [adminAccountsOpen, setAdminAccountsOpen] = useState(false);
+  const [adminRestoreOpen, setAdminRestoreOpen] = useState(false);
   const [timeoutEscalationOpen, setTimeoutEscalationOpen] = useState(false);
   const [pendingTimeoutCount, setPendingTimeoutCount] = useState(0);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-
-  const checkAndOpenTour = (user: User) => {
-    const userKey = `smile_tour_seen_${user.username.toLowerCase()}`;
-    if (!localStorage.getItem(userKey)) {
-      setOnboardingOpen(true);
-    }
-  };
 
   // 1. Check Auth on mount
   //
@@ -138,7 +134,6 @@ export function App() {
         setCurrentUser(user);
         if (!user.mustChangePassword) {
           loadClasses(user);
-          checkAndOpenTour(user);
         }
       })
       .catch(() => setCurrentUser(null))
@@ -390,7 +385,6 @@ export function App() {
   const handlePasswordChanged = (user: User) => {
     setCurrentUser(user);
     loadClasses(user);
-    checkAndOpenTour(user);
   };
 
   const getActiveSubjectCode = () => {
@@ -537,7 +531,6 @@ export function App() {
           setCurrentUser(user);
           if (!user.mustChangePassword) {
             loadClasses(user);
-            checkAndOpenTour(user);
           }
         }}
       />
@@ -687,6 +680,17 @@ export function App() {
             >
               <KeyRound className="w-3.5 h-3.5 text-accent" />
               <span className="hidden lg:inline">Konten</span>
+            </button>
+          )}
+
+          {isAccountAdministrator && (
+            <button
+              onClick={() => setAdminRestoreOpen(true)}
+              className="pressable focus-ring min-h-[44px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 hover:text-rose-400 hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
+              title="System-Wiederherstellung (Backup einspielen)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden lg:inline">Wiederherstellen</span>
             </button>
           )}
 
@@ -959,6 +963,10 @@ export function App() {
 
       {adminAccountsOpen && isAccountAdministrator && (
         <AdminAccountsModal onClose={() => setAdminAccountsOpen(false)} />
+      )}
+
+      {adminRestoreOpen && isAccountAdministrator && (
+        <AdminRestoreModal onClose={() => setAdminRestoreOpen(false)} />
       )}
 
       {activeCardDrawer && selectedClassId && (

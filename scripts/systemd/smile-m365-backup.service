@@ -1,0 +1,32 @@
+[Unit]
+Description=SMILE 10-Minute Encrypted Database & Report Backup to Microsoft 365
+Documentation=file:/opt/smile/docs/SECURITY.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=smile
+Group=smile
+EnvironmentFile=-/etc/smile/backup.env
+EnvironmentFile=-/opt/smile/.env
+ExecStart=/usr/bin/python3 /opt/smile/scripts/backup_m365.py
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/smile /tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target
