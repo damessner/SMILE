@@ -24,6 +24,8 @@ Unterricht.TXT
 *.dump
 *.sql.gz
 export/*.sql
+docs/screenshots/
+docs/*.html
 
 # Allow Drizzle schema migration SQL files
 !server/drizzle/*.sql
@@ -43,6 +45,8 @@ backup_*
 *.tgz
 tools/
 m365_rclone.conf
+*rclone.conf
+*.conf
 m365_token.txt
 *.xlsx
 

@@ -44,7 +44,7 @@ BUNDLE = [
     'scripts', 'docs', 'Stundenplan.TXT',
 ]
 
-FORBIDDEN_COMPONENTS = {'.env', 'node_modules', '.git'}
+FORBIDDEN_COMPONENTS = {'.env', 'node_modules', '.git', 'screenshots'}
 FORBIDDEN_SUFFIXES = ('.zip', '.pem', '.key')
 
 
@@ -62,6 +62,12 @@ def forbidden_reason(name: str):
         if p.endswith(FORBIDDEN_SUFFIXES):
             return f'contains forbidden file "{p}"'
     return None
+
+
+def tar_filter(tarinfo):
+    if forbidden_reason(tarinfo.name):
+        return None
+    return tarinfo
 
 sys.path.insert(0, os.path.dirname(__file__))
 from ssh_utils import create_ssh_client
@@ -140,7 +146,7 @@ try:
     with tarfile.open(tar_path, 'w:gz') as tar:
         for item in BUNDLE:
             full = os.path.join(BASE, item)
-            tar.add(full, arcname=item)
+            tar.add(full, arcname=item, filter=tar_filter)
 
     # Verify no forbidden path slipped into the archive.
     with tarfile.open(tar_path, 'r:gz') as tar:
@@ -246,7 +252,7 @@ if [ ! -f /etc/smile/backup.env ]; then
   cat > /etc/smile/backup.env << EOF_ENV
 DATABASE_URL="${DB_URL}"
 M365_USER="smile@ms-telfs.at"
-M365_PASSWORD="CHANGE_ME"
+M365_PASSWORD=""
 M365_TENANT_ID="42864638-c600-42c0-8f6a-18beaa7cbf31"
 BACKUP_ENCRYPTION_PASSPHRASE="${ENC_KEY}"
 KEEP_INTRADAY_DAYS="3"
@@ -255,9 +261,20 @@ CLOUD_KEEP_DAYS="7"
 EOF_ENV
   chown smile:smile /etc/smile/backup.env
   chmod 600 /etc/smile/backup.env
+  echo "NOTICE: M365_PASSWORD is empty. Fill it in /etc/smile/backup.env before the backup can run."
 fi
 
-systemctl enable --now smile-m365-backup.timer
+# Arm the timer only if the backup can actually run. Without this gate a
+# half-configured server starts a 10-minute cycle of failing jobs, and the
+# 'CHANGE_ME' placeholder that used to be written here passed every check.
+if sudo -u smile /usr/bin/python3 /opt/smile/scripts/backup_m365.py --check; then
+  systemctl enable --now smile-m365-backup.timer
+  echo "M365 backup timer armed."
+else
+  systemctl enable smile-m365-backup.timer
+  echo "WARN: preflight failed — timer installed but NOT started."
+  echo "      Fix the reported items, then: systemctl start smile-m365-backup.timer"
+fi
 systemctl status smile-m365-backup.timer --no-pager
 ''', label='6. M365 backup timer status')
 

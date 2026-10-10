@@ -8,11 +8,12 @@ Pipeline:
    3. Generate human-readable reports (HTML, Markdown, Excel)
    4. Client-side AES-256 encryption of all cloud-bound assets (DSGVO compliant)
    5. Apply local retention pruning (keep 10-minute snapshots for 3 days, dailies for 30 days)
-   6. Authenticate and upload encrypted assets to Microsoft 365. rclone with a
-      delegated OAuth token is preferred: it survives MFA/Conditional Access and
-      needs no stored password. If no rclone remote is configured the legacy
-      password-grant Graph path is used and a warning is logged, because it
-      stops working the moment Security Defaults are enforced.
+   6. Authenticate to Microsoft Graph with a username/password (ROPC) grant
+      against Microsoft's own first-party Office client ID, then PUT each
+      encrypted asset to OneDrive.
+   7. Apply cloud retention pruning (default: 7 days of intraday snapshots).
+   8. Write a LATEST.txt pointer recording which snapshot folder is current.
+   9. Exit non-zero on any error so systemd / monitoring alerts.
    7. Apply cloud retention pruning (keep 10-minute snapshots for CLOUD_KEEP_DAYS,
       19:00 dailies are preserved via the per-school-year archive)
    8. Write a LATEST.txt pointer recording which snapshot folder is current.
@@ -235,11 +236,8 @@ def graph_list_children(access_token, folder):
         url = data.get("@odata.nextLink")
     return items
 
-def prune_cloud_backups(access_token, keep_days=30, loaded=None):
+def prune_cloud_backups(access_token, keep_days=7):
     """Prunes cloud intraday snapshots older than keep_days. Returns problem list.
-
-    Uses rclone when a remote is configured (it lists folders without paging and
-    deletes by name); otherwise falls back to paginated Graph calls.
 
     The 19:00 Tagesschluss snapshot is archived into a per-school-year folder,
     which this function does not touch. Anything that is not a timestamped
@@ -252,35 +250,6 @@ def prune_cloud_backups(access_token, keep_days=30, loaded=None):
     for it would teach the operator to ignore alerts.
     """
     problems = []
-    now_dt = datetime.datetime.now()
-
-    if loaded is not None and rclone_remote_ok(loaded):
-        remote = setting(loaded, "RCLONE_REMOTE", "m365")
-        config = setting(loaded, "RCLONE_CONFIG", "/etc/smile/rclone.conf")
-        res = subprocess.run(
-            ["rclone", "lsf", f"{remote}:SMILE-Backups", "--dirs-only",
-             "--config", config, "--timeout", "60s"],
-            capture_output=True, text=True,
-        )
-        if res.returncode != 0:
-            return [f"cloud retention scan failed: {res.stderr.strip()}"]
-        for name in res.stdout.split():
-            if len(name) == 15 and name[10] == "_":
-                try:
-                    folder_dt = datetime.datetime.strptime(name, "%Y-%m-%d_%H%M")
-                    if folder_dt.hour == 19:
-                        continue
-                    if (now_dt - folder_dt).total_seconds() > keep_days * 86400:
-                        subprocess.run(
-                            ["rclone", "purge", f"{remote}:SMILE-Backups/{name}",
-                             "--config", config, "--timeout", "60s"],
-                            capture_output=True, text=True,
-                        )
-                        log(f"Pruned expired cloud snapshot folder: {name}")
-                except Exception as e:
-                    problems.append(f"cloud prune of {name} failed: {e}")
-        return problems
-
     try:
         items = graph_list_children(access_token, "SMILE-Backups")
     except Exception as e:
@@ -317,44 +286,23 @@ def prune_cloud_backups(access_token, keep_days=30, loaded=None):
 # ---------------------------------------------------------------------------
 # Upload transport
 # ---------------------------------------------------------------------------
-
-def rclone_remote_ok(loaded):
-    """True if a configured rclone remote is reachable."""
-    remote = setting(loaded, "RCLONE_REMOTE", "m365")
-    config = setting(loaded, "RCLONE_CONFIG", "/etc/smile/rclone.conf")
-    res = subprocess.run(
-        ["rclone", "lsd", f"{remote}:", "--config", config, "--timeout", "30s"],
-        capture_output=True, text=True,
-    )
-    return res.returncode == 0
-
-def upload_via_rclone(loaded, remote_path, local_file_path, retries=3):
-    remote = setting(loaded, "RCLONE_REMOTE", "m365")
-    config = setting(loaded, "RCLONE_CONFIG", "/etc/smile/rclone.conf")
-    dest = f"{remote}:{remote_path}"
-    for attempt in range(1, retries + 1):
-        res = subprocess.run(
-            ["rclone", "copyto", local_file_path, dest,
-             "--config", config, "--timeout", "120s", "--retries", "5"],
-            capture_output=True, text=True,
-        )
-        if res.returncode == 0:
-            return True, os.path.basename(remote_path)
-        if attempt == retries:
-            return False, res.stderr.strip() or res.stdout.strip()
-        time.sleep(2 * attempt)
-    return False, "Max retries exceeded"
+#
+# Deliberately ONE transport: the Microsoft Graph simple PUT, authenticated with
+# Microsoft's own first-party Office client ID. There used to be an rclone path
+# here as well; it was removed because dead fallback code that is never
+# exercised is a liability rather than an asset — in this case it spawned a
+# subprocess probe on every upload and crashed on hosts without rclone
+# installed. If that transport is needed later, re-add it behind an explicit
+# setting and write the stubbed test first.
+#
+# The consequence to understand: the ROPC password grant below stops working the
+# day Security Defaults or MFA is enforced on the account. When that happens the
+# fix is either an app registration or delegated OAuth — not reverting this line.
 
 def upload(loaded, token, remote_path, local_file_path):
-    """Try rclone first, then fall back to the Graph PUT."""
-    if rclone_remote_ok(loaded):
-        ok, res = upload_via_rclone(loaded, remote_path, local_file_path)
-        if ok:
-            return True, res
-        warn(f"rclone upload of {remote_path} failed ({res}); falling back to Graph.")
-    if token:
-        return upload_file_to_onedrive(token, remote_path, local_file_path)
-    return False, "no rclone remote and no Graph token available"
+    if not token:
+        return False, "no Graph access token available"
+    return upload_file_to_onedrive(token, remote_path, local_file_path)
 
 # ---------------------------------------------------------------------------
 # Preflight
@@ -407,6 +355,11 @@ def main():
         sys.exit(1 if preflight(load_env()) else 0)
 
     loaded = load_env()
+    # Not only for `--check`: a partial backup.env must fail before a single
+    # dump byte is written, not somewhere in the middle of an upload.
+    if preflight(loaded):
+        fail("Preflight failed; refusing to run the backup. See PRECHECK lines above.")
+
     now = datetime.datetime.now()
     stamp = now.strftime("%Y-%m-%d_%H%M")
     is_tagesschluss = (now.hour == 19)
@@ -533,22 +486,16 @@ def main():
         # STEP 4: Authenticate to M365 & Upload encrypted archives
         # ---------------------------------------------------------------------
         log(f"Authenticating to Microsoft 365 as {m365_user}...")
-        # With a working rclone remote the password grant is never contacted:
-        # that flow is blocked by MFA and Security Defaults, and this is how
-        # the backup keeps running when the school turns them on.
-        if rclone_remote_ok(loaded):
-            log("Using rclone OneDrive remote (delegated OAuth).")
-            token = None
-        else:
-            warn("No usable rclone remote — falling back to the legacy password grant. "
-                 "Run scripts/setup-m365-rclone.sh to move off it.")
-            tenant_id = setting(loaded, "M365_TENANT_ID", "42864638-c600-42c0-8f6a-18beaa7cbf31")
-            token = get_m365_token(m365_user, m365_pass, tenant_id=tenant_id)
-            if not token:
-                fail("Authentication to Microsoft Graph API failed. "
-                     "If MFA or Security Defaults are now enforced for this account, "
-                     "the password grant no longer works and the backup must move "
-                     "to delegated OAuth (rclone) or an app registration.")
+        token = get_m365_token(
+            m365_user, m365_pass,
+            tenant_id=setting(loaded, "M365_TENANT_ID",
+                              "42864638-c600-42c0-8f6a-18beaa7cbf31"),
+        )
+        if not token:
+            fail("Authentication to Microsoft Graph API failed. "
+                 "If MFA or Security Defaults are enforced for this account the "
+                 "password grant no longer works; the backup then needs an app "
+                 "registration or delegated OAuth.")
 
         # Every run writes its own timestamped folder. There is deliberately no
         # fixed-name "latest" folder: overwriting it would destroy the previous
@@ -593,8 +540,8 @@ def main():
         # ---------------------------------------------------------------------
         # STEP 5: Cloud retention pruning
         # ---------------------------------------------------------------------
-        cloud_keep_days = int(setting(loaded, "CLOUD_KEEP_DAYS", "30"))
-        cloud_problems = prune_cloud_backups(token, keep_days=cloud_keep_days, loaded=loaded)
+        cloud_keep_days = int(setting(loaded, "CLOUD_KEEP_DAYS", "7"))
+        cloud_problems = prune_cloud_backups(token, keep_days=cloud_keep_days)
         for p in cloud_problems:
             warn(p)
 
