@@ -5,6 +5,8 @@ import {
   isPupilFullySubmitted,
   isSubjectMatch,
   itemVersionForSubject,
+  scoreSubject,
+  type AssessmentRank,
 } from './pupilItems';
 import type { Evaluation } from '../types';
 
@@ -162,6 +164,43 @@ describe('findItemForSubjects', () => {
       { subjectCode: 'SM', isSubmitted: false, items: [{ itemKey: 'org_1', rating: 'crown', version: 4 }] },
     ];
     expect(findItemForSubjects(legacy, ['M'], 'org_1')?.rating).toBe('crown');
+  });
+
+  it('resolves duplicate alias-equivalent evaluations to the newest item, matching scoreSubject', () => {
+    // Legacy alias rows (SD + D) both satisfy the unique key on the literal
+    // subject_code string. The displayed cell, the counted rating and the
+    // written version must follow the same newest-wins rule as scoreSubject,
+    // otherwise the grid shows one rating while the rank counts another.
+    const duplicateAlias = [
+      {
+        subjectCode: 'SD',
+        id: 'eval-old',
+        items: [{ itemKey: 'item_1', rating: 'crown', updatedAt: '2026-10-01T10:00:00Z', version: 4 }],
+      },
+      {
+        subjectCode: 'D',
+        id: 'eval-new',
+        items: [{ itemKey: 'item_1', rating: 'struggle', updatedAt: '2026-10-02T10:00:00Z', version: 5 }],
+      },
+    ];
+    expect(findItemForSubjects(duplicateAlias, ['D'], 'item_1')?.rating).toBe('struggle');
+    expect(findItemForSubjects(duplicateAlias, ['D'], 'item_1')?.version).toBe(5);
+
+    // Equal timestamps tie-break by lexicographically greater evaluation id,
+    // never by rating value - the same rule scoreSubject applies.
+    const tieBreak = [
+      {
+        subjectCode: 'SD',
+        id: 'eval-1',
+        items: [{ itemKey: 'item_1', rating: 'crown', updatedAt: '2026-10-01T10:00:00Z', version: 4 }],
+      },
+      {
+        subjectCode: 'D',
+        id: 'eval-2',
+        items: [{ itemKey: 'item_1', rating: 'struggle', updatedAt: '2026-10-01T10:00:00Z', version: 5 }],
+      },
+    ];
+    expect(findItemForSubjects(tieBreak, ['D'], 'item_1')?.rating).toBe('struggle');
   });
 });
 
@@ -352,3 +391,161 @@ describe('isPupilFullySubmitted', () => {
     expect(isPupilFullySubmitted([{ ...evaluation, isSubmitted: undefined }], ['D'])).toBe(false);
   });
 });
+
+describe('scoreSubject', () => {
+  const RUBRIC_KEYS = Array.from({ length: 18 }, (_, i) => `item_${i + 1}`);
+
+  it('(a) same pupil with D 6 positives and M 16 positives produces independent counts and ranks', () => {
+    const evals = [
+      {
+        id: 'eval-d',
+        subjectCode: 'D',
+        items: RUBRIC_KEYS.map((k, i) => ({
+          itemKey: k,
+          rating: i < 6 ? 'smile' : 'struggle',
+          updatedAt: '2026-10-01T10:00:00Z',
+        })),
+      },
+      {
+        id: 'eval-m',
+        subjectCode: 'M',
+        items: RUBRIC_KEYS.map((k, i) => ({
+          itemKey: k,
+          rating: i < 16 ? 'smile' : 'struggle',
+          updatedAt: '2026-10-01T10:00:00Z',
+        })),
+      },
+    ];
+
+    const scoreD = scoreSubject(evals, 'D', RUBRIC_KEYS);
+    expect(scoreD).toEqual({
+      subjectCode: 'D',
+      positiveCount: 6,
+      totalRated: 18,
+      rank: 'Lehrling',
+    });
+
+    const scoreM = scoreSubject(evals, 'M', RUBRIC_KEYS);
+    expect(scoreM).toEqual({
+      subjectCode: 'M',
+      positiveCount: 16,
+      totalRated: 18,
+      rank: 'Meister',
+    });
+  });
+
+  it('(b) aliases SD and D group together', () => {
+    const evals = [
+      {
+        id: 'eval-sd',
+        subjectCode: 'SD',
+        items: [
+          { itemKey: 'item_1', rating: 'crown', updatedAt: '2026-10-01T10:00:00Z' },
+          { itemKey: 'item_2', rating: 'smile', updatedAt: '2026-10-01T10:00:00Z' },
+        ],
+      },
+    ];
+
+    const score = scoreSubject(evals, 'D', RUBRIC_KEYS);
+    expect(score.positiveCount).toBe(2);
+    expect(score.totalRated).toBe(2);
+    expect(score.rank).toBe('Lehrling');
+  });
+
+  it('(c) duplicate same-key entries choose newest timestamp even when older is positive', () => {
+    const evals = [
+      {
+        id: 'eval-old',
+        subjectCode: 'D',
+        items: [
+          { itemKey: 'item_1', rating: 'crown', updatedAt: '2026-10-01T10:00:00Z' },
+        ],
+      },
+      {
+        id: 'eval-new',
+        subjectCode: 'D',
+        items: [
+          { itemKey: 'item_1', rating: 'struggle', updatedAt: '2026-10-02T10:00:00Z' },
+        ],
+      },
+    ];
+
+    // Newest update is struggle (non-positive), which must overwrite crown
+    const score = scoreSubject(evals, 'D', RUBRIC_KEYS);
+    expect(score.positiveCount).toBe(0);
+    expect(score.totalRated).toBe(1);
+    expect(score.rank).toBe('Lehrling');
+
+    // Tie-break equal timestamps by lexicographically greater evaluation id, never rating value
+    const tieEvals = [
+      {
+        id: 'eval-1',
+        subjectCode: 'D',
+        items: [{ itemKey: 'item_1', rating: 'crown', updatedAt: '2026-10-01T10:00:00Z' }],
+      },
+      {
+        id: 'eval-2',
+        subjectCode: 'D',
+        items: [{ itemKey: 'item_1', rating: 'struggle', updatedAt: '2026-10-01T10:00:00Z' }],
+      },
+    ];
+    // eval-2 > eval-1 lexicographically, so eval-2 (struggle) wins
+    const tieScore = scoreSubject(tieEvals, 'D', RUBRIC_KEYS);
+    expect(tieScore.positiveCount).toBe(0);
+  });
+
+  it('(d) n.b./empty-only inputs return totalRated: 0, rank: null', () => {
+    const evals = [
+      {
+        id: 'eval-nb',
+        subjectCode: 'D',
+        items: [
+          { itemKey: 'item_1', rating: 'n.b.', updatedAt: '2026-10-01T10:00:00Z' },
+          { itemKey: 'item_2', rating: '', updatedAt: '2026-10-01T10:00:00Z' },
+        ],
+      },
+    ];
+
+    const score = scoreSubject(evals, 'D', RUBRIC_KEYS);
+    expect(score).toEqual({
+      subjectCode: 'D',
+      positiveCount: 0,
+      totalRated: 0,
+      rank: null,
+    });
+  });
+
+  it('(e) item keys outside the rubric list are ignored and duplicates never exceed 18', () => {
+    const evals = [
+      {
+        id: 'eval-custom',
+        subjectCode: 'D',
+        items: [
+          { itemKey: 'item_1', rating: 'smile', updatedAt: '2026-10-01T10:00:00Z' },
+          { itemKey: 'custom_foreign_key', rating: 'crown', updatedAt: '2026-10-01T10:00:00Z' },
+        ],
+      },
+    ];
+
+    const score = scoreSubject(evals, 'D', RUBRIC_KEYS);
+    expect(score.positiveCount).toBe(1);
+    expect(score.totalRated).toBe(1);
+    expect(score.positiveCount).toBeLessThanOrEqual(18);
+    expect(score.totalRated).toBeLessThanOrEqual(18);
+  });
+
+  it('(f) reports the canonical subject code even when called with an alias', () => {
+    // Consumers key rows and React lists by subjectCode; echoing the raw
+    // argument ('SD') would render one pupil as two subjects next to 'D'.
+    const evals = [
+      {
+        id: 'eval-sd',
+        subjectCode: 'SD',
+        items: [{ itemKey: 'item_1', rating: 'smile', updatedAt: '2026-10-01T10:00:00Z' }],
+      },
+    ];
+
+    expect(scoreSubject(evals, 'SD', RUBRIC_KEYS).subjectCode).toBe('D');
+  });
+});
+

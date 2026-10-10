@@ -354,6 +354,31 @@ describe('useLiveSync event handling symmetry', () => {
     await rejection;
   });
 
+  it('rejects a rating write with CLASS_CONFERENCE_LOCKED when the class conference is locked', async () => {
+    const { result } = renderHook(() => useLiveSync(101, mockUser));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    let write: Promise<void> | undefined;
+    act(() => {
+      write = result.current.sendRating(1, 'criterion-1', 'org_1', 'smile', 1, 'D');
+    });
+    const message = JSON.parse(String(ws.send.mock.calls.at(-1)?.[0]));
+    const rejection = expect(write).rejects.toThrow('Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.');
+
+    await act(async () => {
+      ws.simulateMessage({
+        type: 'ERROR',
+        clientMutationId: message.payload.clientMutationId,
+        message: 'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+        code: 'CLASS_CONFERENCE_LOCKED',
+      });
+    });
+
+    await rejection;
+  });
+
   it('applies the latest rating and version from a server conflict to the local evaluation', async () => {
     const onRatingUpdated = vi.fn();
     renderHook(() => useLiveSync(101, mockUser, onRatingUpdated));
@@ -600,5 +625,175 @@ describe('useLiveSync event handling symmetry', () => {
     expect(onRatingUpdated).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'TIMEOUT_RESOLVED' }),
     );
+  });
+
+  it('manages classRoundLocks per subscribed class independently', async () => {
+    const { result } = renderHook(() => useLiveSync([101, 102], mockUser));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    expect(ws).toBeDefined();
+
+    // Initial SYNCED for class 101: locked
+    act(() => {
+      ws.simulateMessage({
+        type: 'SYNCED',
+        classId: 101,
+        roundId: 'round-1',
+        isLockedByConference: true,
+        canRate: true,
+      });
+    });
+
+    expect(result.current.classRoundLocks.get(101)).toBe(true);
+    expect(result.current.classRoundLocks.get(102)).toBeUndefined();
+    expect(result.current.isLockedByConference).toBe(true);
+
+    // SYNCED for class 102: unlocked
+    act(() => {
+      ws.simulateMessage({
+        type: 'SYNCED',
+        classId: 102,
+        roundId: 'round-1',
+        isLockedByConference: false,
+        canRate: true,
+      });
+    });
+
+    expect(result.current.classRoundLocks.get(101)).toBe(true);
+    expect(result.current.classRoundLocks.get(102)).toBe(false);
+
+    // Lock class 102 via broadcast: only class 102 changes
+    act(() => {
+      ws.simulateMessage({
+        type: 'VOTING_LOCK_CHANGED',
+        classId: 102,
+        roundId: 'round-1',
+        isLocked: true,
+      });
+    });
+
+    expect(result.current.classRoundLocks.get(101)).toBe(true);
+    expect(result.current.classRoundLocks.get(102)).toBe(true);
+
+    // Unlock class 101 via broadcast: only class 101 changes
+    act(() => {
+      ws.simulateMessage({
+        type: 'VOTING_LOCK_CHANGED',
+        classId: 101,
+        roundId: 'round-1',
+        isLocked: false,
+      });
+    });
+
+    expect(result.current.classRoundLocks.get(101)).toBe(false);
+    expect(result.current.classRoundLocks.get(102)).toBe(true);
+    expect(result.current.isLockedByConference).toBe(false);
+  });
+});
+
+describe('useLiveSync per-class write permission', () => {
+  it('derives canRate from the primary subscribed class, not the last SYNCED received', async () => {
+    // A teacher with an LW duty room subscribes to [selected class, 999]. A room
+    // they may read but not rate in must not turn the grid read-only.
+    const { result } = renderHook(() => useLiveSync([101, 999], mockUser));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+
+    act(() => {
+      ws.simulateMessage({
+        type: 'SYNCED',
+        classId: 101,
+        roundId: 'round-1',
+        isLockedByConference: false,
+        canRate: true,
+      });
+    });
+    expect(result.current.canRate).toBe(true);
+
+    act(() => {
+      ws.simulateMessage({
+        type: 'SYNCED',
+        classId: 999,
+        roundId: 'round-1',
+        isLockedByConference: false,
+        canRate: false,
+      });
+    });
+
+    // 999 was seen last, but the selected class 101 stays writable.
+    expect(result.current.canRate).toBe(true);
+  });
+
+  it('applies a lock broadcast as a lock, and a SYNCED as the caller permission', async () => {
+    const { result } = renderHook(() => useLiveSync([101], mockUser));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+
+    act(() => {
+      ws.simulateMessage({
+        type: 'SYNCED',
+        classId: 101,
+        roundId: 'round-1',
+        isLockedByConference: true,
+        canRate: true,
+      });
+    });
+    // The entry the grid reads holds only the lock verdict and the permission.
+    expect(result.current.classSyncState.get(101)).toEqual({ isLocked: true, canRate: true });
+
+    act(() => {
+      ws.simulateMessage({
+        type: 'VOTING_LOCK_CHANGED',
+        classId: 101,
+        roundId: 'round-1',
+        isLocked: false,
+      });
+    });
+
+    // A lock broadcast carries no permission, so the previous canRate survives.
+    expect(result.current.classSyncState.get(101)).toEqual({ isLocked: false, canRate: true });
+    expect(result.current.classRoundLocks.get(101)).toBe(false);
+    expect(result.current.isLockedByConference).toBe(false);
+  });
+
+  it('lets the class roster seed the lock state before the first SYNCED arrives', async () => {
+    const { result } = renderHook(() => useLiveSync([202], mockUser));
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    act(() => {
+      result.current.setClassSyncState(202, { isLocked: true });
+    });
+
+    // The roster already reported the class locked, so the grid must not open a
+    // write window before the socket confirms it.
+    expect(result.current.classRoundLocks.get(202)).toBe(true);
+    expect(result.current.isLockedByConference).toBe(true);
+
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+    act(() => {
+      ws.simulateMessage({
+        type: 'SYNCED',
+        classId: 202,
+        roundId: 'round-7',
+        isLockedByConference: true,
+        canRate: false,
+      });
+    });
+    expect(result.current.canRate).toBe(false);
   });
 });

@@ -23,6 +23,12 @@ import { getConferenceSummary, voteConference, voteAllConference } from '../serv
 import { describeParticipation } from '../lib/conferenceParticipation';
 import { useConfirm } from './ConfirmDialog';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
+import {
+  formatSubjectEvidence,
+  computeSubjectEvidenceBars,
+  getRankVisuals,
+  type SubjectEvidenceItem,
+} from '../lib/conferenceEvidence';
 
 interface TeacherVote {
   teacherId: number;
@@ -49,12 +55,57 @@ interface CardItem {
   createdAt: string;
 }
 
-interface SubjectEvidence {
-  subjectCode: string;
-  subjectName: string;
-  positiveCount: number;
-  totalRated: number;
+/** One teacher who proposed a rank other than the one the board decided on. */
+export interface DissentingVote {
   teacherShort: string;
+  teacherName: string;
+  subjectCode: string;
+  proposedStatus: string;
+  /** Weekly lessons this vote carried, which is the weight behind the dissent. */
+  hours: number;
+  /** The teacher's own justification, when they wrote one. */
+  comment?: string | null;
+}
+
+/**
+ * The votes that disagree with the rank the conference just decided.
+ *
+ * A decision is a weighted majority, never unanimity, and the board is entitled
+ * to see who disagreed before the stamp goes on: "2 Gegenstimmen (6h Lehrling)"
+ * is the sentence that stops a hasty confirmation. Only submitted votes count —
+ * a teacher who never cast a ballot is missing, not dissenting.
+ */
+export function dissentingVotes(
+  teacherVotes: TeacherVote[],
+  decidedRank: string | null | undefined,
+): DissentingVote[] {
+  if (!decidedRank) return [];
+  return teacherVotes
+    .filter((tv) => tv.isSubmitted && tv.proposedStatus && tv.proposedStatus !== decidedRank)
+    .map((tv) => ({
+      teacherShort: tv.teacherShort,
+      teacherName: tv.teacherName,
+      subjectCode: tv.subjectCode,
+      proposedStatus: tv.proposedStatus as string,
+      hours: tv.hours ?? 2,
+      comment: tv.comment ?? null,
+    }));
+}
+
+/** The one-line summary of a dissent, or null when the decision was unanimous. */
+export function describeDissent(dissenters: DissentingVote[]): string | null {
+  if (dissenters.length === 0) return null;
+  // Group by the rank they proposed, so "6h Lehrling" reads as one position
+  // rather than two unrelated teachers.
+  const byRank = new Map<string, number>();
+  for (const d of dissenters) {
+    byRank.set(d.proposedStatus, (byRank.get(d.proposedStatus) ?? 0) + d.hours);
+  }
+  const positions = [...byRank.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([rank, hours]) => `${hours}h ${rank}`)
+    .join(', ');
+  return `${dissenters.length} Gegenstimme${dissenters.length === 1 ? '' : 'n'} (${positions})`;
 }
 
 interface ConferencePupil {
@@ -66,7 +117,7 @@ interface ConferencePupil {
    * each rated a pupil 6/18 produce a "Meister", and that number was what the screen
    * fell back to whenever nobody had confirmed anything.
    */
-  subjectEvidence: SubjectEvidence[];
+  subjectEvidence: SubjectEvidenceItem[];
   /** null = no teacher has voted yet. Never back-filled with a computed value. */
   suggestedRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
   /** null = the conference has not decided this pupil. */
@@ -480,16 +531,16 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
             // Derived only from submitted evaluations. No roster-derived headcount.
             const participation = describeParticipation(p.participation, p.voteStats);
 
-            // Color bar & badges
-            let barColor = 'bg-rose-500';
-            let badgeBg = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-            if (cur.rank === 'Meister') {
-              barColor = 'bg-amber-400';
-              badgeBg = 'bg-amber-400/20 text-amber-300 border-amber-400/40';
-            } else if (cur.rank === 'Geselle') {
-              barColor = 'bg-blue-500';
-              badgeBg = 'bg-blue-500/20 text-blue-300 border-blue-500/40';
-            }
+            // Badge colour for this pupil's decided rank, from the shared
+            // helper so the conference view and the assessment grid agree.
+            // The evidence bars below carry their own per-subject colour and
+            // deliberately do NOT use this pupil-level colour.
+            const { badgeBg } = getRankVisuals(cur.rank);
+
+            // Who disagreed with the rank on screen, while the board is still
+            // looking at the decision card and can still change its mind.
+            const dissent = dissentingVotes(p.teacherVotes, cur.rank);
+            const dissentSummary = describeDissent(dissent);
 
             const isSubmitting = submittingId === p.id;
             const greenCards = p.cards?.green || [];
@@ -541,25 +592,18 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         <span>
                           Raster (je Fach):{' '}
                           <strong className="text-amber-300 font-bold">
-                            {p.subjectEvidence?.length
-                              ? p.subjectEvidence
-                                  .map((s) => `${s.subjectCode} ${s.positiveCount}/${s.totalRated || 18}`)
-                                  .join(' · ')
-                                  : 'keine Bewertung'}
+                            {formatSubjectEvidence(p.subjectEvidence)}
                           </strong>
                         </span>
                       </div>
                       <div className="w-full h-3.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
                         {p.subjectEvidence?.length ? (
-                          // Each subject's share of the 18-item raster, shown separately.
-                          // Previously one bar summed every core subject, so three
-                          // teachers at 6/18 each rendered a full Meister bar.
-                          p.subjectEvidence.map((s) => (
+                          computeSubjectEvidenceBars(p.subjectEvidence).map((bar) => (
                             <div
-                              key={`${s.subjectCode}-${s.teacherShort}`}
-                              style={{ width: `${Math.min(100, Math.round((s.positiveCount / 18) * 100))}%` }}
-                              className={`h-full ${barColor} transition-all duration-300`}
-                              title={`${s.subjectName}: ${s.positiveCount}/${s.totalRated || 18} positiv`}
+                              key={bar.key}
+                              style={{ width: `${bar.percent}%` }}
+                              className={`h-full ${bar.fillColor} transition-all duration-300`}
+                              title={bar.title}
                             />
                           ))
                         ) : (
@@ -900,6 +944,36 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                       </div>
                     </div>
 
+                    {/* Who disagreed with the decision on screen (Decision 0.3). */}
+                    {dissentSummary && (
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                          Gegenstimmen
+                        </div>
+                        <div className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                          <span>⚠️</span>
+                          <span>{dissentSummary}</span>
+                        </div>
+                        <div className="mt-1 space-y-1">
+                          {dissent.map((d) => (
+                            <div
+                              key={`${d.teacherShort}-${d.subjectCode}`}
+                              className="text-[11px] text-slate-400 font-normal flex items-baseline gap-1.5"
+                              title={`${d.teacherName} (${d.teacherShort}) schlug ${d.proposedStatus} in ${d.subjectCode} vor`}
+                            >
+                              <span className="font-bold text-slate-300">{d.teacherShort}</span>
+                              <span>{d.subjectCode}</span>
+                              <span className="text-slate-500">→ {d.proposedStatus}</span>
+                              <span className="text-slate-500">({d.hours}h)</span>
+                              {d.comment && (
+                                <span className="text-slate-500 italic truncate max-w-[280px]">„{d.comment}“</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Hours-weighted split, never a roster-derived headcount. */}
                     <div>
                       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
@@ -991,15 +1065,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
             // Derived only from submitted evaluations. No roster-derived headcount.
             const participation = describeParticipation(pupil.participation, pupil.voteStats);
 
-            let barColor = 'bg-rose-500';
-            let badgeBg = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-            if (cur.rank === 'Meister') {
-              barColor = 'bg-amber-400';
-              badgeBg = 'bg-amber-400/20 text-amber-300 border-amber-400/40';
-            } else if (cur.rank === 'Geselle') {
-              barColor = 'bg-blue-500';
-              badgeBg = 'bg-blue-500/20 text-blue-300 border-blue-500/40';
-            }
+            const { badgeBg } = getRankVisuals(cur.rank);
 
             const isSubmitting = submittingId === pupil.id;
 
@@ -1038,20 +1104,24 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     <div className="flex items-center justify-between text-[11px] text-slate-400">
                       <span>Raster:{' '}
                         <strong className="text-slate-50">
-                          {pupil.subjectEvidence?.length
-                            ? pupil.subjectEvidence.map((s) => `${s.subjectCode} ${s.positiveCount}/${s.totalRated || 18}`).join(' · ')
-                            : 'keine Bewertung'}
+                          {formatSubjectEvidence(pupil.subjectEvidence)}
                         </strong>
                       </span>
                       <span>Nachfolgende Beschlüsse</span>
                     </div>
                     <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700">
-                      <div
-                        style={{
-                          width: `${Math.min(100, Math.round(((pupil.subjectEvidence ?? []).reduce((n, s) => n + s.positiveCount, 0) / 18) * 100))}%`,
-                        }}
-                        className={`h-full ${barColor}`}
-                      />
+                      {pupil.subjectEvidence?.length ? (
+                        computeSubjectEvidenceBars(pupil.subjectEvidence).map((bar) => (
+                          <div
+                            key={bar.key}
+                            style={{ width: `${bar.percent}%` }}
+                            className={`h-full ${bar.fillColor}`}
+                            title={bar.title}
+                          />
+                        ))
+                      ) : (
+                        <div className="h-full w-full bg-slate-800" />
+                      )}
                     </div>
                     {pupil.voteStats?.totalVotedHours ? (
                       <div className="pt-1">

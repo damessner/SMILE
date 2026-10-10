@@ -50,6 +50,7 @@ m365_token.txt
 UntisPlus-main/
 scratch/
 .pi/
+.freebuff/
 _*.mjs
 _*.js
 

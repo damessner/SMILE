@@ -11,10 +11,16 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 vi.mock('../db/schema.js', () => ({
+  classRoundLocks: { roundId: {}, classId: {}, isLocked: {} },
   evaluationItems: {},
   evaluations: {},
   observationRounds: { createdAt: {} },
   teachingAssignments: {},
+}));
+
+vi.mock('../lib/class-round-lock.js', () => ({
+  getClassRoundLockState: vi.fn(async () => false),
+  isClassRoundLocked: vi.fn((g: boolean, c: boolean) => Boolean(g || c)),
 }));
 
 vi.mock('../db/index.js', () => {
@@ -350,5 +356,33 @@ describe('subject-scoped WebSocket cell locks', () => {
       subjectCode: 'D',
       pupilId: 501,
     })));
+  });
+
+  it('rejects UPDATE_RATING with CLASS_CONFERENCE_LOCKED when the class conference is locked', async () => {
+    const socket = new TestSocket();
+    await subscribe(socket);
+
+    const { getClassRoundLockState } = await import('../lib/class-round-lock.js');
+    vi.mocked(getClassRoundLockState).mockResolvedValueOnce(true);
+
+    await socket.receive({
+      type: 'UPDATE_RATING',
+      payload: {
+        classId: 101,
+        pupilId: 501,
+        subjectCode: 'D',
+        itemKey: 'org_1',
+        rating: '+',
+        expectedVersion: 0,
+        clientMutationId: 'mut-lock-1',
+      },
+    });
+
+    expect(socket.messages).toContainEqual({
+      type: 'ERROR',
+      message: 'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+      code: 'CLASS_CONFERENCE_LOCKED',
+      clientMutationId: 'mut-lock-1',
+    });
   });
 });

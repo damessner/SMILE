@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
-import { auditLogs, finalRanks, observationRounds, pupils } from '../db/schema.js';
+import { auditLogs, classRoundLocks, finalRanks, observationRounds, pupils } from '../db/schema.js';
 import { config } from '../config.js';
 import {
   assertPasswordCurrent,
@@ -16,8 +16,11 @@ import {
   type AuthUser,
 } from '../lib/guards.js';
 import { demote, summarizeRatings, type Rank, type RatingLike } from '../lib/ranking.js';
+import { buildSubjectEvidence } from '../lib/subject-evidence.js';
 import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
+import { getLatestRound } from '../lib/rounds.js';
 import type { ClassAccess, Identity } from '../lib/guards.js';
 
 /**
@@ -28,14 +31,9 @@ import type { ClassAccess, Identity } from '../lib/guards.js';
  * the local copy that used a bare substring match on the teacher's short name.
  */
 
-async function getActiveRound() {
-  const [round] = await db
-    .select()
-    .from(observationRounds)
-    .orderBy(desc(observationRounds.createdAt))
-    .limit(1);
-  return round ?? null;
-}
+// Round resolution now lives in ../lib/rounds.js so the conference, evaluation
+// and live-sync paths agree on which round is "the latest one".
+const getActiveRound = getLatestRound;
 
 async function countClassTeachers(classId: number): Promise<number> {
   const result = await getPool().query<{ count: number }>(
@@ -146,31 +144,58 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // Voting lock is stored per class so it survives independently of the round.
     const round = await getActiveRound();
-    if (round) {
-      await db
-        .update(observationRounds)
-        .set({ isLocked: isLocked })
-        .where(eq(observationRounds.id, round.id));
+    if (!round) {
+      return reply.status(400).send({ error: 'Kein aktiver Beobachtungszeitraum gefunden.' });
     }
 
-    await db.insert(auditLogs).values({
-      actorId: safeTeacherId(user.teacherId),
-      action: isLocked ? 'VOTING_LOCKED' : 'VOTING_UNLOCKED',
-      entity: 'class',
-      entityId: String(cid),
-      payload: { isLocked, roundId: round?.id ?? null },
+    // Voting lock is stored per class in class_round_locks, not in observation_rounds.
+    //
+    // The row and its audit entry are written in one transaction: a freeze with no
+    // audit trail cannot be explained afterwards, and an audit entry with no row
+    // records a freeze that never happened. Wrapping them also means a failing
+    // audit insert cannot leave the class frozen, which is why the broadcast is
+    // issued after the commit rather than beside it.
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(classRoundLocks)
+        .values({
+          roundId: round.id,
+          classId: cid,
+          isLocked,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [classRoundLocks.roundId, classRoundLocks.classId],
+          set: {
+            isLocked,
+            updatedAt: new Date(),
+          },
+        });
+
+      await tx.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: isLocked ? 'VOTING_LOCKED' : 'VOTING_UNLOCKED',
+        entity: 'class',
+        entityId: String(cid),
+        payload: { isLocked, roundId: round.id, classId: cid },
+      });
     });
 
+    // Clients store this payload into the same map entry SYNCED fills with the
+    // effective (round || class) lock state, so the broadcast must carry the
+    // effective value too: releasing a class lock must never advertise an open
+    // grid while the round itself is closed.
+    const effectiveLocked = isClassRoundLocked(round.isLocked, isLocked);
     broadcastToClass(cid, {
       type: 'VOTING_LOCK_CHANGED',
       classId: cid,
-      isLocked,
+      roundId: round.id,
+      isLocked: effectiveLocked,
       changedBy: safeTeacherId(user.teacherId),
     });
 
-    return reply.send({ success: true, isLocked });
+    return reply.send({ success: true, classId: cid, roundId: round.id, isLocked });
   });
 
   /**
@@ -506,6 +531,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       comment: string | null;
       is_submitted: boolean;
       submitted_at: Date | null;
+      updated_at: Date;
       teacher_short: string;
       teacher_name: string;
     }
@@ -527,7 +553,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     if (round && activePupils.length > 0) {
       const evalsRes = await getPool().query<EvalRow>(
         `SELECT e.id, e.pupil_id, e.teacher_id, e.subject_code, e.proposed_status,
-                e.next_step, e.comment, e.is_submitted, e.submitted_at,
+                e.next_step, e.comment, e.is_submitted, e.submitted_at, e.updated_at,
                 COALESCE(t.short_name, 'SL') AS teacher_short,
                 COALESCE(t.full_name, 'Schulleitung') AS teacher_name
            FROM evaluations e
@@ -715,16 +741,18 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       const redCards = mapCards('red');
       const hasRedCard = redCards.length > 0;
 
-      const subjectEvidence = pupilEvals.map((e) => {
-        const c = summarizeRatings([{ evaluationId: e.id, items: itemsByEval.get(e.id) ?? [] }]);
-        return {
-          subjectCode: e.subject_code,
-          subjectName: normalizeSubject(e.subject_code).name,
-          positiveCount: c.positiveCount,
-          totalRated: c.totalRated,
-          teacherShort: e.teacher_short,
-        };
-      });
+      const subjectEvidence = buildSubjectEvidence(
+        pupilEvals.map((e) => {
+          const c = summarizeRatings([{ evaluationId: e.id, items: itemsByEval.get(e.id) ?? [] }]);
+          return {
+            subjectCode: e.subject_code,
+            positiveCount: c.positiveCount,
+            totalRated: c.totalRated,
+            teacherShort: e.teacher_short,
+            updatedAt: e.updated_at,
+          };
+        }),
+      );
 
       // A red card demotes by one step. It used to be applied only to the computed
       // threshold rank, so a pupil confirmed as Meister kept Meister despite an active
@@ -789,9 +817,13 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       };
     });
 
+    const isClassLocked = round ? await getClassRoundLockState(round.id, cid) : false;
+    const isLocked = isClassRoundLocked(round?.isLocked ?? false, isClassLocked);
+
     return reply.send({
       class: { id: access.classId },
       round,
+      isLocked,
       totalClassTeachers,
       isAuthorized: access.canRunConference,
       canRate: access.canRate,

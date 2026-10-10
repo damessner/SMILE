@@ -6,6 +6,8 @@ import * as api from './services/api';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { ThemeProvider } from './components/ThemeToggle';
 import { ToastProvider } from './components/Toast';
+import { resetActiveRubricConfig } from './lib/rubricConfig';
+import { scoreSubject } from './lib/pupilItems';
 
 vi.mock('./services/api', () => ({
   SESSION_EXPIRED_EVENT: 'smile-session-expired',
@@ -24,18 +26,26 @@ vi.mock('./services/api', () => ({
   exportBackup: vi.fn(),
 }));
 
+const liveSyncMock = {
+  canRate: true as boolean | null,
+  setClassSyncState: vi.fn(),
+};
+
 vi.mock('./hooks/useLiveSync', () => ({
   useLiveSync: () => ({
     isConnected: true,
-    canRate: true,
+    canRate: liveSyncMock.canRate,
     connectionError: null,
     softLocks: new Map(),
     conflict: null,
     clearConflict: vi.fn(),
+    classSyncState: new Map(),
+    classRoundLocks: new Map(),
     isLockedByConference: false,
     sendFocus: vi.fn(),
     sendBlur: vi.fn(),
     sendRating: vi.fn(),
+    setClassSyncState: liveSyncMock.setClassSyncState,
   }),
 }));
 
@@ -76,6 +86,8 @@ describe('App session and alert recovery', () => {
   });
 
   afterEach(() => vi.clearAllMocks());
+
+  afterEach(() => resetActiveRubricConfig());
 
   it('shows an alert-load error and a retry action instead of an empty-state silence', async () => {
     vi.mocked(api.getYellowCardAlerts).mockRejectedValue(new Error('Alerts unavailable'));
@@ -149,5 +161,122 @@ describe('App session and alert recovery', () => {
     expect(api.batchUpdateItems).toHaveBeenNthCalledWith(2, 7, 1, 'D', [
       { criterionId: 'org', itemKey: 'org_1', rating: 'crown', version: 2 },
     ]);
+  });
+
+  it('seeds the live-sync lock state from the roster so a locked class never shows a writable grid', async () => {
+    const schoolClass = {
+      id: 1,
+      name: '1A',
+      grade: 1,
+      canRate: true,
+      canAccessRaster: true,
+      mySubjects: [{ code: 'D', name: 'Deutsch', isCoreSmile: true }],
+    };
+    vi.mocked(api.getClasses).mockResolvedValue([schoolClass] as any);
+    vi.mocked(api.getClassPupils).mockResolvedValue({
+      pupils: [],
+      submissionDeadline: '2099-01-01T00:00:00.000Z',
+      roundId: 'round-42',
+      isLockedByConference: true,
+      canRate: false,
+      rubricConfig: { meister: 14, geselle: 8, itemCount: 18, aggregation: 'total' },
+    } as any);
+    vi.mocked(api.getClassRubric).mockResolvedValue({
+      criteria: [{ id: 'org', name: 'Organisation', position: 1, items: [{ key: 'org_1' }] }],
+    } as any);
+
+    renderApp();
+
+    // Only the two values the live-sync state actually carries: the lock and the
+    // caller's write permission. `roundId` used to be mirrored here as well; it
+    // was never read, so it is no longer part of the contract even though the
+    // roster payload still sends it.
+    await waitFor(() =>
+      expect(liveSyncMock.setClassSyncState).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ isLocked: true, canRate: false }),
+      ),
+    );
+  });
+
+  it('installs the rubric thresholds the roster delivers so the grid ranks like the server', async () => {
+    // The thresholds are server configuration. Installing them on arrival is what
+    // keeps `scoreSubject` from ranking with its own copy of the numbers, which
+    // is how a deployment that raised RANK_THRESHOLD_MEISTER would show Meister
+    // on screen while `lib/ranking.ts` stores Lehrling.
+    const schoolClass = {
+      id: 1,
+      name: '1A',
+      grade: 1,
+      canRate: true,
+      canAccessRaster: true,
+      mySubjects: [{ code: 'D', name: 'Deutsch', isCoreSmile: true }],
+    };
+    vi.mocked(api.getClasses).mockResolvedValue([schoolClass] as any);
+    vi.mocked(api.getClassPupils).mockResolvedValue({
+      pupils: [],
+      submissionDeadline: '2099-01-01T00:00:00.000Z',
+      isLockedByConference: false,
+      canRate: true,
+      rubricConfig: { meister: 20, geselle: 12, itemCount: 24, aggregation: 'normalized' },
+    } as any);
+    vi.mocked(api.getClassRubric).mockResolvedValue({ criteria: [] } as any);
+
+    renderApp();
+
+    await waitFor(() => {
+      // 16 positives clears the shipped Meister threshold of 14 but not the
+      // delivered one of 20, so only a live config install changes the answer.
+      const positives = Array.from({ length: 16 }, (_, i) => ({
+        itemKey: `k${i + 1}`,
+        rating: 'smile',
+        updatedAt: '2026-10-07T06:00:00.000Z',
+      }));
+      const scored = scoreSubject(
+        [{ id: 'e1', subjectCode: 'D', items: positives } as never],
+        'D',
+        positives.map((i) => i.itemKey),
+      );
+      expect(scored.rank).toBe('Geselle');
+    });
+  });
+
+  it('treats an unknown canRate as read-only instead of writable', async () => {
+    liveSyncMock.canRate = null;
+    const schoolClass = {
+      id: 1,
+      name: '1A',
+      grade: 1,
+      canRate: true,
+      canAccessRaster: true,
+      mySubjects: [{ code: 'D', name: 'Deutsch', isCoreSmile: true }],
+    };
+    vi.mocked(api.getClasses).mockResolvedValue([schoolClass] as any);
+    vi.mocked(api.getClassPupils).mockResolvedValue({
+      pupils: [{
+        id: 7,
+        classId: 1,
+        fullName: 'Anna Muster',
+        isArchived: false,
+        evaluations: [],
+        cards: [],
+        greenCardCount: 0,
+        yellowCardCount: 0,
+        redCardCount: 0,
+      }],
+      submissionDeadline: '2099-01-01T00:00:00.000Z',
+      roundId: 'round-1',
+      isLockedByConference: false,
+      canRate: true,
+    } as any);
+    vi.mocked(api.getClassRubric).mockResolvedValue({
+      criteria: [{ id: 'org', name: 'Organisation', position: 1, items: [{ key: 'org_1' }] }],
+    } as any);
+
+    renderApp();
+
+    const quickFill = await screen.findByTitle(/Alle Merkmale dieser Kategorie mit Krone/);
+    expect(quickFill).toBeDisabled();
+    liveSyncMock.canRate = true;
   });
 });

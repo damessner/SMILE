@@ -23,6 +23,8 @@ import { isRank, type Rank } from '../lib/ranking.js';
 import { isValidRating, loadRubricIndex, VALID_RATINGS, validateBatchItems } from '../lib/rubric.js';
 import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+import { getClassRoundLockState } from '../lib/class-round-lock.js';
+import { getLatestRound } from '../lib/rounds.js';
 
 /**
  * Ceiling on the number of ratings one batch request may carry.
@@ -43,17 +45,32 @@ class BatchItemVersionConflict extends Error {
 /**
  * Deterministically pick the open observation round.
  *
- * The old code used `.where(isLocked = false).limit(1)` with no ORDER BY, so which
- * round a write landed in was undefined whenever more than one round existed.
+ * Checks the latest round by creation date. If that round is locked or does not exist,
+ * returns null. Never falls back to an older unlocked round.
  */
 async function getOpenRound() {
-  const [round] = await db
-    .select()
-    .from(observationRounds)
-    .where(eq(observationRounds.isLocked, false))
-    .orderBy(desc(observationRounds.createdAt))
-    .limit(1);
-  return round ?? null;
+  const round = await getLatestRound();
+  if (!round || round.isLocked) return null;
+  return round;
+}
+
+/**
+ * Sends HTTP 423 if the class conference is locked for the given observation round.
+ */
+export async function rejectIfClassRoundLocked(
+  reply: FastifyReply,
+  roundId: string,
+  classId: number,
+): Promise<boolean> {
+  const isLocked = await getClassRoundLockState(roundId, classId);
+  if (isLocked) {
+    reply.status(423).send({
+      error: 'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+      code: 'CLASS_CONFERENCE_LOCKED',
+    });
+    return true;
+  }
+  return false;
 }
 
 function deadlinePassed(): boolean {
@@ -190,6 +207,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Bewertungszeitraum');
+    if (await rejectIfClassRoundLocked(reply, round.id, classId)) return;
 
     // The write targets are the index's own entries, not a second fold of the same
     // criteria. The inline version re-queried `rubric_criteria` and re-derived the
@@ -355,6 +373,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
+    if (await rejectIfClassRoundLocked(reply, round.id, classId)) return;
 
     const statusUpdateSet: Record<string, any> = {
       updatedAt: new Date(),
@@ -463,6 +482,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
+    if (await rejectIfClassRoundLocked(reply, round.id, classId)) return;
 
     const submitUpdateSet: Record<string, any> = {
       isSubmitted: true,
@@ -570,6 +590,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
+    if (await rejectIfClassRoundLocked(reply, round.id, classId)) return;
 
     const [evaluation] = await db
       .update(evaluations)
@@ -691,6 +712,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const round = await getOpenRound();
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
+    if (await rejectIfClassRoundLocked(reply, round.id, classId)) return;
 
     let updatedItems: Array<typeof evaluationItems.$inferSelect>;
     try {

@@ -313,7 +313,10 @@ export async function saveEvaluationComment(
     body: JSON.stringify({ pupilId, classId, subjectCode, comment }),
     keepalive: true,
   });
-  if (!res.ok) throw new Error(`Kommentar konnte nicht gespeichert werden (${res.status}).`);
+  // unwrap, not a bare throw: the server's structured rejection (German
+  // message + `code`, e.g. CLASS_CONFERENCE_LOCKED) must reach callers so the
+  // teacher is told the class is locked instead of being asked to retry.
+  return unwrap<void>(res);
 }
 
 export async function submitEvaluation(

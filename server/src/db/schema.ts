@@ -286,5 +286,17 @@ export const pupilBehaviorActions = pgTable('pupil_behavior_actions', {
   actionDateIdx: index('pupil_behavior_actions_date_idx').on(t.actionDate),
 }));
 
+// 17. Class-Scoped Observation Round Locks
+export const classRoundLocks = pgTable('class_round_locks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  roundId: uuid('round_id').references(() => observationRounds.id).notNull(),
+  classId: integer('class_id').references(() => schoolClasses.id).notNull(),
+  isLocked: boolean('is_locked').default(false).notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  naturalKey: uniqueIndex('class_round_locks_round_class_uidx').on(t.roundId, t.classId),
+  classRoundIdx: index('class_round_locks_class_round_idx').on(t.classId, t.roundId),
+}));
+
 
 

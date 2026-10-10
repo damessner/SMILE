@@ -20,6 +20,14 @@ export function isCountedRating(rating: string | null | undefined): boolean {
 
 export interface RatingLike {
   rating: string;
+  /**
+   * Rubric criterion this rating belongs to. Optional so callers that only carry
+   * ratings keep working, but present on every real query: without it a duplicated
+   * item row cannot be recognised and would be counted twice.
+   */
+  itemKey?: string;
+  /** When the rating was last written; newest wins for a duplicated itemKey. */
+  updatedAt?: string | Date;
 }
 
 /**
@@ -53,6 +61,44 @@ export interface RatingGroups {
 }
 
 /**
+ * Collapse duplicate rows for the same rubric criterion into the one the client
+ * shows: newest `updatedAt` wins, and equal timestamps keep the earlier row.
+ *
+ * The tie-break is deliberately order, never rating value, so a resolution
+ * cannot be biased toward a positive outcome — the same rule `scoreSubject`
+ * applies on the client. Items without an `itemKey` cannot be identified as
+ * duplicates and are all kept.
+ */
+export function dedupeRatingsByItemKey(items: RatingLike[]): RatingLike[] {
+  const byKey = new Map<string, RatingLike>();
+  const withoutKey: RatingLike[] = [];
+
+  for (const item of items ?? []) {
+    if (typeof item.itemKey !== 'string' || item.itemKey === '') {
+      withoutKey.push(item);
+      continue;
+    }
+    const existing = byKey.get(item.itemKey);
+    if (!existing) {
+      byKey.set(item.itemKey, item);
+      continue;
+    }
+    if (ratingTimestamp(item) > ratingTimestamp(existing)) {
+      byKey.set(item.itemKey, item);
+    }
+  }
+
+  return [...byKey.values(), ...withoutKey];
+}
+
+/** Missing or unparsable timestamps sort as the oldest, so a real one wins. */
+function ratingTimestamp(item: RatingLike): number {
+  if (!item.updatedAt) return Number.NEGATIVE_INFINITY;
+  const ts = new Date(item.updatedAt).getTime();
+  return Number.isNaN(ts) ? Number.NEGATIVE_INFINITY : ts;
+}
+
+/**
  * Single source of truth for how a pupil's observation items become a rank.
  *
  * Previously this logic was duplicated in `routes/conferences.ts` and
@@ -64,7 +110,9 @@ export function summarizeRatings(
   groups: Array<{ evaluationId: string; items: RatingLike[] }>,
 ): RatingGroups {
   const perEvaluation = groups.map((g) => {
-    const items = g.items ?? [];
+    // One row per criterion before counting, so a duplicated item key cannot
+    // inflate the figures past the 18-item raster.
+    const items = dedupeRatingsByItemKey(g.items ?? []);
     return {
       positive: items.filter((i) => isPositiveRating(i.rating)).length,
       rated: items.filter((i) => isCountedRating(i.rating)).length,

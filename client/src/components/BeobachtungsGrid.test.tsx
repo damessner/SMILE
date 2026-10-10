@@ -69,12 +69,14 @@ interface GridOptions {
   canRate?: boolean;
   canAccessRaster?: boolean;
   onSubmitPupil?: any;
+  onReopenPupil?: any;
   onBatchUpdate?: any;
   softLocks?: Map<string, any>;
   criteria?: RubricCriterion[];
   submissionDeadline?: string | null;
   selectedPupilIdProp?: number | null;
   onRate?: ReturnType<typeof vi.fn>;
+  isLockedByConference?: boolean;
 }
 
 /**
@@ -90,10 +92,12 @@ function renderGrid({
   selectedPupilIdProp = null,
   onRate = vi.fn(),
   onSubmitPupil,
+  onReopenPupil,
   onBatchUpdate,
   softLocks = new Map(),
   criteria = CRITERIA,
   submissionDeadline = '2099-01-01T00:00:00.000Z',
+  isLockedByConference = false,
 }: GridOptions = {}) {
   const props: any = {
     pupils,
@@ -107,12 +111,13 @@ function renderGrid({
     onRate,
     onOpenCardDrawer: vi.fn(),
     onOpenKelReport: vi.fn(),
-    isLockedByConference: false,
+    isLockedByConference,
     canRate,
     canAccessRaster,
     mySubjects,
     selectedPupilIdProp,
     onSubmitPupil,
+    onReopenPupil,
     onBatchUpdate,
   };
 
@@ -142,6 +147,7 @@ function renderGrid({
               onBatchUpdate={next.onBatchUpdate ?? onBatchUpdate}
               criteria={next.criteria ?? criteria}
               submissionDeadline={next.submissionDeadline ?? submissionDeadline}
+              isLockedByConference={next.isLockedByConference ?? isLockedByConference}
               selectedPupilIdProp={
                 next.selectedPupilIdProp === undefined ? selectedPupilIdProp : next.selectedPupilIdProp
               }
@@ -260,7 +266,7 @@ describe('isSubmitted is scoped to the subjects in view', () => {
     const bewertet = screen.getByRole('button', { name: /Bewertet/ });
     expect(offen).toHaveTextContent('1');
     expect(bewertet).toHaveTextContent('0');
-    expect(within(rosterRow('Anna Muster')).getByText('0/18 Punkte')).toBeInTheDocument();
+    expect(within(rosterRow('Anna Muster')).getByText('0/1 Punkte')).toBeInTheDocument();
   });
 
   it('does not tick a pupil with D submitted and M open in Gesamt (all-subject) mode', () => {
@@ -314,7 +320,7 @@ describe('the rendered cells hold no rating from another subject', () => {
     // read on the same fact.
     expect(screen.queryByTitle('Bewertung löschen (Leer)')).toBeNull();
     // And the rating that is out of scope never reached the positive count.
-    expect(within(rosterRow('Anna Muster')).getByText('0/18 Punkte')).toBeInTheDocument();
+    expect(within(rosterRow('Anna Muster')).getByText('0/1 Punkte')).toBeInTheDocument();
   });
 
   it('fills the cell when the subject in view holds the item', () => {
@@ -325,7 +331,7 @@ describe('the rendered cells hold no rating from another subject', () => {
 
     expect(selectedRating()).toBe('Gut (😊)');
     expect(screen.getByTitle('Bewertung löschen (Leer)')).toBeInTheDocument();
-    expect(within(rosterRow('Anna Muster')).getByText('1/18 Punkte')).toBeInTheDocument();
+    expect(within(rosterRow('Anna Muster')).getByText('1/1 Punkte')).toBeInTheDocument();
   });
 });
 
@@ -548,6 +554,42 @@ describe('conference comment autosave', () => {
     await user.tab();
 
     expect(await screen.findByText(/^Gesichert \(/)).toBeInTheDocument();
+  });
+
+  it('does not autosave a comment when the class lock arrives after typing', async () => {
+    // The conference lead presses "Abstimmung GESPERRT" while the teacher is
+    // mid-sentence. The debounced flush must read the *current* lock state,
+    // not the state its memoized closure captured when it was created.
+    const user = userEvent.setup();
+    const anna = pupil(1, 'Anna Muster', [evaluation('D')]);
+    const { rerenderWith } = renderGrid({ pupils: [anna], mySubjects: [GERMAN] });
+
+    await user.type(commentBox(), 'Beschlussbegründung für Anna');
+    rerenderWith({ isLockedByConference: true });
+    await user.tab();
+
+    expect(saveEvaluationComment).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's lock message instead of an unsatisfiable retry hint", async () => {
+    // A 423 CLASS_CONFERENCE_LOCKED rejection must reach the teacher as the
+    // server's own message: "Bitte erneut versuchen" can never succeed while
+    // the class is locked.
+    silenceSaveError();
+    vi.mocked(saveEvaluationComment).mockRejectedValue(
+      Object.assign(
+        new Error('Die Klassenkonferenz ist gesperrt. Bewertungen können nicht geändert werden.'),
+        { name: 'ApiError', status: 423, code: 'CLASS_CONFERENCE_LOCKED' },
+      ),
+    );
+    const user = userEvent.setup();
+    renderGrid();
+
+    await user.type(commentBox(), 'Beschlussbegründung');
+    await user.tab();
+
+    expect((await screen.findAllByText(/Klassenkonferenz ist gesperrt/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Bitte erneut versuchen/)).toBeNull();
   });
 
   it('flushes the pending comment when the selected pupil changes inside the debounce window', async () => {
@@ -1090,3 +1132,318 @@ describe('subject-scoped soft locks', () => {
     expect(screen.getByTitle('Gut (😊)')).toBeDisabled();
   });
 });
+
+describe('Gesamt mode subject-scoped scoring and submission', () => {
+  const EIGHTEEN_CRITERIA: RubricCriterion[] = Array.from({ length: 18 }, (_, i) => ({
+    id: `crit_${i + 1}`,
+    name: `Merkmal ${i + 1}`,
+    position: i + 1,
+    items: [{ key: `item_${i + 1}` }],
+  }));
+
+  it('shows independent D and M scores and submits independent ranks in Gesamt mode', async () => {
+    const dItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 6 ? 'smile' : 'struggle', 1)
+    );
+    const mItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 16 ? 'smile' : 'struggle', 1)
+    );
+
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: dItems }),
+      evaluation('M', { items: mItems }),
+    ]);
+
+    const onSubmitPupil = vi.fn().mockResolvedValue(undefined);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN, MATHS],
+      criteria: EIGHTEEN_CRITERIA,
+      onSubmitPupil,
+    });
+
+    // In Gesamt mode, both D (Lehrling) and M (Meister) chips must be visible
+    expect(screen.getByText(/D:.*Lehrling/i)).toBeInTheDocument();
+    expect(screen.getByText(/M:.*Meister/i)).toBeInTheDocument();
+    // No merged 18/18 chip should exist
+    expect(screen.queryByText(/Gesamt.*18\/18/i)).toBeNull();
+
+    // Click submit
+    const submitBtn = screen.getByRole('button', { name: /Ranking einreichen/i });
+    fireEvent.click(submitBtn);
+
+    await vi.waitFor(() => {
+      expect(onSubmitPupil).toHaveBeenCalledWith(1, 'Lehrling', expect.any(String), 'D');
+      expect(onSubmitPupil).toHaveBeenCalledWith(1, 'Meister', expect.any(String), 'M');
+    });
+  });
+
+  it('shows Ausstehend instead of Lehrling for an unrated subject', () => {
+    // scoreSubject returns rank: null for an evaluation with no rated items.
+    // The grid must render that as pending, not as the lowest rank: "M:
+    // Lehrling (0/18)" states a grade the system explicitly refuses to
+    // calculate, on the surface teachers stare at all day.
+    const dItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 6 ? 'smile' : 'struggle', 1)
+    );
+    const anna = pupil(1, 'Anna Muster', [evaluation('D', { items: dItems })]);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN, MATHS],
+      criteria: EIGHTEEN_CRITERIA,
+    });
+
+    // Detail header chip and roster row chip both show the pending subject.
+    expect(screen.getByText(/M: Ausstehend/i)).toBeInTheDocument();
+    expect(screen.getByText('M Ausstehend')).toBeInTheDocument();
+    expect(screen.queryByText(/M:.*Lehrling/i)).toBeNull();
+  });
+
+  it('never submits a fabricated rank for an unrated subject', async () => {
+    // Decision 0.1 (E13): an unrated subject must inherit the teacher's manual
+    // proposal if one exists. Without a proposal there is nothing to write -
+    // submitting 'Geselle' would store a proposedStatus nobody cast for that
+    // subject, and the pupil would look decided in Mathe on the strength of a
+    // Deutsch raster. So the unrated subject is simply not submitted and stays
+    // open until a teacher rates it or proposes something for it.
+    const dItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 6 ? 'smile' : 'struggle', 1)
+    );
+    const anna = pupil(1, 'Anna Muster', [evaluation('D', { items: dItems })]);
+    const onSubmitPupil = vi.fn().mockResolvedValue(undefined);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN, MATHS],
+      criteria: EIGHTEEN_CRITERIA,
+      onSubmitPupil,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Ranking einreichen/i }));
+
+    await vi.waitFor(() => {
+      expect(onSubmitPupil).toHaveBeenCalledWith(1, 'Lehrling', expect.any(String), 'D');
+    });
+    // Mathe is unrated and unproposed: no write at all, for any rank.
+    expect(onSubmitPupil).toHaveBeenCalledTimes(1);
+    expect(onSubmitPupil).not.toHaveBeenCalledWith(1, expect.any(String), expect.any(String), 'M');
+  });
+
+  it('writes a quick grade to every subject in Gesamt mode, then only to the open tab', async () => {
+    // Gesamt mode writes one raster across every subject the teacher owns.
+    // Leaving it by clicking a subject tab narrows the target silently: the
+    // same click must touch that one subject and nothing else, or a
+    // correction in Mathe quietly overwrites Deutsch too.
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: [] }),
+      evaluation('M', { items: [] }),
+    ]);
+    const writtenSubjects: string[] = [];
+    const onBatchUpdate = vi.fn(async (_id: number, _items: unknown, subCode: string) => {
+      writtenSubjects.push(subCode);
+    });
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN, MATHS],
+      criteria: EIGHTEEN_CRITERIA,
+      selectedPupilIdProp: 1,
+      onBatchUpdate,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Lehrling.*Basis/i }));
+
+    // Gesamt: one write per subject.
+    await vi.waitFor(() => {
+      expect(writtenSubjects).toEqual(['D', 'M']);
+    });
+
+    // Narrow to Mathe: the same click is Mathe-only from here on. The
+    // "Gewählt" badge is set after the write loop settles, so waiting for it
+    // keeps the assertion below from reading a half-finished loop.
+    fireEvent.click(screen.getByRole('button', { name: /M \(Mathematik\)/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Meister.*Spitzenleistung/i }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: /Meister.*Spitzenleistung/i }).className)
+        .toContain('ring-amber-400/50');
+    });
+    expect(writtenSubjects).toEqual(['D', 'M', 'M']);
+  });
+
+  it('lets an unrated subject inherit an explicit manual proposal', async () => {    // The other half of Decision 0.1: when the teacher HAS proposed a rank,
+    // the unrated subject carries it. That is a decision a human made, as
+    // opposed to a value the fallback invented. Note the raster still wins for
+    // the subject it actually rated - the proposal only fills the gap.
+    const dItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 6 ? 'smile' : 'struggle', 1)
+    );
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: dItems, proposedStatus: 'Meister' }),
+    ]);
+    const onSubmitPupil = vi.fn().mockResolvedValue(undefined);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN, MATHS],
+      criteria: EIGHTEEN_CRITERIA,
+      onSubmitPupil,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Ranking einreichen/i }));
+
+    await vi.waitFor(() => {
+      // D keeps its own calculated rank; the proposal does not override a
+      // subject that was actually rated.
+      expect(onSubmitPupil).toHaveBeenCalledWith(1, 'Lehrling', expect.any(String), 'D');
+      // Unrated M inherits the explicit proposal instead of a fabrication.
+      expect(onSubmitPupil).toHaveBeenCalledWith(1, 'Meister', expect.any(String), 'M');
+    });
+  });
+
+  describe('Class conference lock UI enforcement (Task 9)', () => {
+    it('disables rating buttons, comment textarea, and submit button when locked', () => {
+      const anna = pupil(1, 'Anna Muster', [evaluation('D')]);
+      renderGrid({
+        pupils: [anna],
+        mySubjects: [GERMAN],
+        isLockedByConference: true,
+      });
+
+      // Comment textarea is disabled
+      const textarea = screen.getByPlaceholderText(/Zeigt im Unterricht hohe Motivation/i);
+      expect(textarea).toBeDisabled();
+
+      // Rating buttons are disabled
+      const smileBtn = screen.getByTitle('Gut (😊)');
+      expect(smileBtn).toBeDisabled();
+
+      // Submit button is disabled
+      const submitBtn = screen.getByRole('button', { name: /Ranking einreichen/i });
+      expect(submitBtn).toBeDisabled();
+    });
+
+    it('hides reopen button when locked', () => {
+      const onReopenPupil = vi.fn();
+      const annaSubmitted = pupil(1, 'Anna Muster', [
+        evaluation('D', { isSubmitted: true, submittedAt: '2026-10-08T10:00:00.000Z' }),
+      ]);
+
+      renderGrid({
+        pupils: [annaSubmitted],
+        mySubjects: [GERMAN],
+        isLockedByConference: true,
+        onReopenPupil,
+      });
+
+      // Reopen button should not be present when locked
+      const reopenBtn = screen.queryByTitle(/Einreichung zurücknehmen/i);
+      expect(reopenBtn).toBeNull();
+    });
+
+    it('prevents submit or comment save from executing when locked', async () => {
+      const onSubmitPupil = vi.fn();
+      const anna = pupil(1, 'Anna Muster', [evaluation('D')]);
+
+      renderGrid({
+        pupils: [anna],
+        mySubjects: [GERMAN],
+        isLockedByConference: true,
+        onSubmitPupil,
+      });
+
+      const submitBtn = screen.getByRole('button', { name: /Ranking einreichen/i });
+      fireEvent.click(submitBtn);
+
+      expect(onSubmitPupil).not.toHaveBeenCalled();
+      expect(saveEvaluationComment).not.toHaveBeenCalled();
+    });
+
+    it('leaves no "Gewählt" behind when a quick-grade write is rejected', async () => {
+      // The rank badge used to be set optimistically before the write; a
+      // rejection then left a selection the server never stored.
+      const anna = pupil(1, 'Anna Muster', [evaluation('D')]);
+      const onRate = vi.fn().mockRejectedValue(
+        Object.assign(new Error('Bewertung wurde zwischenzeitlich geändert.'), {
+          name: 'ApiError',
+          status: 409,
+          code: 'CONFLICT',
+        }),
+      );
+
+      renderGrid({ pupils: [anna], mySubjects: [GERMAN], onRate });
+
+      fireEvent.click(screen.getByRole('button', { name: /Meister/ }));
+
+      await vi.waitFor(() => {
+        expect(onRate).toHaveBeenCalled();
+      });
+      expect(screen.queryByText('Gewählt')).toBeNull();
+    });
+  });
+});
+
+describe('Quick-grade selection reflects the rank that will be submitted', () => {
+  const EIGHTEEN_CRITERIA_QUICK: RubricCriterion[] = Array.from({ length: 18 }, (_, i) => ({
+    id: `qcrit_${i + 1}`,
+    name: `Quick-Merkmal ${i + 1}`,
+    position: i + 1,
+    items: [{ key: `qitem_${i + 1}` }],
+  }));
+
+  /** 16 of 18 rated positive: the raster itself computes Meister. */
+  function meisterEval(proposedStatus: Evaluation['proposedStatus']): Evaluation {
+    return evaluation('D', {
+      proposedStatus,
+      items: Array.from({ length: 18 }, (_, i) =>
+        item(`qitem_${i + 1}`, i < 16 ? 'smile' : 'struggle', 1)
+      ),
+    });
+  }
+
+  function quickGradeButton(rank: 'Lehrling' | 'Geselle' | 'Meister'): HTMLElement {
+    // The card carries the rank label and its description text, so the
+    // accessible name is unique per rank.
+    return screen.getByRole('button', {
+      name: new RegExp(`${rank}.*(Basis|Regelstandard|Spitzenleistung)`, 'i'),
+    });
+  }
+
+  it('selects only the manual proposal when the raster and the proposal disagree', () => {
+    // The teacher hand-edited the raster to Meister (16 positives) but had
+    // already proposed Lehrling. Two buttons lighting up tells the room two
+    // things at once, and the one that actually gets submitted is the proposal.
+    const anna = pupil(1, 'Anna Muster', [meisterEval('Lehrling')]);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN],
+      criteria: EIGHTEEN_CRITERIA_QUICK,
+      selectedPupilIdProp: 1,
+    });
+
+    // Exactly one "Gewählt" badge, and it belongs to the manual proposal.
+    expect(screen.getAllByText('Gewählt')).toHaveLength(1);
+    expect(quickGradeButton('Lehrling').className).toContain('ring-rose-500/50');
+    expect(quickGradeButton('Meister').className).not.toContain('ring-amber-400/50');
+  });
+
+  it('selects the calculated rank when there is no manual proposal', () => {
+    // With no proposal the raster is the whole story, and Meister must be the
+    // single selected card - the fallback the old code replaced.
+    const anna = pupil(1, 'Anna Muster', [meisterEval(null)]);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN],
+      criteria: EIGHTEEN_CRITERIA_QUICK,
+      selectedPupilIdProp: 1,
+    });
+
+    expect(screen.getAllByText('Gewählt')).toHaveLength(1);
+    expect(quickGradeButton('Meister').className).toContain('ring-amber-400/50');
+  });
+});
+

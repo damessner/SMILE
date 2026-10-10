@@ -23,6 +23,7 @@ import {
   type ClassAccess,
 } from '../lib/guards.js';
 import { normalizeSubject } from '../utils/subject.js';
+import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
 
 /**
  * Per-class permission results, filled in as classes are opened.
@@ -208,11 +209,22 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
     const cid = parseIdParam(classId, 'classId');
     if (!cid) return badRequest(reply, 'Ungültige Klassen-ID.');
 
+    // The rubric thresholds are part of the answer, not a fixed constant: the
+    // client's raster maths and the server's `lib/ranking.ts` must not drift, or
+    // a pupil can read Meister on screen while the server stores Lehrling.
+    const rubricConfig = {
+      meister: config.rankThresholds.meister,
+      geselle: config.rankThresholds.geselle,
+      itemCount: config.rubricItemCount,
+      aggregation: config.rankAggregation,
+    };
+
     if (cid === 999) {
       const [cls] = await db.select().from(schoolClasses).where(eq(schoolClasses.id, 999)).limit(1);
       return reply.send({
         class: cls ?? { id: 999, name: 'LW', grade: 0 },
         submissionDeadline: config.submissionDeadline.toISOString(),
+        rubricConfig,
         pupils: [],
         canAccessRaster: false,
         isKv: false,
@@ -314,17 +326,26 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       hours: userHoursMap.get(s.code) || 0,
     }));
 
+    let isLockedByConference = false;
+    if (round) {
+      const isClassLocked = await getClassRoundLockState(round.id, cid);
+      isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
+    }
+
     return reply.send({
       class: {
         id: access.classId,
         name: (await className(cid)) ?? String(cid),
       },
       round,
+      roundId: round?.id ?? null,
+      isLockedByConference,
       canAccessRaster: access.isCoreTeacher,
       isCoreTeacher: access.isCoreTeacher,
       canRate: access.canRate,
       isKv: access.isKv,
       submissionDeadline: config.submissionDeadline.toISOString(),
+      rubricConfig,
       mySubjects: mySubjectsWithHours,
       pupils: pupilsWithData,
     });

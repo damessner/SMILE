@@ -1,9 +1,8 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import {
   evaluationItems,
   evaluations,
-  observationRounds,
   teachingAssignments,
 } from '../db/schema.js';
 import { config } from '../config.js';
@@ -12,6 +11,8 @@ import { safeErrorLogFields } from '../lib/log-safety.js';
 import { getClassAccess, findPupilInClass, canRateSubject, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parsePositiveInt, LW_CLASS_ID, type AuthUser } from '../lib/guards.js';
 import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterionId } from '../lib/rubric.js';
 import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
+import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
+import { getLatestRound } from '../lib/rounds.js';
 
 /** Minimal shape we rely on; `ws` satisfies this. */
 interface WsLike {
@@ -153,25 +154,9 @@ async function ensureLiveSession(client: ClientConnection, clientMutationId?: st
 // Round resolution
 // ---------------------------------------------------------------------------
 
-async function getActiveRound() {
-  const [round] = await db
-    .select()
-    .from(observationRounds)
-    .orderBy(desc(observationRounds.createdAt))
-    .limit(1);
-  return round ?? null;
-}
-
-/** Pick the single unlocked round, deterministically. */
-async function getUnlockedRound() {
-  const [round] = await db
-    .select()
-    .from(observationRounds)
-    .where(eq(observationRounds.isLocked, false))
-    .orderBy(desc(observationRounds.createdAt))
-    .limit(1);
-  return round ?? null;
-}
+// Round resolution now lives in ../lib/rounds.js so the conference, evaluation
+// and live-sync paths agree on which round is "the latest one".
+const getActiveRound = getLatestRound;
 
 // ---------------------------------------------------------------------------
 // Connection handling
@@ -328,10 +313,16 @@ async function onSubscribe(client: ClientConnection, payload: any): Promise<void
 
   // Send the authoritative round so the client can show lock state immediately.
   const round = await getActiveRound();
+  let isLockedByConference = false;
+  if (round) {
+    const isClassLocked = await getClassRoundLockState(round.id, classId);
+    isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
+  }
   sendTo(client, {
     type: 'SYNCED',
     classId,
-    isLockedByConference: !!round?.isLocked,
+    roundId: round?.id ?? null,
+    isLockedByConference,
     canRate: access.canRate,
   });
   for (const lock of activeSoftLocks.values()) {
@@ -509,9 +500,20 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     return;
   }
 
-  const round = await getUnlockedRound();
-  if (!round) {
+  const round = await getActiveRound();
+  if (!round || round.isLocked) {
     sendRatingError(client, clientMutationId, 'Es ist kein offener Bewertungszeitraum.');
+    return;
+  }
+
+  const isClassLocked = await getClassRoundLockState(round.id, classId);
+  if (isClassLocked) {
+    sendRatingError(
+      client,
+      clientMutationId,
+      'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+      'CLASS_CONFERENCE_LOCKED',
+    );
     return;
   }
 

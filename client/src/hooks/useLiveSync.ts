@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { User } from '../types';
 import { batchUpdateItems, SESSION_EXPIRED_EVENT } from '../services/api';
 
@@ -50,6 +50,16 @@ function rejectPendingRatingWrites(pendingWrites: Map<string, PendingRatingWrite
   }
 }
 
+/**
+ * Everything the socket knows about one subscribed class: the conference lock
+ * and the caller's write permission. Keeping the two together means a verdict
+ * can never leak from one class to another — the older scalar `canRate` did.
+ */
+export interface ClassSyncState {
+  isLocked: boolean;
+  canRate: boolean | null;
+}
+
 export function useLiveSync(
   classId: number | number[] | null,
   user: User | null,
@@ -60,8 +70,7 @@ export function useLiveSync(
   const [isConnected, setIsConnected] = useState(false);
   const [softLocks, setSoftLocks] = useState<Map<string, SoftLock>>(new Map());
   const [conflict, setConflict] = useState<ConflictEvent | null>(null);
-  const [isLockedByConference, setIsLockedByConference] = useState(false);
-  const [canRate, setCanRate] = useState<boolean | null>(null);
+  const [classSyncState, setSyncState] = useState<Map<number, ClassSyncState>>(new Map());
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const classIds = Array.isArray(classId)
@@ -72,10 +81,33 @@ export function useLiveSync(
   const primaryClassId = classIds[0] ?? null;
   const classIdKey = classIds.join(',');
 
+  const isLockedByConference = primaryClassId != null ? (classSyncState.get(primaryClassId)?.isLocked ?? false) : false;
+
+  // Derived per-subscription: each class keeps its own verdict, and the selected
+  // class reads only its own entry. A late SYNCED for a room the teacher reads
+  // but may not rate in can no longer turn the observation grid read-only.
+  const classRoundLocks = useMemo(
+    () => new Map(Array.from(classSyncState, ([cid, state]) => [cid, state.isLocked] as const)),
+    [classSyncState],
+  );
+  const canRate = primaryClassId != null ? (classSyncState.get(primaryClassId)?.canRate ?? null) : null;
+
+  // Merge a patch into one class's entry. Used by the message handlers and by the
+  // class loader, which seeds the roster's verdict before the first SYNCED so a
+  // locked class never shows a writable grid for one round trip.
+  const setClassSyncState = useCallback((classId: number, patch: Partial<ClassSyncState>) => {
+    setSyncState((prev) => {
+      const next = new Map(prev);
+      const current = next.get(classId) ?? { isLocked: false, canRate: null };
+      next.set(classId, { ...current, ...patch });
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
-    setCanRate(null);
     setConnectionError(null);
     setSoftLocks(new Map());
+    setSyncState(new Map());
     if (classIds.length === 0 || !user) return;
 
     // Do not open a socket while the account still needs a password change: the server
@@ -109,7 +141,14 @@ export function useLiveSync(
       activeSocket = null;
       wsRef.current = null;
       setIsConnected(false);
-      setCanRate(null);
+      // The lock state deliberately survives the disconnect — it fails closed and
+      // SYNCED re-syncs on reopen — but the permission is forgotten: after a
+      // reconnect the caller is read-only until the server says otherwise.
+      setSyncState((prev) => {
+        const next = new Map(prev);
+        for (const [cid, state] of next) next.set(cid, { ...state, canRate: null });
+        return next;
+      });
       setSoftLocks(new Map());
       rejectPendingRatingWrites(pendingRatingWritesRef.current, 'Live-Verbindung unterbrochen.');
 
@@ -233,14 +272,24 @@ export function useLiveSync(
               }
 
               case 'VOTING_LOCK_CHANGED': {
-                setIsLockedByConference(!!msg.isLocked);
+                if (typeof msg.classId === 'number') {
+                  // The server broadcasts the *effective* lock state (round OR
+                  // class), which is exactly what this entry stores.
+                  setClassSyncState(msg.classId, {
+                    isLocked: Boolean(msg.isLocked),
+                  });
+                }
                 break;
               }
 
               // Server confirms the room and the caller's write permission.
               case 'SYNCED': {
-                setIsLockedByConference(!!msg.isLockedByConference);
-                setCanRate(typeof msg.canRate === 'boolean' ? msg.canRate : null);
+                if (typeof msg.classId === 'number') {
+                  setClassSyncState(msg.classId, {
+                    isLocked: Boolean(msg.isLockedByConference),
+                    canRate: typeof msg.canRate === 'boolean' ? msg.canRate : null,
+                  });
+                }
                 setConnectionError(null);
                 retries = 0;
                 break;
@@ -466,8 +515,11 @@ export function useLiveSync(
     softLocks,
     conflict,
     clearConflict: () => setConflict(null),
+    classSyncState,
+    classRoundLocks,
     isLockedByConference,
     canRate,
+    setClassSyncState,
     connectionError,
     sendFocus,
     sendBlur,

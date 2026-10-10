@@ -26,7 +26,6 @@ import {
   getClassPupils,
   getClassRubric,
   getYellowCardAlerts,
-  saveStatus,
   submitEvaluation,
   reopenEvaluation,
   batchUpdateItems,
@@ -41,6 +40,7 @@ import { LoginModal } from './components/LoginModal';
 import { AdminAccountsModal } from './components/AdminAccountsModal';
 import { ForcePasswordChange } from './components/ForcePasswordChange';
 import { useToast } from './components/Toast';
+import { setActiveRubricConfig } from './lib/rubricConfig';
 import { ThemeToggle, useTheme } from './components/ThemeToggle';
 import { BeobachtungsGrid } from './components/BeobachtungsGrid';
 import { Schulalltag } from './components/Schulalltag';
@@ -238,6 +238,16 @@ export function App() {
       setSubmissionDeadline(
         typeof pupilData.submissionDeadline === 'string' ? pupilData.submissionDeadline : null,
       );
+      // The roster also carries the rubric thresholds and item count the server
+      // ranked with. Installing them here means every raster computation below
+      // agrees with `lib/ranking.ts` instead of with a second, copied constant.
+      setActiveRubricConfig(pupilData.rubricConfig);
+      // Seed the sync state from the roster so a locked (or non-ratable) class
+      // never shows a writable grid during the round trip until the first SYNCED.
+      setClassSyncState(cid, {
+        isLocked: Boolean(pupilData.isLockedByConference),
+        canRate: typeof pupilData.canRate === 'boolean' ? pupilData.canRate : null,
+      });
     } catch (e) {
       // A superseded load must not surface an error or clear the visible class.
       if (!isCurrent()) return;
@@ -333,11 +343,18 @@ export function App() {
     softLocks,
     conflict,
     clearConflict,
-    isLockedByConference,
+    classSyncState,
+    classRoundLocks,
+    isLockedByConference: liveLockedByConference,
     sendFocus,
     sendBlur,
     sendRating,
+    setClassSyncState,
   } = useLiveSync(liveSyncClassIds, currentUser, handleRatingUpdated);
+
+  const isLockedByConference = selectedClassId != null
+    ? (classRoundLocks?.get(selectedClassId) ?? false)
+    : liveLockedByConference;
 
   const handleLogout = async () => {
     try {
@@ -493,7 +510,11 @@ export function App() {
   */
   const canAccessConference = isSchoolLeadership;
   const currentClass = classes.find((c) => c.id === selectedClassId) || classes[0] || null;
-  const canRateCurrentClass = currentClass?.canRate === true && liveCanRate !== false;
+  // `liveCanRate === null` means "no verdict yet" — treat it as read-only, not
+  // writable: the server has not confirmed the caller may write this class, and
+  // the SYNCED that carries the verdict arrives one round trip after the class
+  // switch. Fail closed here, or the teacher gets 423s instead of disabled inputs.
+  const canRateCurrentClass = currentClass?.canRate === true && liveCanRate === true;
   const canWriteSubject = (subjectCode?: string) => {
     if (!canRateCurrentClass) return false;
     if (isHeadmaster) return true;
@@ -854,6 +875,7 @@ export function App() {
               onRefreshClassData={() => {
                 if (selectedClassId) loadClassData(selectedClassId);
               }}
+              criteria={criteria}
             />
           ) : classListError ? (
             // A failed class-list load must never be rendered as an empty school: that
@@ -954,6 +976,7 @@ export function App() {
           pupil={activeKelPupil}
           className={currentClass.name}
           criteria={criteria}
+          subjects={currentClass.mySubjects}
           onClose={() => setActiveKelPupil(null)}
         />
       )}

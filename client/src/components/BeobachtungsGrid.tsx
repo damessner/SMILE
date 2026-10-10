@@ -23,7 +23,15 @@ import {
   Clock,
 } from 'lucide-react';
 import { PupilWithData, RubricCriterion, User } from '../types';
-import { findItemForSubjects, isPupilFullySubmitted, isSubjectMatch, itemVersionForSubject } from '../lib/pupilItems';
+import {
+  findItemForSubjects,
+  isPupilFullySubmitted,
+  isSubjectMatch,
+  itemVersionForSubject,
+  scoreSubject,
+} from '../lib/pupilItems';
+import { getRankVisuals } from '../lib/conferenceEvidence';
+import { quickGradeFills } from '../lib/rubricConfig';
 import { saveEvaluationComment } from '../services/api';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
 import { useConfirm } from './ConfirmDialog';
@@ -313,20 +321,19 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const isPositiveRating = (r?: string) =>
     r === 'crown' || r === 'smile' || r === '++' || r === '+';
 
-  // Compute live rank strictly from the 18 criteria items displayed in this grid
-  const calculateRank = (pupil: PupilWithData) => {
-    let pos = 0;
-    for (const crit of criteria) {
-      for (const it of crit.items) {
-        const itemData = getItemData(pupil, it.key);
-        if (isPositiveRating(itemData?.rating)) {
-          pos++;
-        }
-      }
-    }
-    if (pos >= 14) return { rank: 'Meister', color: 'bg-amber-400/20 text-amber-300 border-amber-400/40', barColor: 'bg-amber-400', pos };
-    if (pos >= 8) return { rank: 'Geselle', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', barColor: 'bg-blue-500', pos };
-    return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
+  const rubricItemKeys = React.useMemo(
+    () => Array.from(new Set(criteria.flatMap((c) => c.items.map((i) => i.key)))),
+    [criteria]
+  );
+
+  // Compute live rank strictly from the configured rubric items for the active/specified subject.
+  // Rank colours come from the shared helper so the grid, the conference modal and the
+  // export can never drift into three different triples for one rank.
+  const calculateRank = (pupil: PupilWithData, subjectCode?: string) => {
+    const targetCode = subjectCode || (isAllSubjectsMode ? primarySubject.code : mySubjectCode);
+    const scored = scoreSubject(pupil.evaluations, targetCode, rubricItemKeys);
+    const { badgeBg, barColor } = getRankVisuals(scored.rank);
+    return { rank: scored.rank, color: badgeBg, barColor, pos: scored.positiveCount };
   };
 
   // A comment write can outlive the grid: the flush it belongs to is issued
@@ -428,7 +435,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     itemKey: string,
     rating: string,
   ) => {
-    if (!canWrite) return;
+    if (!canWrite || isLockedByConference) return;
     beginSave();
 
     try {
@@ -472,6 +479,18 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
    */
   const commentScopeKeyRef = useRef('');
 
+  /**
+   * The conference lock state, readable at flush time. `flushComment` is a
+   * `useCallback` that cannot list `isLockedByConference` as a dependency
+   * without rebuilding on every lock flip - which would cancel the debounce a
+   * keystroke just scheduled. The lock arrives over the socket *after* the
+   * callback was created, so reading the prop inside the closure would keep
+   * whatever value it had when the callback was memoized. The ref is written
+   * on every render and therefore always current.
+   */
+  const isLockedByConferenceRef = useRef(isLockedByConference);
+  isLockedByConferenceRef.current = isLockedByConference;
+
   /** Subjects a comment write may touch; Gesamt mode writes to each of them. */
   const commentSubjectCodes = targetSubjectCodes.filter((c) => c !== '__ALL__');
 
@@ -499,7 +518,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
    */
   const flushComment = useCallback(async () => {
     clearCommentTimer();
-    if (!canWrite) {
+    if (!canWrite || isLockedByConferenceRef.current) {
       pendingCommentRef.current = null;
       clearPendingCommentFeedback();
       return;
@@ -561,7 +580,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       if (pendingCommentRef.current === null) pendingCommentRef.current = pending;
       finishSave(err);
       console.error(err);
-      toast.error('Kommentar konnte nicht gespeichert werden. Bitte erneut versuchen.');
+      // A structured server rejection (ApiError: carries a status and code)
+      // is the honest message - a 423 CLASS_CONFERENCE_LOCKED tells the
+      // teacher the class is locked. The retry hint can never succeed in that
+      // state, so it only fits failures with no server-side answer.
+      const rejection = err as { message?: string; status?: number } | null;
+      const serverMessage =
+        err instanceof Error && typeof rejection?.status === 'number' ? err.message : '';
+      toast.error(serverMessage || 'Kommentar konnte nicht gespeichert werden. Bitte erneut versuchen.');
     }
   }, [beginSave, canWrite, clearCommentTimer, clearPendingCommentFeedback, finishSave, toast]);
 
@@ -596,7 +622,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   }, [commentScopeKey]);
 
   const handleCommentChange = (value: string) => {
-    if (!canWrite) return;
+    if (!canWrite || isLockedByConference) return;
     setVotedComment(value);
     setSaveSuccessMsg(null);
 
@@ -658,25 +684,20 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Instant Rank Handlers
   const handleInstantRank = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
-    if (!canWrite || !selectedPupil) return;
-    setVotedRank(targetRank);
+    if (!canWrite || isLockedByConference || !selectedPupil) return;
     beginSave();
 
-    const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
-    let count = 0;
+    const totalCells = criteria.reduce((n, crit) => n + crit.items.length, 0);
+    // The fill pattern comes from the active thresholds, not fixed numbers, so
+    // a one-click grade keeps producing the rank it was asked for after a
+    // reconfiguration (see quickGradeFills).
+    const fills = quickGradeFills(targetRank, totalCells);
+    let fillIndex = 0;
 
+    const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
     for (const crit of criteria) {
       for (const it of crit.items) {
-        let r = 'smile';
-        if (targetRank === 'Meister') {
-          r = count < 14 ? 'crown' : 'smile';
-        } else if (targetRank === 'Geselle') {
-          r = count < 10 ? 'smile' : 'struggle';
-        } else {
-          r = count < 4 ? 'smile' : 'struggle';
-        }
-        allCritItems.push({ criterionId: crit.id, itemKey: it.key, rating: r });
-        count++;
+        allCritItems.push({ criterionId: crit.id, itemKey: it.key, rating: fills[fillIndex++] });
       }
     }
 
@@ -701,6 +722,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           ));
         }
       }
+      // Only after the server has taken the write: a rejected quick-grade must
+      // not leave "Gewählt" showing a rank the server never stored.
+      setVotedRank(targetRank);
       finishSave();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Bewertung konnte nicht gespeichert werden.';
@@ -712,8 +736,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   // Unified 1-Click Quick Grade Handler (Core & Non-Core)
   const handleQuickGrade = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
     if (!canWrite || !selectedPupil || isLockedByConference || isPastDeadline) return;
-    setVotedRank(targetRank);
     if (effectiveCanAccessRaster) {
+      // handleInstantRank sets the selection once its writes have resolved.
       await handleInstantRank(targetRank);
     } else {
       beginSave();
@@ -728,6 +752,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             );
           }
         }
+        setVotedRank(targetRank);
         finishSave();
         setSaveSuccessMsg(`Rang „${targetRank}“ gespeichert`);
       } catch (err) {
@@ -739,7 +764,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Reset all 18 criteria for pupil
   const handleResetAll = async () => {
-    if (!canWrite || !selectedPupil) return;
+    if (!canWrite || isLockedByConference || !selectedPupil) return;
     const ok = await confirm({
       title: 'Alle Bewertungen leeren?',
       message: isAllSubjectsMode
@@ -790,7 +815,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Quick fill entire category (3 items)
   const handleQuickFillCategory = async (crit: RubricCriterion, rating: string) => {
-    if (!canWrite || !selectedPupil) return;
+    if (!canWrite || isLockedByConference || !selectedPupil) return;
     beginSave();
     const catItems = crit.items.map((it) => ({
       criterionId: crit.id,
@@ -829,19 +854,31 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Submit Ranking & Advance sequentially to next pupil on list
   const handleSubmitPupil = async () => {
-    if (!canWrite || !selectedPupil) return;
+    if (!canWrite || isLockedByConference || !selectedPupil) return;
 
     // Find position in openPupils
     const currIdx = openPupils.findIndex((p) => p.id === selectedPupil.id);
     const pupilName = selectedPupil.fullName;
-    const { rank } = calculateRank(selectedPupil);
-    const finalRankToSubmit = effectiveCanAccessRaster ? rank : (votedRank || rank || 'Geselle');
 
     beginSave();
     try {
       if (onSubmitPupil) {
         for (const subCode of targetSubjectCodes) {
-          await onSubmitPupil(selectedPupil.id, finalRankToSubmit, votedComment, subCode);
+          const scored = scoreSubject(selectedPupil.evaluations, subCode, rubricItemKeys);
+          // A subject with no rated rubric items has no calculated rank, so it
+          // must inherit the teacher's manual proposal. With neither there is
+          // nothing to submit: writing 'Geselle' would store a proposedStatus
+          // nobody cast for that subject, and the pupil would read as decided
+          // in Mathe on the strength of a Deutsch raster. The subject is left
+          // for the teacher, and it keeps the pupil out of the submitted list
+          // (see `isSubmitted`, which requires every subject).
+          const subRank = effectiveCanAccessRaster
+            ? (scored.rank ?? votedRank)
+            : (votedRank || scored.rank);
+          if (!subRank) {
+            continue;
+          }
+          await onSubmitPupil(selectedPupil.id, subRank, votedComment, subCode);
         }
       }
       finishSave();
@@ -874,7 +911,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   };
 
   const handleReopenPupil = async () => {
-    if (!canWrite || !onReopenPupil || !selectedPupil) return;
+    if (!canWrite || isLockedByConference || !onReopenPupil || !selectedPupil) return;
     beginSave();
     try {
       for (const subCode of targetSubjectCodes) {
@@ -1052,7 +1089,20 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       {pDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-slate-400">{pRank.pos}/18 Punkte</span>
+                      {isAllSubjectsMode ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {mySubjects.map((s) => {
+                            const sc = scoreSubject(p.evaluations, s.code, rubricItemKeys);
+                            return (
+                              <span key={s.code} className="text-[10px] text-slate-400">
+                                {s.code}: {sc.positiveCount}/{rubricItemKeys.length}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">{pRank.pos}/{rubricItemKeys.length} Punkte</span>
+                      )}
                       {p.greenCardCount > 0 && (
                         <span className="text-[10px] text-emerald-400 font-bold">
                           ★ {p.greenCardCount}
@@ -1066,11 +1116,29 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                     </div>
                   </div>
 
-                  <span
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
-                  >
-                    {pRank.rank}
-                  </span>
+                  {isAllSubjectsMode ? (
+                    <div className="flex flex-col sm:flex-row items-end gap-1 flex-shrink-0">
+                      {mySubjects.map((s) => {
+                        const sc = scoreSubject(p.evaluations, s.code, rubricItemKeys);
+                        const r = sc.rank ?? 'Ausstehend';
+                        const color = getRankVisuals(sc.rank).badgeBg;
+                        return (
+                          <span
+                            key={s.code}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${color}`}
+                          >
+                            {s.code} {r}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
+                    >
+                      {pRank.rank ?? 'Ausstehend'}
+                    </span>
+                  )}
                 </button>
               );
             })
@@ -1139,9 +1207,27 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-50 truncate" title={selectedPupil.fullName}>
                 {selectedPupil.fullName}
               </h2>
-              <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${rankColor}`}>
-                {rank} ({positiveTicks}/18)
-              </span>
+              {isAllSubjectsMode ? (
+                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                  {mySubjects.map((s) => {
+                    const scored = scoreSubject(selectedPupil.evaluations, s.code, rubricItemKeys);
+                    const sRank = scored.rank ?? 'Ausstehend';
+                    const color = getRankVisuals(scored.rank).badgeBg;
+                    return (
+                      <span
+                        key={s.code}
+                        className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${color}`}
+                      >
+                        {s.code}: {sRank} ({scored.positiveCount}/{rubricItemKeys.length})
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${rankColor}`}>
+                  {rank ?? 'Ausstehend'} ({positiveTicks}/{rubricItemKeys.length})
+                </span>
+              )}
 
               {isSubmitted && (
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -1316,7 +1402,15 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                   desc: 'Eigenständig / Spitzenleistung',
                 },
               ].map((opt) => {
-                const isSelected = rank === opt.rank || votedRank === opt.rank;
+                // One card is selected: the rank that will actually be
+                // submitted. The manual proposal wins when it exists, because
+                // that is what the submit loop writes for this subject;
+                // otherwise the calculated rank is the whole story. OR-ing the
+                // two lit a second card whenever a teacher hand-edited the
+                // raster after picking a rank, which told the room two
+                // different things about one pupil.
+                const activeSelectedRank = votedRank ?? rank;
+                const isSelected = activeSelectedRank === opt.rank;
                 return (
                   <button
                     key={opt.rank}

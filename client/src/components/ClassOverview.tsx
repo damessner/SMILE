@@ -15,7 +15,7 @@ import {
   Info,
 } from 'lucide-react';
 import { PupilWithData, SchoolClass, RubricCriterion, User } from '../types';
-import { isPupilFullySubmitted, isSubjectMatch } from '../lib/pupilItems';
+import { isPupilFullySubmitted, isSubjectMatch, scoreSubject } from '../lib/pupilItems';
 
 interface ClassOverviewProps {
   currentClass: SchoolClass;
@@ -28,6 +28,7 @@ interface ClassOverviewProps {
   mySubjects?: any[];
   currentUser: User | null;
   submissionDeadline?: string | null;
+  criteria: RubricCriterion[];
 }
 
 export const ClassOverview: React.FC<ClassOverviewProps> = ({
@@ -41,6 +42,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
   mySubjects = [],
   currentUser,
   submissionDeadline = null,
+  criteria,
 }) => {
   const [activeFolder, setActiveFolder] = useState<'open' | 'ranked'>('open');
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,55 +68,70 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
         }) + ' Uhr'
       : '30.10.2026, 23:59 Uhr';
 
-  // Calculate rank for a pupil
-  const isPositiveRating = (r?: string) =>
-    r === 'crown' || r === 'smile' || r === '++' || r === '+';
+  const effectiveSubjects = useMemo(() => {
+    if (mySubjects && mySubjects.length > 0) return mySubjects;
+    if (currentClass?.mySubjects && currentClass.mySubjects.length > 0) return currentClass.mySubjects;
+    return [];
+  }, [mySubjects, currentClass]);
 
-  const getPupilRank = (p: PupilWithData) => {
-    const evaluatedItemsMap = new Map<string, string | undefined>();
-    const relevantEvals = mySubjects.length > 0
-      ? p.evaluations.filter((e) => mySubjects.some((s) => isSubjectMatch(s.code, e.subjectCode)))
-      : p.evaluations;
+  const rubricItemKeys = useMemo(
+    () => Array.from(new Set(criteria.flatMap((c) => c.items.map((i) => i.key)))),
+    [criteria],
+  );
 
-    for (const e of relevantEvals) {
-      if (!e.items) continue;
-      for (const it of e.items) {
-        if (!evaluatedItemsMap.has(it.itemKey) || isPositiveRating(it.rating)) {
-          evaluatedItemsMap.set(it.itemKey, it.rating);
-        }
-      }
-    }
+  const getSubjectResults = (p: PupilWithData) => {
+    const subjectsToScore =
+      effectiveSubjects.length > 0
+        ? effectiveSubjects
+        : Array.from(new Set(p.evaluations.map((e) => e.subjectCode))).map((code) => ({
+            code,
+            name: code,
+          }));
 
-    const pos = Array.from(evaluatedItemsMap.values()).filter((r) => isPositiveRating(r)).length;
-    if (pos >= 14) return { rank: 'Meister', color: 'bg-amber-400/20 text-amber-300 border-amber-400/40', barColor: 'bg-amber-400', pos };
-    if (pos >= 8) return { rank: 'Geselle', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40', barColor: 'bg-blue-500', pos };
-    return { rank: 'Lehrling', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40', barColor: 'bg-rose-500', pos };
+    return subjectsToScore.map((s) => {
+      const scored = scoreSubject(p.evaluations, s.code, rubricItemKeys);
+      const rankLabel = scored.rank ?? 'Ausstehend';
+      let color = 'bg-slate-800 text-slate-400 border-slate-700';
+      if (scored.rank === 'Meister') color = 'bg-amber-400/20 text-amber-300 border-amber-400/40';
+      else if (scored.rank === 'Geselle') color = 'bg-blue-500/20 text-blue-300 border-blue-500/40';
+      else if (scored.rank === 'Lehrling') color = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+
+      return {
+        subjectCode: s.code,
+        positiveCount: scored.positiveCount,
+        totalRated: scored.totalRated,
+        rank: scored.rank,
+        rankLabel,
+        color,
+        label: `${s.code} ${scored.positiveCount}/${rubricItemKeys.length} ${rankLabel}`,
+      };
+    });
   };
 
   // Check if this pupil is submitted by current teacher, across every subject
   // this teacher teaches in the class - not across the pupil's other subjects,
   // which may be none of the current teacher's business.
   const isPupilSubmitted = (p: PupilWithData) => {
-    return isPupilFullySubmitted(p.evaluations, mySubjects.map((s) => s.code));
+    return isPupilFullySubmitted(p.evaluations, effectiveSubjects.map((s) => s.code));
   };
 
   const getSubmissionInfo = (p: PupilWithData) => {
     const sub = p.evaluations.find(
-      (e) => mySubjects.some((s) => isSubjectMatch(s.code, e.subjectCode)) && e.isSubmitted
+      (e) => effectiveSubjects.some((s) => isSubjectMatch(s.code, e.subjectCode)) && e.isSubmitted
     );
     return sub;
   };
 
-  // Split into Open and Ranked folders. `mySubjects` is a dependency of the
-  // split, not just of `isPupilSubmitted`: it arrives with the class data and
+  // Split into Open and Ranked folders. `effectiveSubjects` is a dependency of
+  // the split, not just of `isPupilSubmitted`: it arrives with the class data and
   // the folders must be recomputed when it does.
   const openPupils = useMemo(() => {
     return pupils.filter((p) => !isPupilSubmitted(p));
-  }, [pupils, mySubjects]);
+  }, [pupils, effectiveSubjects]);
 
   const rankedPupils = useMemo(() => {
     return pupils.filter((p) => isPupilSubmitted(p));
-  }, [pupils, mySubjects]);
+  }, [pupils, effectiveSubjects]);
 
   // Current folder filtered by search
   const currentList = activeFolder === 'open' ? openPupils : rankedPupils;
@@ -262,7 +279,7 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredList.map((pupil) => {
-            const pRank = getPupilRank(pupil);
+            const subjectResults = getSubjectResults(pupil);
             const subInfo = getSubmissionInfo(pupil);
             const isDone = !!subInfo;
 
@@ -272,16 +289,13 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
                 className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-3xl p-5 shadow-lg flex flex-col justify-between transition group"
               >
                 <div>
-                  {/* Header: Name and Status */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
+                  {/* Header: Name and Cards */}
+                  <div className="flex items-start justify-between gap-3 mb-2">
                     <div>
                       <h3 className="font-bold text-base text-slate-50 group-hover:text-amber-400 transition">
                         {pupil.fullName}
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-slate-400">
-                          {pRank.pos} / 18 Punkte
-                        </span>
                         {pupil.greenCardCount > 0 && (
                           <span className="text-[10px] text-emerald-400 font-bold">
                             ★ {pupil.greenCardCount}
@@ -294,20 +308,18 @@ export const ClassOverview: React.FC<ClassOverviewProps> = ({
                         )}
                       </div>
                     </div>
-
-                    <span
-                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold uppercase tracking-wider border ${pRank.color}`}
-                    >
-                      {pRank.rank}
-                    </span>
                   </div>
 
-                  {/* Progress Bar */}
-                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-4 border border-slate-700/60">
-                    <div
-                      style={{ width: `${Math.min(100, Math.round((pRank.pos / 18) * 100))}%` }}
-                      className={`h-full ${pRank.barColor} transition-all duration-300`}
-                    />
+                  {/* Subject Chips */}
+                  <div className="flex flex-wrap items-center gap-1.5 mb-4">
+                    {subjectResults.map((sr) => (
+                      <span
+                        key={sr.subjectCode}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold uppercase tracking-wider border ${sr.color}`}
+                      >
+                        {sr.label}
+                      </span>
+                    ))}
                   </div>
 
                   {/* Submission Timestamp Badge */}

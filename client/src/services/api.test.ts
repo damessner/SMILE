@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, applyClassDefault, batchUpdateItems, changePassword, getClasses, getYellowCardAlerts, login, SESSION_EXPIRED_EVENT } from './api';
+import { ApiError, applyClassDefault, batchUpdateItems, changePassword, getClasses, getYellowCardAlerts, login, saveEvaluationComment, SESSION_EXPIRED_EVENT } from './api';
 
 function response(status: number, body: unknown): Response {
   const mockedResponse = {
@@ -118,5 +118,23 @@ describe('API session and alert errors', () => {
 
     const requestOptions = fetchMock.mock.calls[0][1] as RequestInit;
     expect(JSON.parse(String(requestOptions.body))).toMatchObject({ forceOverwrite: true });
+  });
+
+  it('surfaces the class-conference lock code when a comment autosave is rejected', async () => {
+    // The autosave path must expose the server's structured rejection
+    // (CLASS_CONFERENCE_LOCKED) instead of a bare status code, so callers can
+    // tell the teacher the class is locked rather than asking for a retry that
+    // can never succeed.
+    fetchMock.mockResolvedValue(response(423, {
+      error: 'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht geändert werden.',
+      code: 'CLASS_CONFERENCE_LOCKED',
+    }));
+
+    await expect(saveEvaluationComment(1, 501, 'D', 'Beschlussbegründung'))
+      .rejects.toMatchObject({
+        name: 'ApiError',
+        status: 423,
+        code: 'CLASS_CONFERENCE_LOCKED',
+      });
   });
 });

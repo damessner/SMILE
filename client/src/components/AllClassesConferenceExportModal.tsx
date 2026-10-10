@@ -16,6 +16,7 @@ import {
 import { SchoolClass, User } from '../types';
 import { getConferenceSummary, getAllClasses } from '../services/api';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
+import { formatSubjectEvidence, type SubjectEvidenceItem } from '../lib/conferenceEvidence';
 
 interface TeacherVote {
   teacherId: number;
@@ -33,8 +34,7 @@ interface TeacherVote {
 interface ConferencePupilSummary {
   id: number;
   fullName: string;
-  positiveCount: number;
-  totalRated: number;
+  subjectEvidence?: SubjectEvidenceItem[];
   suggestedRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
   finalRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
   hasRedCardDemotion: boolean;
@@ -484,7 +484,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                         <tr className="bg-slate-100 text-slate-800 text-[9.5px] uppercase border-b border-slate-300 font-bold">
                           <th className="py-1 px-1.5 border-r border-slate-300 w-6 text-center">Nr.</th>
                           <th className="py-1 px-1.5 border-r border-slate-300 font-bold">Schüler*in</th>
-                          <th className="py-1 px-1.5 border-r border-slate-300 w-14 text-center font-bold">Smileys</th>
+                          <th className="py-1 px-1.5 border-r border-slate-300 w-24 text-center font-bold">Raster</th>
                           <th className="py-1 px-2 border-r border-slate-300 w-44 text-center font-bold">
                             Voten je Kategorie (Lehrkräfte)
                           </th>
@@ -528,7 +528,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                                 {p.fullName}
                               </td>
                               <td className="py-1 px-1.5 border-r border-slate-200 text-center font-semibold text-[10px]">
-                                {p.positiveCount} / {p.totalRated > 0 ? p.totalRated : 18}
+                                {formatSubjectEvidence(p.subjectEvidence)}
                               </td>
                               {/* Visualized Votes per Category per Pupil */}
                               <td className="py-1 px-2 border-r border-slate-200">

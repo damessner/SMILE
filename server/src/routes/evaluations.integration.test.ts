@@ -87,7 +87,7 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
 
   const FIXTURE_TEACHER_IDS = [101, 102];
   const FIXTURE_CLASS_IDS = [501, 502];
-  const FIXTURE_ASSIGNMENT_IDS = [901, 902];
+  const FIXTURE_ASSIGNMENT_IDS = [901, 902, 903];
   const FIXTURE_PUPIL_IDS = [7001, 7002];
   const TEST_USER_IDS = {
     teacher101: '00000000-0000-0000-0000-000000000101',
@@ -117,6 +117,7 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
     for (const tid of FIXTURE_TEACHER_IDS) {
       await db.delete(schema.teachers).where(eq(schema.teachers.id, tid));
     }
+    await db.delete(schema.classRoundLocks).where(inArray(schema.classRoundLocks.classId, FIXTURE_CLASS_IDS));
     if (testRubricId) {
       await db.delete(schema.rubricCriteria).where(eq(schema.rubricCriteria.rubricId, testRubricId));
       await db.delete(schema.assessmentRubrics).where(eq(schema.assessmentRubrics.id, testRubricId));
@@ -1154,6 +1155,249 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
 
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('PASSWORD_CHANGE_REQUIRED');
+    });
+  });
+
+  describe('Subject-Scoped Statistics Overview', () => {
+    it('returns subject-scoped results and keeps conference decision separate', async () => {
+      // Seed assignment for second subject M on class 501
+      const SECOND_ASSIGNMENT_ID = 903;
+      await db.insert(schema.teachingAssignments).values({
+        id: SECOND_ASSIGNMENT_ID,
+        teacherId: 101,
+        classId: 501,
+        subjectCode: 'M',
+        subjectName: 'Mathematik',
+      });
+
+      // Seed an evaluation for pupil 7001 in D
+      const [evalD] = await db.insert(schema.evaluations).values({
+        roundId: testRoundId!,
+        pupilId: 7001,
+        classId: 501,
+        subjectCode: 'D',
+        teacherId: 101,
+        proposedStatus: 'Geselle',
+      }).returning();
+
+      // Seed an evaluation item in D
+      await db.insert(schema.evaluationItems).values({
+        evaluationId: evalD.id,
+        criterionId: testCriterionId,
+        itemKey: 'item_1',
+        rating: 'smile',
+        version: 1,
+        updatedByTeacherId: 101,
+      });
+
+      // Seed a confirmed conference decision (Meister) for pupil 7001
+      await db.insert(schema.finalRanks).values({
+        roundId: testRoundId!,
+        pupilId: 7001,
+        classId: 501,
+        rank: 'Meister',
+        overrideReason: 'Konferenzbeschluss',
+        confirmedBy: 101,
+      });
+
+      try {
+        const res = await app!.inject({
+          method: 'GET',
+          url: '/api/statistics/overview?classId=501',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        const p7001 = body.pupils.find((p: any) => p.id === 7001);
+        expect(p7001).toBeDefined();
+
+        // Subject-scoped results: D and M must be separate
+        const dResult = p7001.subjectResults.find((s: any) => s.subjectCode === 'D');
+        const mResult = p7001.subjectResults.find((s: any) => s.subjectCode === 'M');
+        expect(dResult).toBeDefined();
+        expect(mResult).toBeDefined();
+
+        // D is scored from its item
+        expect(dResult.positiveCount).toBe(1);
+        expect(dResult.totalRated).toBe(1);
+        expect(dResult.calculatedRank).toBe('Lehrling');
+
+        // M has no evaluation, so it is pending (calculatedRank null, totalRated 0)
+        expect(mResult.positiveCount).toBe(0);
+        expect(mResult.totalRated).toBe(0);
+        expect(mResult.calculatedRank).toBeNull();
+        expect(mResult.teacherVote).toBeNull();
+
+        // Conference decision is separate
+        expect(p7001.conferenceDecision).toEqual({
+          rank: 'Meister',
+          isConfirmed: true,
+          overrideReason: 'Konferenzbeschluss',
+        });
+
+        // Distribution counts only rated subject results (1 for D, 0 for M)
+        expect(body.distribution.total).toBe(1);
+        expect(body.distribution.lehrling).toBe(1);
+      } finally {
+        await db.delete(schema.finalRanks).where(and(
+          eq(schema.finalRanks.pupilId, 7001),
+          eq(schema.finalRanks.roundId, testRoundId!),
+        ));
+        await db.delete(schema.evaluationItems).where(eq(schema.evaluationItems.evaluationId, evalD.id));
+        await db.delete(schema.evaluations).where(eq(schema.evaluations.id, evalD.id));
+        await db.delete(schema.teachingAssignments).where(eq(schema.teachingAssignments.id, SECOND_ASSIGNMENT_ID));
+      }
+    });
+  });
+
+  describe('Class Conference Lock Enforcement (Task 8)', () => {
+    it('rejects all evaluation mutations with 423 CLASS_CONFERENCE_LOCKED when class is locked', async () => {
+      // Lock class 501
+      await db.insert(schema.classRoundLocks).values({
+        roundId: testRoundId!,
+        classId: 501,
+        isLocked: true,
+      }).onConflictDoUpdate({
+        target: [schema.classRoundLocks.roundId, schema.classRoundLocks.classId],
+        set: { isLocked: true },
+      });
+
+      try {
+        // 1. /batch-default
+        const resBatchDefault = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/batch-default',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { classId: 501, subjectCode: 'D', defaultRating: 'smile', forceOverwrite: true },
+        });
+        expect(resBatchDefault.statusCode).toBe(423);
+        expect(resBatchDefault.json().code).toBe('CLASS_CONFERENCE_LOCKED');
+
+        // 2. /status
+        const resStatus = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/status',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { pupilId: 7001, classId: 501, subjectCode: 'D', comment: 'Versuch Kommentar' },
+        });
+        expect(resStatus.statusCode).toBe(423);
+        expect(resStatus.json().code).toBe('CLASS_CONFERENCE_LOCKED');
+
+        // 3. /submit
+        const resSubmit = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/submit',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { pupilId: 7001, classId: 501, subjectCode: 'D' },
+        });
+        expect(resSubmit.statusCode).toBe(423);
+        expect(resSubmit.json().code).toBe('CLASS_CONFERENCE_LOCKED');
+
+        // 4. /reopen
+        const resReopen = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/reopen',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { pupilId: 7001, classId: 501, subjectCode: 'D' },
+        });
+        expect(resReopen.statusCode).toBe(423);
+        expect(resReopen.json().code).toBe('CLASS_CONFERENCE_LOCKED');
+
+        // 5. /batch-items
+        const resBatchItems = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/batch-items',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: {
+            pupilId: 7001,
+            classId: 501,
+            subjectCode: 'D',
+            items: [{ itemKey: 'item_1', rating: 'smile', version: 0 }],
+          },
+        });
+        expect(resBatchItems.statusCode).toBe(423);
+        expect(resBatchItems.json().code).toBe('CLASS_CONFERENCE_LOCKED');
+
+        // 6. Unlocked second class (502) is not blocked
+        const resClass502Status = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/status',
+          headers: { cookie: `smile_session=${sessionCookie(102)}` },
+          payload: { pupilId: 7002, classId: 502, subjectCode: 'D', comment: 'Offene Klasse' },
+        });
+        expect(resClass502Status.statusCode).not.toBe(423);
+
+        // 7. Conference decision endpoints remain accessible while class is locked.
+        // The only registered conference routes are /:classId/lock|vote|vote-all|summary,
+        // so confirm/unconfirm run through the vote endpoint's action switch. These
+        // calls previously targeted /api/conferences/confirm and /api/conferences/unconfirm,
+        // which have never been registered: both 404'd, so the "conferences stay
+        // usable under lock" property had no working guard at all.
+        const resConfirm = await app!.inject({
+          method: 'POST',
+          url: '/api/conferences/501/vote',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: {
+            pupilId: 7001,
+            action: 'confirm',
+            rank: 'Meister',
+            overrideReason: 'Beschluss trotz Sperre',
+          },
+        });
+        expect(resConfirm.statusCode).toBe(200);
+        expect(resConfirm.json().rank).toBe('Meister');
+
+        const resUnconfirm = await app!.inject({
+          method: 'POST',
+          url: '/api/conferences/501/vote',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { pupilId: 7001, action: 'unconfirm' },
+        });
+        expect(resUnconfirm.statusCode).toBe(200);
+        expect(resUnconfirm.json().isConfirmed).toBe(false);
+
+        // 8. vote-all stays available under the same lock
+        const resVoteAll = await app!.inject({
+          method: 'POST',
+          url: '/api/conferences/501/vote-all',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { items: [{ pupilId: 7001, rank: 'Meister' }] },
+        });
+        expect(resVoteAll.statusCode).toBe(200);
+        expect(resVoteAll.json().count).toBe(1);
+      } finally {
+        await db.delete(schema.classRoundLocks).where(and(
+          eq(schema.classRoundLocks.roundId, testRoundId!),
+          eq(schema.classRoundLocks.classId, 501),
+        ));
+        await db.delete(schema.finalRanks).where(and(
+          eq(schema.finalRanks.pupilId, 7001),
+          eq(schema.finalRanks.roundId, testRoundId!),
+        ));
+      }
+    });
+
+    it('refuses writes when latest round is globally locked and does not fall back to older unlocked round', async () => {
+      // Create a newer observation round that is locked
+      const [newerLockedRound] = await db.insert(schema.observationRounds).values({
+        name: 'Newer Locked Period',
+        isLocked: true,
+        createdAt: new Date(Date.now() + 10000),
+      }).returning();
+
+      try {
+        const res = await app!.inject({
+          method: 'POST',
+          url: '/api/evaluations/status',
+          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          payload: { pupilId: 7001, classId: 501, subjectCode: 'D', comment: 'Globale Sperre' },
+        });
+        expect(res.statusCode).toBe(400);
+        expect(res.json().error).toBe('Kein aktiver Zeitraum');
+      } finally {
+        await db.delete(schema.observationRounds).where(eq(schema.observationRounds.id, newerLockedRound.id));
+      }
     });
   });
 

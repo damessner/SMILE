@@ -121,6 +121,78 @@ describe('summarizeRatings', () => {
     expect(result.evaluationCount).toBe(2);
     expect(result.positiveCount).toBe(1);
   });
+
+  // A rubric item is unique per evaluation. When the same key appears twice —
+  // a legacy double row, or a client that retried a write — counting both rows
+  // double-counts one criterion and pushes positiveCount past the 18-item
+  // raster. The client already resolves duplicates by newest `updatedAt`
+  // (see `scoreSubject`); the server must agree or the conference summary
+  // contradicts the grid a teacher is looking at.
+  it('counts a duplicated item key once, newest updatedAt winning', () => {
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '-', updatedAt: '2026-02-01T00:00:00.000Z' },
+        ],
+      },
+    ]);
+
+    expect(result.totalRated).toBe(1);
+    expect(result.positiveCount).toBe(0);
+  });
+
+  it('picks the newest duplicate whichever row comes first', () => {
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '-', updatedAt: '2026-02-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      },
+    ]);
+
+    expect(result.totalRated).toBe(1);
+    expect(result.positiveCount).toBe(0);
+  });
+
+  it('keeps the first row when duplicate keys carry equal timestamps', () => {
+    // Same rule as the client's tie-break: order, never rating value, so the
+    // resolution cannot be biased toward a positive outcome.
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '-', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      },
+    ]);
+
+    expect(result.totalRated).toBe(1);
+    expect(result.positiveCount).toBe(1);
+  });
+
+  it('sums across evaluations unchanged, deduping only within one', () => {
+    // Cross-group semantics are historical and deliberate: two co-teachers each
+    // submit their own evaluation, and both count. This must survive the fix.
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-02T00:00:00.000Z' },
+        ],
+      },
+      { evaluationId: 'b', items: [{ itemKey: 'org_1', rating: '+' }] },
+    ]);
+
+    expect(result.totalRated).toBe(2);
+    expect(result.positiveCount).toBe(2);
+    expect(result.evaluationCount).toBe(2);
+  });
 });
 
 describe('isRank', () => {

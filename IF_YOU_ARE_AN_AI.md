@@ -156,7 +156,11 @@ If you modify this codebase, **you must maintain these invariants**:
     isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode], itemKey)
   ```
   Cite those two, not a paraphrase — `selectedPupil` and `subCode` are **write**-path names (`:1695`, `:1725`) and are not in scope inside `calculateRank`.
-  - ⚠️ **In Gesamt mode that call is a deliberate cross-subject read, and its rank is submitted to every subject.** `findItemForSubjects` returns the first match across all `mySubjects`, so a cell shows the first subject in `mySubjects` order that holds the key. `handleSubmitPupil` then sends that one rank as `finalRankToSubmit` for **each** `subCode`. A pupil rated in Mathematik alone and then in Deutsch is submitted under a Deutsch-derived rank for Mathematik. This is the same defect *shape* this branch closed for the roster and the item lookup, on the `final_ranks` path, and it is **pre-existing** — recorded as roadmap **E13** with the product question, not fixed. Cite the merged call as the reference implementation only together with this caveat; it is correct about *scoping*, not about *which scope*.
+  - ✅ **RESOLVED (verified 2026-10-10, roadmap E13 closed).** The caveat that used to sit here — that `findItemForSubjects` merged across `mySubjects` and `handleSubmitPupil` sent that one rank for every `subCode` — is no longer the code. `handleSubmitPupil` now computes the rank **per subject** through `scoreSubject(selectedPupil.evaluations, subCode, rubricItemKeys)`, so a pupil rated in Mathematik alone is submitted under a Mathematik-derived rank, never a Deutsch-derived one. `calculateRank` keeps the merged read for *display* only. What replaced it is a different, deliberate rule, and it is what the tests now pin:
+    - A subject with a calculated rank submits that rank.
+    - An **unrated** subject inherits the teacher's explicit manual proposal (`votedRank`) if one exists.
+    - With neither, the subject submits **nothing** and the loop `continue`s. It is *not* back-filled with a fabricated `Geselle`, because that would store a `proposedStatus` nobody cast for that subject and make an open pupil read as decided.
+    - Consequence, intended: `isSubmitted` in Gesamt mode requires **every** subject, so a pupil with one unrated subject stays open and never reaches the submitted list. A teacher who wants that pupil closed must rate the subject or set a proposal. Regression-tested in `BeobachtungsGrid.test.tsx` ("never submits a fabricated rank for an unrated subject", "lets an unrated subject inherit an explicit manual proposal").
 - Never do `pupil.evaluations.flatMap(e => e.items)` to calculate positive counts, as pupils with multiple subject evaluations will accumulate $> 18$ items and artificially trigger *Meister*!
 - [`client/src/lib/pupilItems.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/lib/pupilItems.ts) is the client-side counterpart of this rule and of Invariant 4. It is the sanctioned home for subject-scoped reads; the grid already routes through it.
 - ⚠️ **OPEN VIOLATION — the four client report/overview rank implementations inflate positives. The bug's *shape* changed and the old description is wrong.**
@@ -178,9 +182,9 @@ If you modify this codebase, **you must maintain these invariants**:
   | `client/src/components/TeacherClassReportModal.tsx:39` | inline count | yes — teacher report printout |
   | `client/src/components/ClassOverview.tsx:59` | `getPupilRank` | **no** — not imported by `App.tsx`; dead component |
 
-  Treat these four ranks as **display-only and untrustworthy** until unification lands. `BeobachtungsGrid.tsx` is correct about scoping and is the reference implementation. **The fix needs a product decision, not just a refactor:** the correct merge is one of (a) scope each view to `mySubjects` and treat distinct subjects as distinct rasters, (b) average the per-subject ranks, or (c) any-positive across subjects, which is what the code does today and which the 18-item invariant argues against. Do not pick one in code without the school's answer — see the Gesamt-mode caveat above and roadmap E13. Unification alone only decides *where* the count comes from.
+  Treat these four ranks as **display-only and untrustworthy** until unification lands. `BeobachtungsGrid.tsx` is correct about scoping and is the reference implementation. **The fix needs a product decision, not just a refactor:** the correct merge is one of (a) scope each view to `mySubjects` and treat distinct subjects as distinct rasters, (b) average the per-subject ranks, or (c) any-positive across subjects, which is what the code does today and which the 18-item invariant argues against. Do not pick one in code without the school's answer — see the Gesamt-mode caveat above and roadmap E13. Unification alone only decides *where* the count comes from. **Partially resolved since the last revision:** all four now read the *thresholds and denominator* from the delivered config (§8), so they agree with the server about where the bars are; the *merge semantics* above are unchanged and still open.
 
-- **Related hardcoding, also unfixed**: the thresholds (`14` / `8`) and the `/18` denominator are literals in all four files above and in `BeobachtungsGrid.tsx`, not read from `server/src/config.ts` (`rankThresholds`, `rubricItemCount`). Changing `RANK_THRESHOLD_MEISTER` changes the server's answer and none of the client's.
+- **Related hardcoding, resolved since the last revision**: the thresholds (`14` / `8`) and the `/18` denominator were literals in the client. They are now **delivered**, not copied: `GET /api/classes/:classId/pupils` answers with `rubricConfig` read from `server/src/config.ts` (`rankThresholds`, `rubricItemCount`, `rankAggregation`), `App.tsx` installs it via `setActiveRubricConfig`, and the raster maths reads it through `activeRankThresholds()` / `activeRubricItemCount()`. See §8.
 
 - **Resolved since the last revision**: the deadline is no longer a local-time literal. `submissionDeadline` now arrives from the API (`/api/classes/:id/pupils` → `App.tsx` → props) and is parsed as a UTC ISO string. `BeobachtungsGrid.tsx` fails **closed** when it is absent (`!Number.isFinite(deadlineAt) || now > deadlineAt` → writes disabled), so a missing deadline locks the grid rather than unlocking it. `ClassOverview.tsx` still carries a hardcoded `'2026-10-30T21:59:59.000Z'` fallback, but that component is not wired in.
 
@@ -188,6 +192,37 @@ If you modify this codebase, **you must maintain these invariants**:
 - The app uses **HttpOnly, SameSite cookies** for both REST API and WebSockets.
 - WebSocket handshakes authenticate via the browser's cookie header during the HTTP upgrade. Do NOT attach JWT tokens in WS URL query strings.
 - If `user.mustChangePassword === true`, WebSockets must be rejected with close code `1008`.
+
+---
+
+## 8. Rubric Configuration — The Single Source of Truth
+
+**The server decides; the client obeys.** Every rank boundary and the raster denominator live in exactly one place at runtime:
+
+- `server/src/config.ts` — `rankThresholds` (`RANK_THRESHOLD_MEISTER`, `RANK_THRESHOLD_GESELLE`) and `rubricItemCount` (`RUBRIC_ITEM_COUNT`), validated at boot (`meister` must exceed `geselle`; `itemCount` must be positive). A payload that violates this is rejected at startup, so the values that reach `lib/ranking.ts` are always orderable.
+- `server/src/lib/ranking.ts` — the only code that compares a score against those thresholds when a rank is **stored**.
+
+**Do not copy those numbers into the client.** A second copy is exactly how a deployment that raised `RANK_THRESHOLD_MEISTER` shows *Meister* on screen while the server stores *Lehrling* — the client and the server then disagree about every pupil, silently.
+
+### The delivery path
+
+```
+server/src/config.ts                (env → validated values)
+  └─ GET /api/classes/:classId/pupils        → `rubricConfig` field
+       └─ client/src/lib/rubricConfig.ts     (setActiveRubricConfig / activeRankThresholds / activeRubricItemCount)
+            └─ scoreSubject(...)             (client/src/lib/pupilItems.ts)
+            └─ formatCount / formatSubjectEvidence / computeSubjectEvidenceBars   (client/src/lib/conferenceEvidence.ts)
+            └─ quickGradeFills(...)          (one-click grade fill pattern)
+```
+
+`App.tsx` calls `setActiveRubricConfig(pupilData.rubricConfig)` in `loadClassData`; every consumer below reads it at **call** time, so the config can be swapped between renders.
+
+### Rules for touching this
+
+- **Reject, don't apply, a bad payload.** `setActiveRubricConfig` ignores an absent, partial, or self-contradictory config and keeps the last good one (initially the shipped defaults `14`/`8`/`18`). `positiveCount >= undefined` is always `false`, so a partial config would otherwise silently demote the whole class to *Lehrling*. The shipped defaults exist so the first render — and every test that renders without a roster payload — behave exactly as before.
+- **`assessmentRubrics.gradeBoundaries` is NOT the source.** `server/src/db/seed.ts` writes it once, only when no default rubric exists. Raising `RANK_THRESHOLD_MEISTER` on an existing install changes `config.ts` and leaves a stale rubric row behind. Read `config.ts`.
+- **The one-click grade fills are derived, not fixed.** `quickGradeFills(rank, itemCount)` fills *Meister* to exactly the meister threshold, *Geselle* to the midpoint of the band (`geselle + floor((meister - geselle) / 2)`), and *Lehrling* to `floor(geselle / 2)`. The *Geselle* slack is deliberate: filling exactly `geselle` positives leaves no margin, and a teacher demoting a single item would drop the pupil below the bar. The invariant worth keeping is that a fill never scores a different rank than the one clicked — tested across several threshold pairs, not pinned to one number.
+- **Every test file that touches the config resets it.** The values are install-wide module state, so a raised count leaks into the next assertion without an `afterEach(() => resetActiveRubricConfig())`.
 
 ---
 
@@ -216,7 +251,7 @@ If you modify this codebase, **you must maintain these invariants**:
 
 ---
 
-## 6. 🛠️ Essential Terminal Commands
+## 9. 🛠️ Essential Terminal Commands
 
 Run commands from the repository root:
 
@@ -248,7 +283,7 @@ python scripts/deploy_to_production.py
 
 ---
 
-## 7. 🤖 Checklist for Incoming AI Code Reviews
+## 10. 🤖 Checklist for Incoming AI Code Reviews
 
 When reviewing changes or writing code:
 - [ ] Did you preserve existing comments and docstrings?

@@ -50,8 +50,10 @@ function renderOverview(
   pupils: PupilWithData[],
   mySubjects: Array<{ code: string; name: string; isCoreSmile: boolean }> = [GERMAN, MATHS],
   submissionDeadline?: string | null,
+  criteria: Array<{ id: string; name: string; position: number; items: Array<{ key: string }> }> = CRITERIA,
+  classSubjects: Array<{ code: string; name: string; isCoreSmile: boolean }> = mySubjects,
 ) {
-  const currentClass: SchoolClass = { id: CLASS_ID, name: '3a', grade: 3, mySubjects };
+  const currentClass: SchoolClass = { id: CLASS_ID, name: '3a', grade: 3, mySubjects: classSubjects };
   const currentUser: User = { id: 'u1', username: 'abc', role: 'teacher', teacherId: 1 };
 
   return render(
@@ -66,9 +68,18 @@ function renderOverview(
       mySubjects={mySubjects}
       currentUser={currentUser}
       submissionDeadline={submissionDeadline}
+      criteria={criteria}
     />,
   );
 }
+
+/** The configured rubric: exactly the criteria keys the school actually uses. */
+const CRITERIA = Array.from({ length: 18 }, (_, i) => ({
+  id: `c-${i}`,
+  name: `Kriterium ${i}`,
+  position: i,
+  items: [{ key: `crit_${i}` }],
+}));
 
 /** The count on the "Offen / Zu bewerten" folder tab. */
 function openCount(): string {
@@ -175,8 +186,10 @@ describe('getPupilRank deduplication across subjects', () => {
     ]);
 
     renderOverview([anna], [GERMAN, MATHS]);
-    // Must display 18 / 18 Punkte, never 36 / 18 Punkte
-    expect(screen.getByText('18 / 18 Punkte')).toBeInTheDocument();
+    // Must display D 18/18 Meister and M 18/18 Meister, never 36 / 18 Punkte
+    expect(screen.getByText(/D 18\/18 Meister/i)).toBeInTheDocument();
+    expect(screen.getByText(/M 18\/18 Meister/i)).toBeInTheDocument();
+    expect(screen.queryByText(/36/)).toBeNull();
   });
 });
 
@@ -191,5 +204,69 @@ describe('submission deadline display and behavior', () => {
     const anna = pupil(1, 'Anna Musster', [evaluation('D', true, '2026-10-06T09:00:00.000Z')]);
     renderOverview([anna], [GERMAN], '2099-01-01T00:00:00.000Z');
     expect(screen.queryByText(/\(Abgelaufen\)/)).toBeNull();
+  });
+});
+
+describe('subject-labelled scores per subject', () => {
+  it('shows distinct scores and ranks per subject rather than an any-positive merged result', () => {
+    const germanItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-d-${i}`,
+      itemKey: `crit_${i}`,
+      rating: i < 6 ? 'smile' : 'struggle',
+      updatedAt: '2026-10-01T10:00:00.000Z',
+    }));
+    const mathsItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-m-${i}`,
+      itemKey: `crit_${i}`,
+      rating: i < 16 ? 'smile' : 'struggle',
+      updatedAt: '2026-10-01T10:00:00.000Z',
+    }));
+
+    const anna = pupil(1, 'Anna Multi', [
+      { ...evaluation('D', false), items: germanItems as any },
+      { ...evaluation('M', false), items: mathsItems as any },
+    ]);
+
+    renderOverview([anna], [GERMAN, MATHS]);
+
+    expect(screen.getByText(/D 6\/18 Lehrling/i)).toBeInTheDocument();
+    expect(screen.getByText(/M 16\/18 Meister/i)).toBeInTheDocument();
+    expect(screen.queryByText(/18 \/ 18 Punkte/i)).toBeNull();
+  });
+});
+
+describe('scoring uses the configured rubric, not legacy evaluation rows', () => {
+  it('counts only configured criteria keys when the data holds dropped keys', () => {
+    // The pupil has 18 item rows, but 3 of them use keys the rubric no longer
+    // contains. Counts must come from the configured criteria, so only 15 of the
+    // 18 configured criteria are rated - not all 18 from the stale rows.
+    const items = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-d-${i}`,
+      itemKey: i < 15 ? `crit_${i}` : `dropped_${i}`,
+      rating: 'smile',
+      version: 1,
+    }));
+    const anna = pupil(1, 'Anna Multi', [{ ...evaluation('D', false), items: items as any }]);
+
+    renderOverview([anna], [GERMAN]);
+
+    expect(screen.getByText(/D 15\/18 Meister/i)).toBeInTheDocument();
+  });
+});
+
+describe('submission scope falls back to the class subject list', () => {
+  it('files a pupil under *bewertet* when the class assigns the subjects', () => {
+    // mySubjects prop is empty, but currentClass.mySubjects teaches D and M and
+    // both are submitted: the folder split must use the effective subject list,
+    // not the (empty) teacher prop, or every pupil stays *offen* forever.
+    const anna = pupil(1, 'Anna Musster', [
+      evaluation('D', true, '2026-10-06T09:00:00.000Z'),
+      evaluation('M', true, '2026-10-06T09:05:00.000Z'),
+    ]);
+
+    renderOverview([anna], [], undefined, undefined, [GERMAN, MATHS]);
+
+    expect(openCount()).toBe('0');
+    expect(rankedCount()).toBe('1');
   });
 });

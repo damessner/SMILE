@@ -1,7 +1,23 @@
 import { readFileSync } from 'fs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FastifyInstance } from 'fastify';
-import { requireEvaluationActor, resolveProposedRank, shouldBroadcastStatusUpdate } from './evaluations.js';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import { getClassRoundLockState } from '../lib/class-round-lock.js';
+import { getLatestRound } from '../lib/rounds.js';
+import {
+  rejectIfClassRoundLocked,
+  requireEvaluationActor,
+  resolveProposedRank,
+  shouldBroadcastStatusUpdate,
+} from './evaluations.js';
+
+vi.mock('../lib/class-round-lock.js', () => ({
+  getClassRoundLockState: vi.fn(),
+  isClassRoundLocked: vi.fn((g: boolean, c: boolean) => Boolean(g || c)),
+}));
+
+vi.mock('../lib/rounds.js', () => ({
+  getLatestRound: vi.fn(async () => null),
+}));
 
 /**
  * Tests for `routes/evaluations.ts` itself.
@@ -361,5 +377,126 @@ describe('evaluation actor foreign-key policy', () => {
     expect(statusCode).toBe(503);
     expect(responseBody.code).toBe('SYSTEM_ACTOR_NOT_CONFIGURED');
     expect(requireEvaluationActor(null, reply)).toBeNull();
+  });
+});
+
+describe('rejectIfClassRoundLocked', () => {
+  it('returns true and responds with 423 CLASS_CONFERENCE_LOCKED when locked', async () => {
+    vi.mocked(getClassRoundLockState).mockResolvedValueOnce(true);
+
+    let statusCode = 0;
+    let responseBody: any;
+    const reply = {
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      send(body: unknown) {
+        responseBody = body;
+        return this;
+      },
+    } as unknown as FastifyReply;
+
+    const result = await rejectIfClassRoundLocked(reply, 'round-1', 101);
+    expect(result).toBe(true);
+    expect(statusCode).toBe(423);
+    expect(responseBody).toEqual({
+      error: 'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+      code: 'CLASS_CONFERENCE_LOCKED',
+    });
+    expect(getClassRoundLockState).toHaveBeenCalledWith('round-1', 101);
+  });
+
+  it('returns false and does not touch reply when unlocked', async () => {
+    vi.mocked(getClassRoundLockState).mockResolvedValueOnce(false);
+
+    let called = false;
+    const reply = {
+      status() {
+        called = true;
+        return this;
+      },
+      send() {
+        called = true;
+        return this;
+      },
+    } as unknown as FastifyReply;
+
+    const result = await rejectIfClassRoundLocked(reply, 'round-1', 101);
+    expect(result).toBe(false);
+    expect(called).toBe(false);
+  });
+});
+
+describe('Class conference lock enforcement on evaluation mutation routes', () => {
+  it('/batch-default guards writes with rejectIfClassRoundLocked after getOpenRound', () => {
+    const handler = routeCode('/batch-default');
+    const lockCheck = handler.indexOf('rejectIfClassRoundLocked(');
+    const roundCheck = handler.indexOf('getOpenRound()');
+    expect(lockCheck).toBeGreaterThan(-1);
+    expect(lockCheck).toBeGreaterThan(roundCheck);
+  });
+
+  it('/status guards writes with rejectIfClassRoundLocked after getOpenRound', () => {
+    const handler = routeCode('/status');
+    const lockCheck = handler.indexOf('rejectIfClassRoundLocked(');
+    const roundCheck = handler.indexOf('getOpenRound()');
+    expect(lockCheck).toBeGreaterThan(-1);
+    expect(lockCheck).toBeGreaterThan(roundCheck);
+  });
+
+  it('/submit guards writes with rejectIfClassRoundLocked after getOpenRound', () => {
+    const handler = routeCode('/submit');
+    const lockCheck = handler.indexOf('rejectIfClassRoundLocked(');
+    const roundCheck = handler.indexOf('getOpenRound()');
+    expect(lockCheck).toBeGreaterThan(-1);
+    expect(lockCheck).toBeGreaterThan(roundCheck);
+  });
+
+  it('/reopen guards writes with rejectIfClassRoundLocked after getOpenRound', () => {
+    const handler = routeCode('/reopen');
+    const lockCheck = handler.indexOf('rejectIfClassRoundLocked(');
+    const roundCheck = handler.indexOf('getOpenRound()');
+    expect(lockCheck).toBeGreaterThan(-1);
+    expect(lockCheck).toBeGreaterThan(roundCheck);
+  });
+
+  it('/batch-items guards writes with rejectIfClassRoundLocked after getOpenRound', () => {
+    const handler = routeCode('/batch-items');
+    const lockCheck = handler.indexOf('rejectIfClassRoundLocked(');
+    const roundCheck = handler.indexOf('getOpenRound()');
+    expect(lockCheck).toBeGreaterThan(-1);
+    expect(lockCheck).toBeGreaterThan(roundCheck);
+  });
+});
+
+describe('getOpenRound resolution policy', () => {
+  it('returns the latest round when it is open, even if an older round is closed', async () => {
+    const { getOpenRound } = await import('./evaluations.js');
+    const rounds = [
+      { id: 'round-2', isLocked: true, createdAt: new Date('2026-02-01T00:00:00.000Z') },
+      { id: 'round-1', isLocked: false, createdAt: new Date('2026-01-01T00:00:00.000Z') },
+    ];
+    vi.mocked(getLatestRound).mockResolvedValueOnce(rounds[0] as never);
+
+    // The locked round is the latest one, so no write is allowed - the policy
+    // is "look at the newest round only", never "fall back to an older open one".
+    expect(await getOpenRound()).toBeNull();
+    expect(getLatestRound).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the latest round when it is not locked', async () => {
+    const { getOpenRound } = await import('./evaluations.js');
+    const open = { id: 'round-2', isLocked: false, createdAt: new Date('2026-02-01T00:00:00.000Z') };
+    vi.mocked(getLatestRound).mockResolvedValueOnce(open as never);
+
+    expect(await getOpenRound()).toBe(open);
+  });
+
+  it('returns null when there is no round at all', async () => {
+    const { getOpenRound } = await import('./evaluations.js');
+    vi.mocked(getLatestRound).mockResolvedValueOnce(null as never);
+
+    expect(await getOpenRound()).toBeNull();
   });
 });

@@ -77,4 +77,9 @@ describe('schema is owned by the committed migrations', () => {
       expect(readdirSync(drizzleDir)).toContain(`${entry.tag}.sql`);
     }
   });
+
+  it('migration history creates class_round_locks with unique (round_id, class_id)', () => {
+    expect(migrationSql).toMatch(/CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?"?class_round_locks"?/i);
+    expect(migrationSql).toMatch(/UNIQUE\s*\(\s*round_id\s*,\s*class_id\s*\)/i);
+  });
 });
