@@ -10,11 +10,21 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
-user = sys.argv[1] if len(sys.argv) > 1 and "@" in sys.argv[1] else "smile@ms-telfs.at"
-pwd = sys.argv[2] if len(sys.argv) > 2 else (sys.argv[1] if len(sys.argv) > 1 and "@" not in sys.argv[1] else None)
+import os
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+user = os.environ.get("M365_USER") or (sys.argv[1] if len(sys.argv) > 1 and "@" in sys.argv[1] else "smile@ms-telfs.at")
+pwd = os.environ.get("M365_PASSWORD") or (sys.argv[2] if len(sys.argv) > 2 else (sys.argv[1] if len(sys.argv) > 1 and "@" not in sys.argv[1] else None))
+
+if not pwd and sys.stdin.isatty():
+    pwd = getpass.getpass(f"Enter Microsoft 365 password for {user}: ")
 
 if not pwd:
-    pwd = getpass.getpass(f"Enter Microsoft 365 password for {user}: ")
+    print("Error: No password provided.", file=sys.stderr)
+    sys.exit(1)
 
 client_id = "d3590ed6-52b3-4102-aeff-aad2292ab01c"  # Microsoft Office public client
 tenant_id = "42864638-c600-42c0-8f6a-18beaa7cbf31"
