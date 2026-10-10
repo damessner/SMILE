@@ -389,7 +389,11 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
 
       try {
         if (cleanId.endsWith('.dump.enc')) {
-          const passphrase = process.env.BACKUP_ENCRYPTION_PASSPHRASE || process.env.M365_BACKUP_PASSWORD;
+          // Single source of truth for the decryption key. There is deliberately
+          // no fallback to a second variable name: scripts/backup_m365.py encrypts
+          // only with BACKUP_ENCRYPTION_PASSPHRASE, so accepting anything else here
+          // could produce a confusing failure instead of a clear misconfiguration.
+          const passphrase = process.env.BACKUP_ENCRYPTION_PASSPHRASE;
           if (!passphrase) {
             return reply.status(400).send({
               error: 'Kein Entschlüsselungs-Passwort (BACKUP_ENCRYPTION_PASSPHRASE) konfiguriert.',

@@ -8,8 +8,10 @@ Wants=network-online.target
 Type=oneshot
 User=smile
 Group=smile
+# Only the dedicated backup environment file. Deliberately NOT /opt/smile/.env:
+# that is the application file and carries JWT_SECRET and other secrets the
+# backup job has no need for.
 EnvironmentFile=-/etc/smile/backup.env
-EnvironmentFile=-/opt/smile/.env
 ExecStart=/usr/bin/python3 /opt/smile/scripts/backup_m365.py
 
 # Hardening

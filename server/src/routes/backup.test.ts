@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -257,6 +257,51 @@ describe('Backup API endpoints (Task 6)', () => {
 
       expect(res.statusCode).toBe(500);
       expect(res.json().error).toContain('Wiederherstellung fehlgeschlagen');
+    });
+  });
+
+  // The encryption passphrase is a single, independent secret. These two tests
+  // pin the contract with scripts/backup_m365.py: it encrypts only with
+  // BACKUP_ENCRYPTION_PASSPHRASE, so the restore path must not accept any other
+  // variable name. An earlier version fell back to M365_BACKUP_PASSWORD, which
+  // no writer ever used.
+  describe('restore of an encrypted backup', () => {
+    const ENC_FILE = 'smile_db_2026-10-10_1100.dump.enc';
+
+    afterEach(() => {
+      delete process.env.BACKUP_ENCRYPTION_PASSPHRASE;
+      delete process.env.M365_BACKUP_PASSWORD;
+    });
+
+    const writeEncBackup = () => {
+      fs.writeFileSync(path.join(testBackupDir, ENC_FILE), 'ciphertext');
+    };
+
+    it('rejects an encrypted backup when no passphrase is configured', async () => {
+      writeEncBackup();
+      const token = createToken('admin');
+      const res = await app!.inject({
+        method: 'POST',
+        url: '/api/backup/restore',
+        cookies: { smile_session: token },
+        payload: { backupId: ENC_FILE },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain('Entschlüsselungs-Passwort');
+    });
+
+    it('does not accept a retired fallback variable as the passphrase', async () => {
+      writeEncBackup();
+      process.env.M365_BACKUP_PASSWORD = 'not-the-backup-key';
+      const token = createToken('admin');
+      const res = await app!.inject({
+        method: 'POST',
+        url: '/api/backup/restore',
+        cookies: { smile_session: token },
+        payload: { backupId: ENC_FILE },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toContain('Entschlüsselungs-Passwort');
     });
   });
 });

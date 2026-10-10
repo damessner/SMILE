@@ -318,12 +318,29 @@ EOF
 systemctl daemon-reload
 systemctl enable --now smile.service
 
-# Install and enable 10-minute automated M365 backup timer
+# Install the 10-minute automated M365 backup timer.
+#
+# The timer is INSTALLED but only ARMED if the job can actually run, i.e. if
+# `backup_m365.py --check` passes on the container. Previously this ran
+# `enable --now` unconditionally, so any redeploy of an existing box without a
+# configured passphrase or a working M365 credential started a run every 10
+# minutes that failed loudly — correct behaviour, but as an unrequested alert
+# storm during a deploy.
 if [ -f "/opt/smile/scripts/systemd/smile-m365-backup.service" ]; then
   install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
   install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
   systemctl daemon-reload
-  systemctl enable --now smile-m365-backup.timer
+  systemctl enable smile-m365-backup.timer
+
+  if pct exec "$CTID" -- sudo -u smile python3 /opt/smile/scripts/backup_m365.py --check >/dev/null 2>&1; then
+    systemctl start smile-m365-backup.timer
+    info "M365 backup timer armed."
+  else
+    info "M365 backup timer installed but NOT started."
+    info "Configure M365_USER, M365_PASSWORD and BACKUP_ENCRYPTION_PASSPHRASE in"
+    info "/etc/smile/backup.env, then run 'backup_m365.py --check' before starting it:"
+    info "  pct exec $CTID -- systemctl start smile-m365-backup.timer"
+  fi
 fi
 '
 
