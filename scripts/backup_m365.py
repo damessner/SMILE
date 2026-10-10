@@ -181,6 +181,15 @@ def get_m365_token(username, password, tenant_id="42864638-c600-42c0-8f6a-18beaa
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = json.loads(resp.read().decode("utf-8"))
             return body.get("access_token")
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        try:
+            err_json = json.loads(err_body)
+            desc = err_json.get("error_description", err_body)
+            log(f"M365 OAuth authentication failed ({err_json.get('error', e.code)}): {desc}")
+        except Exception:
+            log(f"M365 OAuth HTTPError {e.code}: {err_body}")
+        return None
     except Exception as e:
         log(f"M365 OAuth authentication failed: {e}")
         return None
@@ -533,7 +542,8 @@ def main():
         else:
             warn("No usable rclone remote — falling back to the legacy password grant. "
                  "Run scripts/setup-m365-rclone.sh to move off it.")
-            token = get_m365_token(m365_user, m365_pass)
+            tenant_id = setting(loaded, "M365_TENANT_ID", "42864638-c600-42c0-8f6a-18beaa7cbf31")
+            token = get_m365_token(m365_user, m365_pass, tenant_id=tenant_id)
             if not token:
                 fail("Authentication to Microsoft Graph API failed. "
                      "If MFA or Security Defaults are now enforced for this account, "

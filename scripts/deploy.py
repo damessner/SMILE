@@ -229,6 +229,37 @@ curl -s -m 5 http://127.0.0.1:3000/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\\.(j
        label='5. recent log warnings')
     ex(f'ls -la /var/backups/smile/ | tail -5', label='5. backups on disk')
 
+    # --- 6. M365 backup timer & environment setup ------------------------
+    ex('''
+mkdir -p /etc/smile /var/backups/smile
+chown -R smile:smile /var/backups/smile
+chmod 700 /var/backups/smile
+
+cp -a /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
+cp -a /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+
+if [ ! -f /etc/smile/backup.env ]; then
+  ENC_KEY=$(openssl rand -hex 32)
+  DB_URL=$(grep -E '^DATABASE_URL=' /opt/smile/.env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+  cat > /etc/smile/backup.env << EOF_ENV
+DATABASE_URL="${DB_URL}"
+M365_USER="smile@ms-telfs.at"
+M365_PASSWORD="CHANGE_ME"
+M365_TENANT_ID="42864638-c600-42c0-8f6a-18beaa7cbf31"
+BACKUP_ENCRYPTION_PASSPHRASE="${ENC_KEY}"
+KEEP_INTRADAY_DAYS="3"
+KEEP_DAILY_DAYS="30"
+CLOUD_KEEP_DAYS="7"
+EOF_ENV
+  chown smile:smile /etc/smile/backup.env
+  chmod 600 /etc/smile/backup.env
+fi
+
+systemctl enable --now smile-m365-backup.timer
+systemctl status smile-m365-backup.timer --no-pager
+''', label='6. M365 backup timer status')
+
     print('\n✓ DEPLOYMENT SUCCESSFUL')
 finally:
     ssh.close()
