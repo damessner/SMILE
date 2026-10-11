@@ -270,6 +270,20 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect(usersRoute![0]).not.toMatch(/passwordHash/);
   });
 
+  it('resets an account to the requested fixed start password and requires changing it', () => {
+    const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
+    const issueRoute = /fastify\.post\(\s*['"]\/admin\/temporary-password['"][\s\S]*?\n  \);/.exec(source);
+    expect(issueRoute).toBeTruthy();
+    const block = issueRoute![0];
+
+    expect(block).toContain("const temporaryPassword = 'smile2026';");
+    expect(block).toContain('passwordHash: await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS)');
+    expect(block).toContain('mustChangePassword: true');
+    expect(block).toContain('sessionVersion: sql`${users.sessionVersion} + 1`');
+    expect(block).toContain('closeUserWebSockets(user.id)');
+    expect(block).toContain('temporaryPassword,');
+  });
+
   it('never logs the issued credential', () => {
     const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
     const issueRoute = /fastify\.post\(\s*['"]\/admin\/temporary-password['"][\s\S]*?\n  \);/.exec(source);
@@ -279,7 +293,7 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect(block).toMatch(/temporaryPassword/);
     const logCalls = block.match(/request\.log\.[a-z]+\(([\s\S]*?)\);/g) ?? [];
     for (const call of logCalls) {
-      expect(call).not.toMatch(/temporaryPassword/);
+      expect(call).not.toMatch(/temporaryPassword|smile2026/);
     }
   });
 

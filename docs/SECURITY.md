@@ -272,15 +272,15 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   arrangement would want a second, independently encrypted target. The key also lives on
   the same host as the data, so a full compromise of LXC 115 exposes historical backups
   as well as live data.
-- ~~**One bootstrap password for every seeded account.**~~ Resolved: administrators issue
-  a per-issuance one-time credential from the new Konten panel
-  (`POST /api/auth/admin/temporary-password`). It is generated server-side, alphanumeric so
-  it survives a printed handover, never a value committed to source control, shown exactly
-  once, never logged, and the account is flagged `mustChangePassword` so every mutating
-  endpoint stays closed until its owner picks their own. The value is *not* the retired
-  shared default, which remains banned in `config.ts`.
-  Still an operator decision: the handover is a person-to-person step, so the school must
-  agree who issues credentials and how they are delivered.
+- ~~**One bootstrap password for every seeded account.**~~ Seeded accounts still use the
+  operator-supplied `INITIAL_USER_PASSWORD` and require a change at first login. The Konten
+  panel's administrator reset (`POST /api/auth/admin/temporary-password`) deliberately resets
+  an account to the legacy shared `smile2026` value by owner request. It revokes prior
+  sessions and forces a password change before the account can mutate data. This reset value
+  is a known, previously published credential; keep this exception limited to an explicit
+  administrator action and never use it for seed-created accounts or other password flows.
+  The admin receives it only in the reset response, it is not logged, and must hand it to the
+  user out of band.
 
 ### Open owner decisions
 
@@ -333,10 +333,10 @@ evidence.
 - The nullable `votes_yes`/`votes_no`/`total_voters` columns on `final_ranks` are left in
   place for reversibility. No code reads them, but a deployment still running older code
   would. Drop them once no deployment does.
-- Every seeded account still shares one `INITIAL_USER_PASSWORD` (each flagged
-  `mustChangePassword`). Issuing per-account credentials needs a delivery channel the app does not
-  have, so this is an open owner decision rather than a code fix; the seed now states the limitation
-  in its output. See "Open owner decisions" above.
+- Every newly seeded teacher still shares the operator-supplied `INITIAL_USER_PASSWORD`
+  (each is flagged `mustChangePassword`). The admin reset separately reuses the known
+  `smile2026` value by owner request; both shared-password paths remain security risks until
+  per-account bootstrap delivery is available.
 - A conflict with no current version to reconcile (the item row disappeared, or no evaluation
   survived) now triggers an authoritative class reload on both the WebSocket and HTTP paths instead
   of leaving a stale cell on screen. The behaviour is unit-tested, but the resulting database state

@@ -15,7 +15,6 @@ import {
   sessionExpiresAt,
   setSessionCookie,
 } from '../lib/session.js';
-import { generateTemporaryPassword } from '../lib/temporary-credential.js';
 import { closeUserWebSockets } from '../ws/live-sync.js';
 
 const BCRYPT_ROUNDS = 12;
@@ -278,16 +277,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   /**
-   * POST /api/auth/admin/temporary-password — issue a one-time credential for an account.
+   * POST /api/auth/admin/temporary-password — reset an account to the school bootstrap password.
    *
-   * This is the delivery channel that replaces the shared bootstrap password. There is no
-   * mail on this LAN, so the administrator receives the generated value once and relays it
-   * out of band; the account is flagged `mustChangePassword`, so every mutating endpoint
-   * stays closed until its owner picks their own value.
-   *
-   * The plaintext is returned exactly once, here. It is never stored, never logged and
-   * never retrievable again — a later request for the same account generates a *new*
-   * value rather than showing the old one, so a lost response cannot be replayed.
+   * The administrator hands `smile2026` to the user out of band. The account is flagged
+   * `mustChangePassword`, every mutating endpoint stays closed until its owner picks a
+   * private value, and all existing sessions are revoked. The plaintext is returned only
+   * in this admin response and is never logged.
    */
   fastify.post(
     '/admin/temporary-password',
@@ -329,7 +324,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(1);
       if (!user) return reply.status(404).send({ error: 'Benutzer nicht gefunden' });
 
-      const temporaryPassword = generateTemporaryPassword();
+      const temporaryPassword = 'smile2026';
 
       await db.transaction(async (tx) => {
         await tx
@@ -376,7 +371,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         temporaryPassword,
         mustChangePassword: true,
         notice:
-          'Dieses Passwort wird genau einmal angezeigt. Bitte jetzt notieren und persönlich übergeben — danach muss es beim ersten Anmelden geändert werden.',
+          'Bitte dieses Startpasswort persönlich übergeben. Es muss beim nächsten Anmelden geändert werden.',
       });
     },
   );

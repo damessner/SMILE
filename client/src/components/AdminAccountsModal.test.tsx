@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminAccountsModal } from './AdminAccountsModal';
 import { ToastProvider } from './Toast';
-import { getAdminUsers, issueTemporaryPassword, requestPasswordReset } from '../services/api';
+import { getAdminUsers, resetStartPassword, requestPasswordReset } from '../services/api';
 
 vi.mock('../services/api', () => ({
   getAdminUsers: vi.fn(),
-  issueTemporaryPassword: vi.fn(),
+  resetStartPassword: vi.fn(),
   requestPasswordReset: vi.fn(),
 }));
 
@@ -44,10 +44,10 @@ describe('AdminAccountsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getAdminUsers).mockResolvedValue({ users: ACCOUNTS });
-    vi.mocked(issueTemporaryPassword).mockResolvedValue({
+    vi.mocked(resetStartPassword).mockResolvedValue({
       success: true,
       username: 'maria',
-      temporaryPassword: 'kQ7bTn2pLmZ9xR4w',
+      temporaryPassword: 'smile2026',
       mustChangePassword: true,
       notice: 'Dieses Passwort wird genau einmal angezeigt.',
     });
@@ -59,12 +59,13 @@ describe('AdminAccountsModal', () => {
 
     await waitFor(() => expect(screen.getByText('maria')).toBeInTheDocument());
     expect(screen.getByText('admin')).toBeInTheDocument();
+    expect(screen.getByText(/gemeinsame Startpasswort ist bekannt und unsicher/i)).toBeInTheDocument();
     // Non-participation is the actionable state, so it must be visible without opening
     // anything.
     expect(screen.getByText('Passwort offen')).toBeInTheDocument();
   });
 
-  it('shows an issued credential exactly once and does not copy it to the clipboard', async () => {
+  it('shows the reset start password once and does not copy it to the clipboard', async () => {
     const writeText = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });
 
@@ -72,18 +73,18 @@ describe('AdminAccountsModal', () => {
     renderModal();
     await waitFor(() => expect(screen.getByText('maria')).toBeInTheDocument());
 
-    const issueButtons = screen.getAllByRole('button', { name: /einmal-passwort/i });
+    const issueButtons = screen.getAllByRole('button', { name: /startpasswort zurücksetzen/i });
     await user.click(issueButtons[1]);
 
-    await waitFor(() => expect(screen.getByText('kQ7bTn2pLmZ9xR4w')).toBeInTheDocument());
-    expect(issueTemporaryPassword).toHaveBeenCalledWith('maria');
+    await waitFor(() => expect(screen.getByText('smile2026')).toBeInTheDocument());
+    expect(resetStartPassword).toHaveBeenCalledWith('maria');
 
-    // A clipboard copy would outlive the dialog and defeat "shown once".
+    // A clipboard copy would outlive the dialog and expose the shared reset value.
     expect(writeText).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: /notiert/i }));
     await waitFor(() =>
-      expect(screen.queryByText('kQ7bTn2pLmZ9xR4w')).not.toBeInTheDocument()
+      expect(screen.queryByText('smile2026')).not.toBeInTheDocument()
     );
   });
 
@@ -93,7 +94,7 @@ describe('AdminAccountsModal', () => {
 
     await waitFor(() => expect(screen.getByText('Zugriff verweigert')).toBeInTheDocument());
     // An empty list would read as "no accounts exist", which is a different claim.
-    expect(screen.queryByRole('button', { name: /einmal-passwort/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /startpasswort zurücksetzen/i })).not.toBeInTheDocument();
   });
 
   it('keeps the force-reset action available only for accounts that owe a password', async () => {
