@@ -191,6 +191,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     pupilName: string;
     nextPupilName: string | null;
     allDone: boolean;
+    pendingSubjects?: string[];
+    submittedAny?: boolean;
   } | null>(null);
 
   // Weekly timetable lesson hours & conference voting weight
@@ -861,6 +863,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     const pupilName = selectedPupil.fullName;
 
     beginSave();
+    const pendingSubjects: string[] = [];
+    let submittedAny = false;
     try {
       if (onSubmitPupil) {
         for (const subCode of targetSubjectCodes) {
@@ -876,9 +880,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             ? (scored.rank ?? votedRank)
             : (votedRank || scored.rank);
           if (!subRank) {
+            pendingSubjects.push(subCode);
             continue;
           }
           await onSubmitPupil(selectedPupil.id, subRank, votedComment, subCode);
+          submittedAny = true;
         }
       }
       finishSave();
@@ -886,6 +892,21 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       const message = error instanceof Error ? error.message : 'Einreichung konnte nicht gespeichert werden.';
       finishSave(error);
       toast.error(message);
+      return;
+    }
+
+    if (pendingSubjects.length > 0) {
+      const subjectLabels = pendingSubjects.map((code) => {
+        const subject = mySubjects.find((candidate) => candidate.code === code);
+        return subject ? `${subject.name} (${code})` : code;
+      });
+      setSubmitToast({
+        pupilName,
+        nextPupilName: null,
+        allDone: false,
+        pendingSubjects: subjectLabels,
+        submittedAny,
+      });
       return;
     }
 
@@ -956,10 +977,21 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           </div>
           <div>
             <p className="font-bold text-slate-100 leading-tight">
-              <span className="text-emerald-300">{submitToast.pupilName}</span> erfolgreich eingereicht!
+              {submitToast.pendingSubjects ? (
+                <>
+                  <span className="text-amber-300">{submitToast.pupilName}</span>{' '}
+                  {submitToast.submittedAny ? 'teilweise eingereicht' : 'noch offen'}
+                </>
+              ) : (
+                <>
+                  <span className="text-emerald-300">{submitToast.pupilName}</span> erfolgreich eingereicht!
+                </>
+              )}
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
-              {submitToast.allDone ? (
+              {submitToast.pendingSubjects ? (
+                <span>Offen: {submitToast.pendingSubjects.join(', ')}. Bitte ergänzen und erneut einreichen.</span>
+              ) : submitToast.allDone ? (
                 <span className="text-amber-300 font-bold">🎉 Alle Schüler dieser Klasse sind jetzt bewertet!</span>
               ) : (
                 <span>

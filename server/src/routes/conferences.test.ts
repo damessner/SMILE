@@ -261,6 +261,26 @@ describe('conference decision metadata', () => {
  * decisions are pinned as pure functions rather than only through the route, which
  * cannot be exercised without a database.
  */
+describe('submitted conference proposals', () => {
+  it('keeps withdrawn proposals pending and excludes them from every weighted rank total', async () => {
+    const { summarizeSubmittedTeacherVotes } = await import('./conferences.js');
+    const summary = summarizeSubmittedTeacherVotes([
+      { teacherId: 1, teacherShort: 'MUE', teacherName: 'MUE', subjectCode: 'D', isSubmitted: true, submittedAt: new Date(), proposedStatus: 'Meister', positiveCount: 14, totalRated: 18, hours: 4, weight: 4, isTeamTeaching: true },
+      { teacherId: 2, teacherShort: 'SCH', teacherName: 'SCH', subjectCode: 'M', isSubmitted: false, submittedAt: null, proposedStatus: 'Lehrling', positiveCount: 4, totalRated: 18, hours: 4, weight: 8, isTeamTeaching: true },
+      { teacherId: 3, teacherShort: 'WEB', teacherName: 'WEB', subjectCode: 'BO', isSubmitted: true, submittedAt: new Date(), proposedStatus: 'Geselle', positiveCount: 8, totalRated: 18, hours: 2, weight: 2, isTeamTeaching: false },
+    ]);
+
+    expect(summary.teacherVotes.map((vote) => vote.proposedStatus)).toEqual([
+      'Meister',
+      null,
+      'Geselle',
+    ]);
+    expect(summary.submittedTeachers).toBe(2);
+    expect(summary.voteCounts).toEqual({ Lehrling: 0, Geselle: 1, Meister: 1 });
+    expect(summary.hours).toEqual({ Lehrling: 0, Geselle: 2, Meister: 8, total: 10 });
+  });
+});
+
 describe('hours-weighted suggestion', () => {
   it('returns the strict leader', async () => {
     const { hoursWeightedSuggestion } = await import('./conferences.js');

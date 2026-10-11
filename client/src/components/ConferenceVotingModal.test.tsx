@@ -320,6 +320,11 @@ describe('ConferenceVotingModal dissent indicator (Decision 0.3)', () => {
 });
 
 describe('dissentingVotes', () => {
+  it('excludes proposals on unsubmitted evaluations from conference dissent', () => {
+    const withdrawn = { ...vote('SCH', 'Lehrling', 2, false) };
+    expect(dissentingVotes([withdrawn], 'Meister')).toEqual([]);
+  });
+
   const vote = (teacherShort: string, proposedStatus: string, hours: number, isSubmitted = true) => ({
     teacherId: 1,
     teacherShort,
@@ -345,6 +350,46 @@ describe('dissentingVotes', () => {
   it('treats a teacher who never submitted a ballot as missing, not dissenting', () => {
     const dissent = dissentingVotes([vote('SCH', 'Lehrling', 2, false)], 'Meister');
     expect(dissent).toEqual([]);
+  });
+
+  it('renders an unsubmitted teacher evaluation as pending rather than an active rank', async () => {
+    mockSummary([pupil({
+      teacherVotes: [
+        {
+          teacherId: 2,
+          teacherShort: 'SCH',
+          teacherName: 'Stefan Schmidt',
+          subjectCode: 'M',
+          proposedStatus: 'Lehrling',
+          isSubmitted: false,
+          positiveCount: 3,
+          totalRated: 18,
+          hours: 2,
+          comment: 'veralteter Kommentar',
+        },
+      ],
+      voteStats: {
+        Lehrling: 0,
+        Geselle: 0,
+        Meister: 0,
+        hoursLehrling: 0,
+        hoursGeselle: 0,
+        hoursMeister: 0,
+        totalVotedHours: 0,
+        pctLehrling: 0,
+        pctGeselle: 0,
+        pctMeister: 0,
+      },
+    })]);
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByText('Lehrer-Votings & Vorschläge (1 Rückmeldung · 0h gewichtet)')).toBeInTheDocument();
+    });
+    const pendingVote = within(screen.getByRole('article', { name: 'M · SCH' }));
+    expect(pendingVote.getByText('Ausstehend')).toBeInTheDocument();
+    expect(pendingVote.queryByText('Lehrling')).toBeNull();
+    expect(pendingVote.queryByText('veralteter Kommentar')).toBeNull();
   });
 
   it('returns nothing while the board has not decided', () => {

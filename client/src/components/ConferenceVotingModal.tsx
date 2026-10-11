@@ -691,8 +691,9 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   {p.teacherVotes && p.teacherVotes.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {p.teacherVotes.map((tv, i) => (
-                        <div
-                          key={i}
+                        <article
+                          key={`${tv.teacherId}-${tv.subjectCode}-${i}`}
+                          aria-label={`${tv.subjectCode} · ${tv.teacherShort}`}
                           className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3 flex flex-col justify-between"
                         >
                           <div>
@@ -702,14 +703,16 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                               </span>
                               <span
                                 className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${
-                                  tv.proposedStatus === 'Meister'
-                                    ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
-                                    : tv.proposedStatus === 'Geselle'
-                                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                  !tv.isSubmitted
+                                    ? 'bg-slate-800 text-slate-400 border-slate-700'
+                                    : tv.proposedStatus === 'Meister'
+                                      ? 'bg-amber-400/20 text-amber-300 border-amber-400/40'
+                                      : tv.proposedStatus === 'Geselle'
+                                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                                 }`}
                               >
-                                {tv.proposedStatus || 'Ausstehend'}
+                                {tv.isSubmitted ? tv.proposedStatus || 'Ausstehend' : 'Ausstehend'}
                               </span>
                             </div>
 
@@ -722,28 +725,32 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                                   Team-Teaching
                                 </span>
                               )}
-                              <span className="text-slate-400">
-                                (Gewicht: {tv.weight ?? tv.hours ?? 2})
-                              </span>
+                              {tv.isSubmitted && (
+                                <span className="text-slate-400">
+                                  (Gewicht: {tv.weight ?? tv.hours ?? 2})
+                                </span>
+                              )}
                             </div>
 
-                            <div className="text-[11px] text-slate-400 mb-1">
-                              Kriterien: <strong className="text-slate-200">{tv.positiveCount}</strong> positiv
-                            </div>
+                            {tv.isSubmitted && (
+                              <div className="text-[11px] text-slate-400 mb-1">
+                                Kriterien: <strong className="text-slate-200">{tv.positiveCount}</strong> positiv
+                              </div>
+                            )}
 
-                            {tv.comment && (
+                            {tv.isSubmitted && tv.comment && (
                               <p className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2 rounded-xl border border-slate-800">
                                 &bdquo;{tv.comment}&ldquo;
                               </p>
                             )}
                           </div>
 
-                          {tv.nextStep && (
+                          {tv.isSubmitted && tv.nextStep && (
                             <div className="text-[10px] text-slate-400 mt-2 pt-1.5 border-t border-slate-800/60 truncate">
                               Nächster Schritt: <span className="text-slate-200">{tv.nextStep}</span>
                             </div>
                           )}
-                        </div>
+                        </article>
                       ))}
                     </div>
                   ) : (

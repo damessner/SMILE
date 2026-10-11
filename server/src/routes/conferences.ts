@@ -90,6 +90,84 @@ export function hoursWeightedSuggestion(
 }
 
 /** The rank to present for a pupil, after the red-card demotion. */
+export interface ConferenceTeacherVote {
+  teacherId: number | null;
+  teacherShort: string;
+  teacherName: string;
+  subjectCode: string;
+  proposedStatus: string | null;
+  isSubmitted: boolean;
+  submittedAt: Date | null;
+  positiveCount: number;
+  totalRated: number;
+  hours: number;
+  weight: number;
+  isTeamTeaching: boolean;
+  nextStep?: string | null;
+  comment?: string | null;
+}
+
+export interface SubmittedTeacherVoteSummary {
+  teacherVotes: ConferenceTeacherVote[];
+  submittedTeachers: number;
+  voteCounts: Record<Rank, number>;
+  hours: Record<Rank, number> & { total: number };
+  suggestedRankByHours: Rank | null;
+}
+
+/**
+ * Only submitted evaluations are ballots. Keep withdrawn proposals in the
+ * teacher detail as pending, but exclude them from participation and all rank
+ * counts/weights. Team-teaching weight is based on submitted teachers only.
+ */
+export function summarizeSubmittedTeacherVotes(
+  teacherVotes: ConferenceTeacherVote[],
+): SubmittedTeacherVoteSummary {
+  const submitted = teacherVotes.filter((vote) => vote.isSubmitted);
+  const submittedCoreTeacherCounts: Record<string, number> = { D: 0, M: 0, E: 0 };
+  for (const vote of submitted) {
+    const subject = normalizeSubject(vote.subjectCode);
+    if (subject.isCoreSmile && subject.code in submittedCoreTeacherCounts) {
+      submittedCoreTeacherCounts[subject.code] = (submittedCoreTeacherCounts[subject.code] ?? 0) + 1;
+    }
+  }
+
+  let hoursLehrling = 0;
+  let hoursGeselle = 0;
+  let hoursMeister = 0;
+  const teacherVotesWithSubmittedWeights = teacherVotes.map((vote) => {
+    if (!vote.isSubmitted) {
+      return { ...vote, proposedStatus: null, nextStep: null, comment: null };
+    }
+
+    const normalized = normalizeSubject(vote.subjectCode);
+    const weight = normalized.isCoreSmile && submittedCoreTeacherCounts[normalized.code] === 1
+      ? vote.hours * 2
+      : vote.hours;
+    if (vote.proposedStatus === 'Lehrling') hoursLehrling += weight;
+    else if (vote.proposedStatus === 'Geselle') hoursGeselle += weight;
+    else if (vote.proposedStatus === 'Meister') hoursMeister += weight;
+    return { ...vote, weight };
+  });
+
+  return {
+    teacherVotes: teacherVotesWithSubmittedWeights,
+    submittedTeachers: new Set(submitted.map((vote) => vote.teacherId)).size,
+    voteCounts: {
+      Lehrling: submitted.filter((vote) => vote.proposedStatus === 'Lehrling').length,
+      Geselle: submitted.filter((vote) => vote.proposedStatus === 'Geselle').length,
+      Meister: submitted.filter((vote) => vote.proposedStatus === 'Meister').length,
+    },
+    hours: {
+      Lehrling: hoursLehrling,
+      Geselle: hoursGeselle,
+      Meister: hoursMeister,
+      total: hoursLehrling + hoursGeselle + hoursMeister,
+    },
+    suggestedRankByHours: hoursWeightedSuggestion(hoursLehrling, hoursGeselle, hoursMeister),
+  };
+}
+
 export function presentRank(
   confirmedRank: Rank | null | undefined,
   suggestion: Rank | null,
@@ -637,15 +715,6 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
             createdAt: c.created_at,
           }));
 
-      // Count how many teachers submitted for each core subject (D, M, E) for this pupil
-      const coreTeacherCounts: Record<string, number> = { D: 0, M: 0, E: 0 };
-      pupilEvals.forEach((e) => {
-        const norm = normalizeSubject(e.subject_code);
-        if (norm.isCoreSmile && norm.code in coreTeacherCounts) {
-          coreTeacherCounts[norm.code] = (coreTeacherCounts[norm.code] || 0) + 1;
-        }
-      });
-
       const teacherVotes = pupilEvals.map((e) => {
         const evalItems = itemsByEval.get(e.id) ?? [];
         const summaryCounts = summarizeRatings([{ evaluationId: e.id, items: evalItems }]);
@@ -664,20 +733,6 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           hours = normSub.isCoreSmile ? 4 : 2;
         }
 
-        // 2. Weighting & Team-Teaching rule:
-        // Core subjects (D, M, E) have double weight because two teachers give votes.
-        // If only 1 teacher from the team submitted for this pupil, double their hours so the
-        // core subject retains its full 2-teacher weight (e.g. 4 * 2 = 8h).
-        // If both teachers submitted, each contributes their own hours (e.g. 4 + 4 = 8h).
-        let weight = hours;
-        const isTeamTeaching = normSub.isCoreSmile;
-        if (isTeamTeaching) {
-          const teacherCountForThisCoreSub = coreTeacherCounts[normSub.code] || 1;
-          if (teacherCountForThisCoreSub === 1) {
-            weight = hours * 2;
-          }
-        }
-
         return {
           teacherId: e.teacher_id,
           teacherShort: e.teacher_short,
@@ -691,40 +746,24 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           positiveCount: summaryCounts.positiveCount,
           totalRated: summaryCounts.totalRated,
           hours,
-          weight,
-          isTeamTeaching,
+          weight: hours,
+          isTeamTeaching: normSub.isCoreSmile,
         };
       });
 
-      // Participation counts distinct teachers who actually submitted, not evaluation rows:
-      // a teacher covering two core subjects in this class submitted twice but is one voter,
-      // and a teacher who submitted nothing must not appear at all.
-      const submittedTeacherIds = new Set<number | null>();
-      for (const tv of teacherVotes) {
-        if (tv.isSubmitted) submittedTeacherIds.add(tv.teacherId);
-      }
-      const submittedTeachers = submittedTeacherIds.size;
-
-      // Hours-weighted split. Weighting is the school's existing rule (weekly lessons,
-      // doubled for a core subject when only one team teacher submitted), so a teacher who
-      // teaches more lessons in this class carries proportionally more of the vote.
-      let hoursLehrling = 0;
-      let hoursGeselle = 0;
-      let hoursMeister = 0;
-
-      for (const tv of teacherVotes) {
-        if (tv.proposedStatus === 'Meister') hoursMeister += tv.weight;
-        else if (tv.proposedStatus === 'Geselle') hoursGeselle += tv.weight;
-        else if (tv.proposedStatus === 'Lehrling') hoursLehrling += tv.weight;
-      }
-
-      const totalVotedHours = hoursLehrling + hoursGeselle + hoursMeister;
+      // A proposal is an active conference vote only while its evaluation is
+      // submitted. Reopened rows remain visible as pending, but do not contribute
+      // to participation, hours, or the weighted rank. Core-subject double weight
+      // is computed from submitted evaluations only.
+      const voteSummary = summarizeSubmittedTeacherVotes(teacherVotes);
+      const summarizedTeacherVotes = voteSummary.teacherVotes;
+      const submittedTeachers = voteSummary.submittedTeachers;
+      const { Lehrling: hoursLehrling, Geselle: hoursGeselle, Meister: hoursMeister } = voteSummary.hours;
+      const totalVotedHours = voteSummary.hours.total;
       const pctLehrling = totalVotedHours > 0 ? Math.round((hoursLehrling / totalVotedHours) * 100) : 0;
       const pctGeselle = totalVotedHours > 0 ? Math.round((hoursGeselle / totalVotedHours) * 100) : 0;
       const pctMeister = totalVotedHours > 0 ? Math.round((hoursMeister / totalVotedHours) * 100) : 0;
-
-      // Determine the hours-weighted majority.
-      const suggestedRankByHours = hoursWeightedSuggestion(hoursLehrling, hoursGeselle, hoursMeister);
+      const suggestedRankByHours = voteSummary.suggestedRankByHours;
 
       // The 18-item raster is decision *support*, not a score.
       //
@@ -779,7 +818,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         confirmedAt: confirmed?.confirmed_at || null,
         overrideReason: confirmed?.override_reason || null,
         evaluationsCount: pupilEvals.length,
-        teacherVotes,
+        teacherVotes: summarizedTeacherVotes,
         /**
          * Participation, measured only from evaluations that were actually submitted.
          *
@@ -796,9 +835,9 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           teachersMissing: Math.max(0, totalClassTeachers - submittedTeachers),
         },
         voteStats: {
-          Lehrling: teacherVotes.filter((tv) => tv.proposedStatus === 'Lehrling').length,
-          Geselle: teacherVotes.filter((tv) => tv.proposedStatus === 'Geselle').length,
-          Meister: teacherVotes.filter((tv) => tv.proposedStatus === 'Meister').length,
+          Lehrling: voteSummary.voteCounts.Lehrling,
+          Geselle: voteSummary.voteCounts.Geselle,
+          Meister: voteSummary.voteCounts.Meister,
           hoursLehrling,
           hoursGeselle,
           hoursMeister,

@@ -1229,6 +1229,15 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
     // Mathe is unrated and unproposed: no write at all, for any rank.
     expect(onSubmitPupil).toHaveBeenCalledTimes(1);
     expect(onSubmitPupil).not.toHaveBeenCalledWith(1, expect.any(String), expect.any(String), 'M');
+
+    // D was submitted, but M was skipped. The UI must not claim the pupil (or
+    // class) is complete or silently move on while a subject is still pending.
+    await vi.waitFor(() => {
+      const submitStatus = screen.getAllByRole('status')[0];
+      expect(submitStatus).toHaveTextContent(/Teilweise eingereicht/i);
+      expect(submitStatus).toHaveTextContent(/Mathematik \(M\)/i);
+      expect(screen.queryByText(/Alle Schüler dieser Klasse sind jetzt bewertet/i)).toBeNull();
+    });
   });
 
   it('writes a quick grade to every subject in Gesamt mode, then only to the open tab', async () => {
