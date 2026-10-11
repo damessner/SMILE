@@ -194,6 +194,71 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect(req.authUser?.mustChangePassword).toBe(true);
   });
 
+  it('permits /api/auth/me, /api/auth/session, and /api/auth/logout for mustChangePassword accounts with current sessionVersion', async () => {
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+
+    for (const [method, url] of [
+      ['GET', '/api/auth/me'],
+      ['GET', '/api/auth/session'],
+      ['POST', '/api/auth/logout'],
+    ] as const) {
+      const req = {
+        authUser: {
+          id: userId,
+          username: 'testteacher',
+          role: 'teacher',
+          mustChangePassword: true,
+          sessionVersion: 4,
+        },
+        method,
+        url,
+      } as unknown as FastifyRequest;
+      let statusCode = 0;
+      const reply = {
+        status: (code: number) => {
+          statusCode = code;
+          return reply;
+        },
+        send: vi.fn(),
+        clearCookie: vi.fn(),
+      } as unknown as FastifyReply;
+
+      await guard(req, reply);
+      expect(statusCode).toBe(0); // Guard did not block or reply with 401/403
+    }
+  });
+
+  it('rejects /api/auth/me with 401 when mustChangePassword is true but token has stale sessionVersion', async () => {
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const req = {
+      authUser: {
+        id: userId,
+        username: 'testteacher',
+        role: 'teacher',
+        mustChangePassword: true,
+        sessionVersion: 3,
+      },
+      method: 'GET',
+      url: '/api/auth/me',
+    } as unknown as FastifyRequest;
+    let statusCode = 0;
+    const clearCookie = vi.fn();
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return reply;
+      },
+      send: vi.fn(),
+      clearCookie,
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+    expect(statusCode).toBe(401);
+    expect(clearCookie).toHaveBeenCalled();
+  });
+
   it('uses persisted account state instead of a stale worker-local reset flag', async () => {
     markUserMustChangePassword(userId);
     const buildSessionGuard = (guardModule as any).buildSessionGuard;

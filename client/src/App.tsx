@@ -487,7 +487,7 @@ export function App() {
 
   // Load pending timeout escalations for the school leadership
   useEffect(() => {
-    if (currentUser && isSchoolLeadership) {
+    if (currentUser && !currentUser.mustChangePassword && isSchoolLeadership) {
       getTimeoutEscalations()
         .then((res) => setPendingTimeoutCount(res.totalPendingCount || 0))
         .catch(() => {});

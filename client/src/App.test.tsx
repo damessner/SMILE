@@ -108,6 +108,20 @@ describe('App session and alert recovery', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Login zur erneuten Anmeldung');
   });
 
+  it('does not query timeout escalations or load classes when password change is required', async () => {
+    vi.mocked(api.getMe).mockResolvedValue({
+      id: 'user-med',
+      username: 'med',
+      role: 'head_teacher',
+      mustChangePassword: true,
+    } as any);
+    renderApp();
+
+    await waitFor(() => expect(api.getMe).toHaveBeenCalled());
+    expect(api.getClasses).not.toHaveBeenCalled();
+    expect(api.getTimeoutEscalations).not.toHaveBeenCalled();
+  });
+
   it('reloads authoritative pupil data after a batch OCC conflict before another rating write', async () => {
     const schoolClass = {
       id: 1,

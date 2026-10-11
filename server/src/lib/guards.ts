@@ -501,15 +501,29 @@ export function buildSessionGuard(
     user.mustChangePassword = state.mustChangePassword;
 
     if (state.mustChangePassword) {
+      const pathname = (request.url ?? '').split('?', 1)[0];
       const isPasswordChangeRoute =
-        request.method === 'POST' && request.url.split('?', 1)[0] === '/api/auth/password';
-      if (!isPasswordChangeRoute) {
-        return reply.status(403).send({
-          error: 'Bitte setzen Sie zuerst ein neues Passwort.',
-          code: 'PASSWORD_CHANGE_REQUIRED',
-        });
+        request.method === 'POST' && pathname === '/api/auth/password';
+      const isAuthStatusRoute =
+        (request.method === 'GET' && (pathname === '/api/auth/me' || pathname === '/api/auth/session')) ||
+        (request.method === 'POST' && pathname === '/api/auth/logout');
+
+      if (isPasswordChangeRoute) {
+        return;
       }
-      return;
+
+      if (isAuthStatusRoute) {
+        if (tokenVersion !== state.sessionVersion) {
+          clearSessionCookie(reply);
+          return reply.status(401).send({ error: 'Nicht authentifiziert' });
+        }
+        return;
+      }
+
+      return reply.status(403).send({
+        error: 'Bitte setzen Sie zuerst ein neues Passwort.',
+        code: 'PASSWORD_CHANGE_REQUIRED',
+      });
     }
 
     if (tokenVersion !== state.sessionVersion) {
