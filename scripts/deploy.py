@@ -89,12 +89,30 @@ except paramiko.AuthenticationException:
     else:
         raise
 
+if ssh.get_transport():
+    ssh.get_transport().set_keepalive(5)
+
+
+def ensure_connected():
+    global ssh
+    if not ssh.get_transport() or not ssh.get_transport().is_active():
+        print("Re-establishing SSH connection...")
+        ssh = create_ssh_client()
+        ssh.connect(HOST, username=USER, **connect_kwargs)
+        if ssh.get_transport():
+            ssh.get_transport().set_keepalive(5)
+
 
 def ex(script: str, timeout=300, label=None):
     """Run a bash script inside the container. Returns (rc, stdout, stderr)."""
+    ensure_connected()
     b64 = base64.b64encode(script.encode()).decode()
     cmd = f"pct exec {CID} -- bash -c \"echo {b64} | base64 -d | bash\""
-    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    try:
+        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    except Exception:
+        ensure_connected()
+        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     rc = stdout.channel.recv_exit_status()
     out = stdout.read().decode('utf-8', errors='replace')
     err = stderr.read().decode('utf-8', errors='replace')
@@ -109,7 +127,12 @@ def ex(script: str, timeout=300, label=None):
 
 
 def host(cmd, timeout=300, label=None):
-    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    ensure_connected()
+    try:
+        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    except Exception:
+        ensure_connected()
+        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     rc = stdout.channel.recv_exit_status()
     out = stdout.read().decode('utf-8', errors='replace')
     err = stderr.read().decode('utf-8', errors='replace')
