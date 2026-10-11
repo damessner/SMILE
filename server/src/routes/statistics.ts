@@ -75,6 +75,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: [],
         round: null,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
         scope: buildScope(),
@@ -101,6 +102,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: visibleClasses,
         round: null,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
         scope: buildScope(),
@@ -127,6 +129,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: visibleClasses,
         round,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
         scope: buildScope(),
@@ -150,6 +153,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: visibleClasses,
         round,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
         scope: buildScope(),
@@ -247,6 +251,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({
       classes: visibleClasses,
       round,
+      rubricConfig: currentRubricConfig(),
       distribution,
       pupils: pupilsSummary,
       scope: buildScope(),
@@ -272,6 +277,15 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ rubric, criteria });
   });
 };
+
+function currentRubricConfig() {
+  return {
+    meister: config.rankThresholds.meister,
+    geselle: config.rankThresholds.geselle,
+    itemCount: config.rubricItemCount,
+    aggregation: config.rankAggregation,
+  };
+}
 
 function emptyDistribution() {
   return {

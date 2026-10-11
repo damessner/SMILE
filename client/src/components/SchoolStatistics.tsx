@@ -67,6 +67,12 @@ interface PupilStat {
 interface StatData {
   classes: Array<{ id: number; name: string; grade: number }>;
   round: any;
+  rubricConfig?: {
+    meister: number;
+    geselle: number;
+    itemCount: number;
+    aggregation: string;
+  };
   distribution: {
     lehrling: number;
     geselle: number;
@@ -195,6 +201,13 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
       </div>
     );
   }
+
+  const rubricItemCount =
+    typeof data?.rubricConfig?.itemCount === 'number' &&
+    Number.isFinite(data.rubricConfig.itemCount) &&
+    data.rubricConfig.itemCount > 0
+      ? data.rubricConfig.itemCount
+      : MAX_RUBRIC_ITEMS;
 
   const dist = data?.distribution || {
     lehrling: 0,
@@ -483,8 +496,8 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
                         {sr.totalRated > 0
-                          ? `${sr.positiveCount} / ${MAX_RUBRIC_ITEMS} Smileys positiv`
-                          : `0 / ${MAX_RUBRIC_ITEMS} Smileys (Ausstehend)`}
+                          ? `${sr.positiveCount} / ${rubricItemCount} Smileys positiv`
+                          : `0 / ${rubricItemCount} Smileys (Ausstehend)`}
                       </div>
                     </div>
 
@@ -509,7 +522,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                       <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700">
                         <div
                           style={{
-                            width: `${Math.min(100, Math.round((sr.positiveCount / MAX_RUBRIC_ITEMS) * 100))}%`,
+                            width: `${Math.min(100, Math.round((sr.positiveCount / rubricItemCount) * 100))}%`,
                           }}
                           className={`h-full ${barColor} transition-all duration-300`}
                         />

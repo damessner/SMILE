@@ -129,6 +129,22 @@ describe('SchoolStatistics subject-scoped result rows', () => {
     expect(screen.getByText(/2 Fächer-Ergebnisse gesamt/i)).toBeInTheDocument();
   });
 
+  it('uses the delivered rubric item count for score labels and bars', async () => {
+    (api.getStatistics as any).mockResolvedValue({
+      ...mockData,
+      rubricConfig: { meister: 20, geselle: 12, itemCount: 24, aggregation: 'total' },
+    });
+    const { container } = render(<SchoolStatistics initialClassId={10} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/4 \/ 24 Smileys/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/10 \/ 24 Smileys/i)).toBeInTheDocument();
+    expect(screen.getByText(/0 \/ 24 Smileys \(Ausstehend\)/i)).toBeInTheDocument();
+    expect(container.querySelector('[style*="width: 17%"]')).toBeInTheDocument();
+  });
+
   it('filters rows when a specific subject is selected', async () => {
     render(<SchoolStatistics initialClassId={10} />);
 
