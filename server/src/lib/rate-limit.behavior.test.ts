@@ -19,7 +19,7 @@ beforeAll(async () => {
   Object.assign(process.env, TEST_ENV);
   const { buildServer } = await import('../index.js');
   app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false }));
-});
+}, 30_000);
 
 afterAll(async () => {
   if (app) await app.close();

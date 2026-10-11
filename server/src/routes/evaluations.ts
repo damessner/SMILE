@@ -235,49 +235,59 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     let touched = 0;
 
-    // One transaction for the whole class so a failure cannot leave half the roster
-    // filled. The previous per-item select-then-upsert loop had neither.
+    // Two statements for the whole class instead of one per pupil per item. The previous
+    // nested loop issued ~540 sequential round trips (30 pupils x 18 rubric items) while
+    // holding one transaction open, work PostgreSQL does in a single multi-row upsert.
     await db.transaction(async (tx) => {
-      for (const pupil of classPupils) {
-        const [evaluation] = await tx
-          .insert(evaluations)
-          .values({
+      const rosterRows = await tx
+        .insert(evaluations)
+        .values(
+          classPupils.map((pupil) => ({
             roundId: round.id,
             pupilId: pupil.id,
             classId,
             subjectCode: canonicalSubject,
-             teacherId,
-          })
-          .onConflictDoUpdate({
-            target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
-            set: { updatedAt: new Date() },
-          })
-          .returning();
+            teacherId,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
+          set: { updatedAt: new Date() },
+        })
+        .returning({ id: evaluations.id, pupilId: evaluations.pupilId });
 
-        for (const target of targets) {
-          await tx
-            .insert(evaluationItems)
-            .values({
-              evaluationId: evaluation.id,
-              criterionId: target.criterionId,
-              itemKey: target.itemKey,
+      // `returning()` promises the rows, not their order, so the id is matched by pupil.
+      const evaluationIdByPupil = new Map(rosterRows.map((row) => [row.pupilId, row.id]));
+
+      const itemRows = classPupils.flatMap((pupil) => {
+        const evaluationId = evaluationIdByPupil.get(pupil.id);
+        if (!evaluationId) return [];
+        return targets.map((target) => ({
+          evaluationId,
+          criterionId: target.criterionId,
+          itemKey: target.itemKey,
+          rating: defaultRating,
+          version: 1,
+          updatedByTeacherId: teacherId,
+          updatedAt: new Date(),
+        }));
+      });
+
+      if (itemRows.length > 0) {
+        await tx
+          .insert(evaluationItems)
+          .values(itemRows)
+          .onConflictDoUpdate({
+            target: [evaluationItems.evaluationId, evaluationItems.itemKey],
+            set: {
               rating: defaultRating,
-              version: 1,
-               updatedByTeacherId: teacherId,
+              version: sql`${evaluationItems.version} + 1`,
+              updatedByTeacherId: teacherId,
               updatedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: [evaluationItems.evaluationId, evaluationItems.itemKey],
-              set: {
-                rating: defaultRating,
-                version: sql`${evaluationItems.version} + 1`,
-                 updatedByTeacherId: teacherId,
-                updatedAt: new Date(),
-              },
-            });
-          touched++;
-        }
+            },
+          });
       }
+      touched = itemRows.length;
 
       await tx.insert(auditLogs).values({
         actorId: teacherId,
@@ -494,33 +504,40 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (nextStep !== undefined) submitUpdateSet.nextStep = nextStep;
     if (comment !== undefined) submitUpdateSet.comment = comment;
 
-    const [evaluation] = await db
-      .insert(evaluations)
-      .values({
-        roundId: round.id,
-        pupilId,
-        classId,
-        subjectCode: canonicalSubject,
-        teacherId,
-        proposedStatus: finalProposedStatus,
-        nextStep: nextStep ?? null,
-        comment: comment ?? null,
-        isSubmitted: true,
-        submittedAt: new Date(),
-        submittedByTeacherId: teacherId,
-      })
-      .onConflictDoUpdate({
-        target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
-        set: submitUpdateSet,
-      })
-      .returning();
+    // Submission and audit row commit together. The previous two-step write could commit
+    // the ranking and then fail before writing `PUPIL_RANKING_SUBMITTED`, leaving an
+    // official-record change that the audit history never saw.
+    const evaluation = await db.transaction(async (tx) => {
+      const [submitted] = await tx
+        .insert(evaluations)
+        .values({
+          roundId: round.id,
+          pupilId,
+          classId,
+          subjectCode: canonicalSubject,
+          teacherId,
+          proposedStatus: finalProposedStatus,
+          nextStep: nextStep ?? null,
+          comment: comment ?? null,
+          isSubmitted: true,
+          submittedAt: new Date(),
+          submittedByTeacherId: teacherId,
+        })
+        .onConflictDoUpdate({
+          target: [evaluations.roundId, evaluations.pupilId, evaluations.classId, evaluations.subjectCode],
+          set: submitUpdateSet,
+        })
+        .returning();
 
-    await db.insert(auditLogs).values({
-      actorId: teacherId,
-      action: 'PUPIL_RANKING_SUBMITTED',
-      entity: 'pupil',
-      entityId: String(pupilId),
-      payload: { classId, subjectCode: canonicalSubject, proposedStatus },
+      await tx.insert(auditLogs).values({
+        actorId: teacherId,
+        action: 'PUPIL_RANKING_SUBMITTED',
+        entity: 'pupil',
+        entityId: String(pupilId),
+        payload: { classId, subjectCode: canonicalSubject, proposedStatus },
+      });
+
+      return submitted;
     });
 
     broadcastToClass(classId, {
@@ -592,33 +609,42 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!round) return badRequest(reply, 'Kein aktiver Zeitraum');
     if (await rejectIfClassRoundLocked(reply, round.id, classId)) return;
 
-    const [evaluation] = await db
-      .update(evaluations)
-      .set({ isSubmitted: false, updatedAt: new Date() })
-      .where(
-        and(
-          eq(evaluations.roundId, round.id),
-          eq(evaluations.pupilId, pupilId),
-          eq(evaluations.classId, classId),
-          or(
-            eq(evaluations.subjectCode, canonicalSubject),
-            canonicalSubject === 'D' ? eq(evaluations.subjectCode, 'SD') : sql`false`,
-            canonicalSubject === 'E' ? eq(evaluations.subjectCode, 'SE') : sql`false`,
-            canonicalSubject === 'M' ? eq(evaluations.subjectCode, 'SM') : sql`false`,
+    // Withdrawal and its audit row commit together, and the audit row is only written when
+    // a submission was actually withdrawn - the previous order could record a reopen for a
+    // pupil who had never submitted.
+    const evaluation = await db.transaction(async (tx) => {
+      const [reopened] = await tx
+        .update(evaluations)
+        .set({ isSubmitted: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(evaluations.roundId, round.id),
+            eq(evaluations.pupilId, pupilId),
+            eq(evaluations.classId, classId),
+            or(
+              eq(evaluations.subjectCode, canonicalSubject),
+              canonicalSubject === 'D' ? eq(evaluations.subjectCode, 'SD') : sql`false`,
+              canonicalSubject === 'E' ? eq(evaluations.subjectCode, 'SE') : sql`false`,
+              canonicalSubject === 'M' ? eq(evaluations.subjectCode, 'SM') : sql`false`,
+            ),
           ),
-        ),
-      )
-      .returning();
+        )
+        .returning();
+
+      if (!reopened) return null;
+
+      await tx.insert(auditLogs).values({
+        actorId: teacherId,
+        action: 'PUPIL_RANKING_REOPENED',
+        entity: 'pupil',
+        entityId: String(pupilId),
+        payload: { classId, subjectCode: canonicalSubject },
+      });
+
+      return reopened;
+    });
 
     if (!evaluation) return reply.status(404).send({ error: 'Keine Einreichung gefunden.' });
-
-    await db.insert(auditLogs).values({
-      actorId: teacherId,
-      action: 'PUPIL_RANKING_REOPENED',
-      entity: 'pupil',
-      entityId: String(pupilId),
-      payload: { classId, subjectCode: canonicalSubject },
-    });
 
     broadcastToClass(classId, { type: 'PUPIL_RANKING_REOPENED', pupilId, subjectCode: canonicalSubject });
 

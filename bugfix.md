@@ -37,9 +37,10 @@
 
 ### Verification run for this review
 
-- `npm test` (from the repository root): **356 server tests passed, 24 PostgreSQL integration tests
-  skipped**, **134 client tests passed**. `SKIP_POSTGRES_INTEGRATION=true` was set; see
-  `docs/SECURITY.md` for why a local opt-out is not integration evidence.
+- `npm test` (from the repository root, `PORT` set): **555 server tests passed, 27 PostgreSQL
+  integration tests skipped across 39 files**, **245 client tests passed across 19 files**
+  (re-measured 2026-10-11). `SKIP_POSTGRES_INTEGRATION=true` was set; see `docs/SECURITY.md`
+  for why a local opt-out is not integration evidence.
 - `npm run typecheck --workspaces`: passed, 0 errors.
 - **Correction (2026-10-08).** This section previously reported "159 server / 79 client tests" and
   claimed "No `.github/workflows` files are tracked; there is no CI workflow." Both statements were
@@ -85,14 +86,14 @@ are closed in the current tree. They are kept rather than deleted so the reasoni
 | P1 | No global error handler; no body schemas | **Fixed** — `setErrorHandler` plus JSON Schemas with non-coercing AJV |
 | P1 | Password-reset endpoint only inserts a request; JWT returned in JSON | **Fixed** — reset sets `must_change_password`; no token in any response body |
 | P1 | `pupil_id_seq` missing from the only migration; `pupil_behavior_actions` created by runtime DDL | **Fixed (2026-10-08)** — migration `0003_pupil_id_sequence_and_behavior_actions`; the hand-written DDL is gone from `runMigrations()`; `server/src/db/migrations.test.ts` prevents recurrence |
-| P1 | Administrative writes use `teacherId ?? 0` against non-null FKs | **Mostly fixed** — migration `0002` gives admins a real teacher row and writes fail closed with `SYSTEM_ACTOR_NOT_CONFIGURED`. The `?? 0` sentinel still appears at three unreachable `timeouts.ts` sites |
+| P1 | Administrative writes use `teacherId ?? 0` against non-null FKs | **Fixed (2026-10-11)** — migration `0002` gives admins a real teacher row; every write path fails closed with `SYSTEM_ACTOR_NOT_CONFIGURED`. The last `?? 0` sites in `timeouts.ts` (time-out issue, escalation acknowledge) now guard with `hasPersistedTeacherActor` before the insert |
 | P1 | Two WebSocket message names do not match | **Fixed** — client now handles the server's names; all 20 emitted types have handlers |
 | P1 | Rank semantics unbounded; client reports flatten all evaluations | **Changed shape, still open.** The `flatMap` is gone; four files now merge with `|| isPositiveRating(...)`, which is bounded at 18 but inflates across subjects. Needs a product decision — see `IF_YOU_ARE_AN_AI.md` Invariant 5 |
 | **P0** | **Conference summary readable for any class by any teacher** (`!canRead && !teacherId && !admin` never refused a teacher) | **Fixed (2026-10-08)** — extracted `canReadConferenceSummary()`, unit-tested. Not in the original table; found in the 2026-10-08 review |
 | **P0** | **Full-database export wrote no audit record** | **Fixed (2026-10-08)** — writes `FULL_DATA_EXPORTED`. Also from the 2026-10-08 review |
-| P2 | No reconnect, swallowed socket errors, locks never expire, conflicts not applied | **Fixed** — reconnect with backoff, TTL locks, conflict reconciliation, correlated errors |
-| P2 | Audit writes sit outside the data transaction in 14 places | **Still open** — `/vote` and `/submit` still commit, then audit separately |
-| P2 | `batch-default` ~540 serial round trips; `vote-all` 200 sequential `getPupil` calls | **Still open** |
+| P2 | No reconnect, swallowed socket errors, locks never expire, conflicts not applied | **Fixed** — reconnect with backoff, TTL locks, conflict reconciliation, correlated errors. A concurrent insert into an empty cell (unique-index race) now answers with the same reconcilable `CONFLICT` payload as a version race instead of a dead-end error (2026-10-11) |
+| P2 | Audit writes sit outside the data transaction in 14 places | **Mostly fixed (2026-10-11)** — `/submit`, `/reopen` (`evaluations.ts`), `/vote` confirm/unconfirm (`conferences.ts`) and time-out resolve/escalation acknowledge (`timeouts.ts`) now write the data row and its audit row in one transaction; `/vote-all` and `/lock` already did. Still bare: the card/pupil and backup-export audit rows (11 `db.insert(auditLogs)` sites) |
+| P2 | `batch-default` ~540 serial round trips; `vote-all` 200 sequential `getPupil` calls | **Fixed (2026-10-11)** — `/batch-default` writes the roster and all items in two multi-row statements; `/vote-all` resolves class membership in one `IN` query and upserts every decision in one statement |
 | P2 | Stale docs and contradictory test totals | **Partly fixed (2026-10-08)** — the four actively-misleading claims are corrected; the roadmap below still carries stale line references |
 
 ## Decisions Required Before the Related Implementation
@@ -110,7 +111,7 @@ Record the decision in the PR/issue before changing the corresponding data model
 9. **Comment ownership/concurrency:** one evaluation row holds one comment shared by all teachers of that subject, yet writes carry no comment version and comment-only writes no longer broadcast. Confirm whether comments are shared or author-specific. If shared, add a comment version/OCC conflict and a low-volume update event; if author-specific, store comments by teacher rather than overwriting one field.
 1a. **Conference ballot semantics — RESOLVED (tally only).** Per-issuance ballots are not being built; the requirement was that an uncast vote must not count as agreement, and that weight follow lessons taught. Participation is now measured from submitted evaluations only, and the displayed split is the hours-weighted one the code already computed. The hand-typed `votesNo` counter and its API field are gone. Quorum remains open — see decision 12.
 10. **KV subject authority — RESOLVED:** the user chose assigned subjects only. A Klassenvorstand without a teaching assignment in the class may manage the roster but may not write ratings/status for any subject.
-11. **First-login credential delivery — PARTIAL.** New seeded accounts still use the operator-supplied `INITIAL_USER_PASSWORD` and are forced to change it at first login. By explicit owner request, the Admin Konten panel reset now sets the account password to the fixed `smile2026`, revokes current sessions, and requires a password change before any further writes. This is an intentional, risky exception because `smile2026` was previously published; it must remain confined to the admin reset and must not be used as the seed password, logged, or re-enabled in other flows. The admin hands it to the account owner out of band.
+11. **First-login credential delivery — RESOLVED (random one-time credential).** New seeded accounts still use the operator-supplied `INITIAL_USER_PASSWORD` and are forced to change it at first login. The Admin Konten panel reset now generates a fresh random one-time credential per issuance (`server/src/lib/temporary-credential.ts`), revokes current sessions, and requires a password change before any further writes. The value is shown once in the reset response, is never logged and is not copied to the clipboard; the administrator hands it to the account owner out of band. The previously published `smile2026` literal is no longer produced by any flow (the generator refuses known-leaked values).
 12. **Conference quorum — OPEN.** A rank can still be confirmed when most teachers have not voted; confirmation remains an administrative act. Whether a quorum is required is school policy (does one absent teacher block the conference?). The screen now states how many submitted, so the chair can decide per pupil without the app guessing.
 
 ---

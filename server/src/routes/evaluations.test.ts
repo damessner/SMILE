@@ -291,6 +291,20 @@ describe('/batch-default', () => {
     expect(handler).not.toMatch(/rubricCriteria/);
     expect(handler).not.toMatch(/assessmentRubrics/);
   });
+
+  it('writes the roster and its items as two batched statements', () => {
+    // The per-pupil, per-item loop issued one round trip for every value it wrote (a
+    // full class is ~540), each one awaiting the last inside the transaction.
+    expect(handler).toMatch(/values\(\s*classPupils\.map\(/);
+    expect(handler).toMatch(/values\(itemRows\)/);
+    expect(handler).not.toMatch(/for \(const pupil of classPupils\)/);
+    expect(handler).not.toMatch(/for \(const target of targets\)/);
+  });
+
+  it('matches the returned evaluation ids back to pupils instead of trusting row order', () => {
+    expect(handler).toMatch(/returning\(\{ id: evaluations\.id, pupilId: evaluations\.pupilId \}\)/);
+    expect(handler).toContain('evaluationIdByPupil');
+  });
 });
 
 describe('a comment-only /status write is not broadcast', () => {
@@ -467,6 +481,29 @@ describe('Class conference lock enforcement on evaluation mutation routes', () =
     const roundCheck = handler.indexOf('getOpenRound()');
     expect(lockCheck).toBeGreaterThan(-1);
     expect(lockCheck).toBeGreaterThan(roundCheck);
+  });
+});
+
+describe('audit rows commit with the data write they record', () => {
+  it.each([
+    ['/submit', 'PUPIL_RANKING_SUBMITTED'],
+    ['/reopen', 'PUPIL_RANKING_REOPENED'],
+  ])('%s writes its audit row through the transaction, not after it', (route, action) => {
+    const handler = routeCode(route);
+
+    expect(handler).toContain('db.transaction(');
+    expect(handler).toContain('tx.insert(auditLogs)');
+    // A bare `db.insert(auditLogs)` would run on a separate connection after the data
+    // write committed, which is exactly the audit/data split this guards against.
+    expect(handler).not.toContain('db.insert(auditLogs)');
+    expect(handler.indexOf(`action: '${action}'`)).toBeGreaterThan(handler.indexOf('tx.insert(auditLogs)'));
+  });
+
+  it('/reopen only audits a submission it actually withdrew', () => {
+    const handler = routeCode('/reopen');
+    expect(handler.indexOf('if (!reopened) return null')).toBeLessThan(
+      handler.indexOf("action: 'PUPIL_RANKING_REOPENED'"),
+    );
   });
 });
 

@@ -12,6 +12,7 @@ getClassAccess,
 getGlobalAccess,
 getPupil,
 getTeacher,
+hasPersistedTeacherActor,
 isHeadmasterUser,
 isSchoolLeader,
 LW_CLASS_ID,
@@ -79,13 +80,27 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     const pupil = await findPupilInClass(pupilId, classId);
     if (!pupil) return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
 
+    // `behavior_cards.teacher_id` and `timeout_incidents.sent_by_teacher_id` are NOT NULL
+    // foreign keys. The former `?? 0` wrote a phantom teacher row instead of failing, so a
+    // card could be attributed to nobody. An account without a persisted teacher record
+    // cannot be the actor of this write, so refuse before anything is inserted.
+    // Bound to a const so the `is number` narrowing survives into the transaction callback.
+    const actorId = user.teacherId;
+    if (!hasPersistedTeacherActor(actorId)) {
+      return reply.status(503).send({
+        error:
+          'Das Auslösen eines Time-Outs ist nicht verfügbar, weil Ihrem Konto kein Lehrkraftdatensatz zugeordnet ist.',
+        code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
+      });
+    }
+
     const result = await db.transaction(async (tx) => {
       const [redCard] = await tx
         .insert(behaviorCards)
         .values({
           pupilId,
           classId,
-          teacherId: user.teacherId ?? 0,
+          teacherId: actorId,
           cardType: 'red',
           note: `[TIME-OUT LW] Arbeitsauftrag: ${cleanTask}`,
         })
@@ -96,7 +111,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         .values({
           pupilId,
           classId,
-          sentByTeacherId: user.teacherId ?? 0,
+          sentByTeacherId: actorId,
           taskAssignment: cleanTask,
           status: 'active',
           redCardId: redCard.id,
@@ -252,26 +267,35 @@ error:
 });
 }
 
-    const [resolved] = await db
-      .update(timeoutIncidents)
-      .set({
-        status: 'resolved',
-        resolvedAt: new Date(),
-        resolvedBy: safeTeacherId(user.teacherId),
-        resolutionNote: cleanNote || 'Arbeitsauftrag in Lernwerkstatt erledigt',
-      })
-      .where(and(eq(timeoutIncidents.id, id), eq(timeoutIncidents.status, 'active')))
-      .returning();
+    // Closing the pupil's time-out and recording who closed it are one write: a release
+    // with no audit row would let a pupil appear in the room without a trace of who
+    // ended it, and the audit row must not claim a release that rolled back.
+    const resolved = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(timeoutIncidents)
+        .set({
+          status: 'resolved',
+          resolvedAt: new Date(),
+          resolvedBy: safeTeacherId(user.teacherId),
+          resolutionNote: cleanNote || 'Arbeitsauftrag in Lernwerkstatt erledigt',
+        })
+        .where(and(eq(timeoutIncidents.id, id), eq(timeoutIncidents.status, 'active')))
+        .returning();
+
+      if (!updated) return null;
+
+      await tx.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'TIMEOUT_RESOLVED',
+        entity: 'timeout_incident',
+        entityId: id,
+        payload: { pupilId: existing.pupilId, classId: existing.classId },
+      });
+
+      return updated;
+    });
 
     if (!resolved) return badRequest(reply, 'Dieser Time-Out wurde soeben abgeschlossen.');
-
-    await db.insert(auditLogs).values({
-      actorId: safeTeacherId(user.teacherId),
-      action: 'TIMEOUT_RESOLVED',
-      entity: 'timeout_incident',
-      entityId: id,
-      payload: { pupilId: existing.pupilId, classId: existing.classId },
-    });
 
     broadcastToClass(existing.classId, { type: 'TIMEOUT_RESOLVED', incident: resolved });
     broadcastToClass(LW_CLASS_ID, { type: 'TIMEOUT_RESOLVED', incident: resolved });
@@ -461,27 +485,45 @@ error:
       const cleanNotes = notes?.trim();
       if (cleanNotes && cleanNotes.length > 2000) return badRequest(reply, 'Der Hinweis ist zu lang.');
 
-      // The unique index on (pupil_id, milestone_count) makes this idempotent.
-      const [escalation] = await db
-        .insert(timeoutEscalations)
-        .values({
-          pupilId,
-          milestoneCount,
-          handledBy: user.teacherId ?? 0,
-          notes: cleanNotes || 'Eltern verständigt & Nachholtermin am Nachmittag vereinbart',
-        })
-        .onConflictDoUpdate({
-          target: [timeoutEscalations.pupilId, timeoutEscalations.milestoneCount],
-          set: { handledBy: user.teacherId ?? 0, handledAt: new Date(), notes: cleanNotes },
-        })
-        .returning();
+      // `handled_by` is a NOT NULL foreign key. An administrator without a linked teacher
+      // record (the old code wrote `?? 0`) would otherwise record the acknowledgement as
+      // handled by a phantom row, which is indistinguishable from a real teacher.
+      const actorId = user.teacherId;
+      if (!hasPersistedTeacherActor(actorId)) {
+        return reply.status(503).send({
+          error:
+            'Das Bestätigen einer Eskalation ist nicht verfügbar, weil Ihrem Konto kein Lehrkraftdatensatz zugeordnet ist.',
+          code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
+        });
+      }
 
-      await db.insert(auditLogs).values({
-        actorId: safeTeacherId(user.teacherId),
-        action: 'TIMEOUT_ESCALATION_RESOLVED',
-        entity: 'pupil',
-        entityId: String(pupilId),
-        payload: { milestoneCount, notes: escalation.notes },
+      // Parent contact and its audit row commit together: this is the record that the
+      // school informed the parents, and it must not exist without the acknowledgement.
+      const escalation = await db.transaction(async (tx) => {
+        // The unique index on (pupil_id, milestone_count) makes this idempotent.
+        const [acknowledged] = await tx
+          .insert(timeoutEscalations)
+          .values({
+            pupilId,
+            milestoneCount,
+            handledBy: actorId,
+            notes: cleanNotes || 'Eltern verständigt & Nachholtermin am Nachmittag vereinbart',
+          })
+          .onConflictDoUpdate({
+            target: [timeoutEscalations.pupilId, timeoutEscalations.milestoneCount],
+            set: { handledBy: actorId, handledAt: new Date(), notes: cleanNotes },
+          })
+          .returning();
+
+        await tx.insert(auditLogs).values({
+          actorId: safeTeacherId(user.teacherId),
+          action: 'TIMEOUT_ESCALATION_RESOLVED',
+          entity: 'pupil',
+          entityId: String(pupilId),
+          payload: { milestoneCount, notes: acknowledged.notes },
+        });
+
+        return acknowledged;
       });
 
       return reply.status(201).send({ success: true, escalation });

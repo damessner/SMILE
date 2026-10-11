@@ -22,14 +22,14 @@ const ROLE_LABEL: Record<AdminUserAccount['role'], string> = {
 /**
  * Administrator-only credential handover.
  *
- * This is the delivery channel for the school bootstrap password. There is no mail on this
- * LAN, so the administrator receives it here and hands it over out of band; the account is
- * flagged `mustChangePassword` and every mutating endpoint stays closed until its owner
- * picks their own value.
+ * This is the delivery channel that replaces the shared bootstrap password. There is no
+ * mail on this LAN, so the administrator generates a one-time credential here and hands it
+ * over out of band; the account is flagged `mustChangePassword` and every mutating
+ * endpoint stays closed until its owner picks their own value.
  *
- * The bootstrap credential is shown only in the open dialog and deliberately not copied to
- * the clipboard automatically: a clipboard is reachable by other code on the page, and the
- * administrator is present to read and relay it.
+ * The generated credential is shown once, in the open dialog, and deliberately not copied
+ * to the clipboard automatically: a clipboard is reachable by other code on the page, and
+ * the administrator is present to read and relay it.
  */
 export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
   const toast = useToast();
@@ -64,13 +64,13 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
     setBusyUsername(username);
     try {
       const result = await resetStartPassword(username);
-      // Show the fixed reset password only until the administrator acknowledges it.
+      // Only the most recent credential is shown; a previous one is no longer knowable.
       setIssued({
         username: result.username,
         password: result.temporaryPassword,
         notice: result.notice,
       });
-      toast.success(`Startpasswort für ${username} zurückgesetzt.`);
+      toast.success(`Zugangsdaten für ${username} erstellt.`);
       await load();
     } catch (error) {
       toast.error(
@@ -116,21 +116,13 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
           </button>
         </div>
 
-        <div className="mx-6 mt-4 flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">
-          <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400" />
-          <p>
-            Das gemeinsame Startpasswort ist bekannt und unsicher. Nur zurücksetzen, wenn
-            der Benutzer es beim nächsten Login sofort durch ein eigenes Passwort ersetzt.
-          </p>
-        </div>
-
         {issued && (
           <div className="mx-6 mt-4 rounded-2xl border-2 border-amber-500/60 bg-amber-500/10 p-4">
             <div className="flex items-start gap-2">
               <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-400" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-amber-200">
-                  Startpasswort für {issued.username}
+                  Einmal-Passwort für {issued.username}
                 </p>
                 <p className="mt-2 font-mono text-xl tracking-wider text-amber-100 select-all">
                   {issued.password}
@@ -204,7 +196,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                       className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:opacity-90 disabled:opacity-50"
                     >
                       <KeyRound className="h-3.5 w-3.5" />
-                      Startpasswort zurücksetzen
+                      Einmal-Passwort
                     </button>
                     <button
                       type="button"

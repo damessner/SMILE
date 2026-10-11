@@ -12,6 +12,8 @@ const lockState = vi.hoisted(() => ({
   round: null as { id: string; isLocked: boolean } | null,
   classLockRow: null as { isLocked: boolean } | null,
   pupil: null as { id: number; classId: number } | null,
+  /** Rows the batched class-roster lookup sees; null falls back to the single `pupil`. */
+  roster: null as Array<{ id: number; classId: number }> | null,
   access: null as Record<string, unknown> | null,
   broadcasts: [] as Array<{ classId: number; payload: Record<string, unknown> }>,
   inserts: [] as Array<{ table: unknown; values: Record<string, unknown> }>,
@@ -74,29 +76,50 @@ vi.mock('../db/index.js', async (importOriginal) => {
     return Promise.resolve();
   };
   let source: unknown = null;
+  const rowsFor = (): unknown[] => {
+    const name = tableName(source);
+    if (name === 'class_round_locks') {
+      return lockState.classLockRow ? [lockState.classLockRow] : [];
+    }
+    if (name === 'pupils') {
+      // `getPupil` and the batched class-roster check read through the same builder.
+      if (lockState.roster) return lockState.roster;
+      return lockState.pupil ? [lockState.pupil] : [];
+    }
+    return lockState.round ? [lockState.round] : [];
+  };
+  /**
+   * Drizzle builders are thenable, so `await ...where(...)` yields rows directly while
+   * `...where(...).limit(1)` still resolves through `limit()`.
+   */
+  const results = () => {
+    const pending = Promise.resolve(rowsFor()) as Promise<unknown[]> & {
+      limit: () => Promise<unknown[]>;
+      orderBy: () => unknown;
+      where: () => unknown;
+    };
+    pending.limit = async () => rowsFor();
+    pending.orderBy = () => pending;
+    pending.where = () => pending;
+    return pending;
+  };
   const query = {
     from: (table: unknown) => {
       source = table;
       return query;
     },
-    where: () => query,
-    orderBy: () => query,
-    limit: async () => {
-      const name = tableName(source);
-      if (name === 'class_round_locks') {
-        return lockState.classLockRow ? [lockState.classLockRow] : [];
-      }
-      if (name === 'pupils') {
-        // `getPupil` (the real guard) reads through the same query builder.
-        return lockState.pupil ? [lockState.pupil] : [];
-      }
-      return lockState.round ? [lockState.round] : [];
-    },
+    where: () => results(),
+    orderBy: () => results(),
   };
-  return {
-    ...(await importOriginal<typeof import('../db/index.js')>()),
-    db: {
-      select: () => query,
+  /**
+   * The write API shared by the top-level mock and the transaction callback.
+   *
+   * Decision endpoints (`/vote`, `/vote-all`) write through `db.transaction`, so the
+   * callback must receive the same chainable insert/delete/update the route uses outside
+   * a transaction; a narrower copy would let a route pass these tests while breaking in
+   * production.
+   */
+  const writeApi = {
       insert: (table: unknown) => ({
         values: (values: Record<string, unknown>) => {
           // `insert().values()` is awaitable on its own (audit rows) and continues
@@ -131,30 +154,25 @@ vi.mock('../db/index.js', async (importOriginal) => {
           return { where: async () => undefined };
         },
       }),
+  };
+
+  return {
+    ...(await importOriginal<typeof import('../db/index.js')>()),
+    db: {
+      select: () => query,
+      ...writeApi,
       transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
         lockState.transactionCalls += 1;
-        // vote-all writes through `tx`, so the callback must receive a working
-        // transaction proxy rather than undefined.
-        const tx = {
-          insert: (table: unknown) => ({
-            values: (values: Record<string, unknown>) => {
-              const pending = recordedInsert(table, values);
-              const chain = pending as Promise<unknown> & {
-                onConflictDoUpdate: () => Promise<unknown>;
-              };
-              chain.onConflictDoUpdate = async () => undefined;
-              return chain;
-            },
-          }),
-        };
         // Roll back on failure, the way a real transaction does. Without this the
         // "leaves no lock row behind" test could not tell an atomic write from a
         // half-applied one.
         const writesSoFar = lockState.inserts.length;
+        const deletesSoFar = lockState.deletes.length;
         try {
-          return await fn(tx);
+          return await fn(writeApi);
         } catch (error) {
           lockState.inserts.length = writesSoFar;
+          lockState.deletes.length = deletesSoFar;
           throw error;
         }
       },
@@ -417,6 +435,7 @@ function resetLockState(): void {
   lockState.round = { id: 'round-1', isLocked: false };
   lockState.classLockRow = { isLocked: false };
   lockState.pupil = { id: 7001, classId: 1 };
+  lockState.roster = null;
   lockState.access = { classId: 1, exists: true, canRunConference: true, canRead: true };
   lockState.broadcasts = [];
   lockState.inserts = [];
@@ -599,6 +618,86 @@ describe('conference decisions remain usable while the class is locked', () => {
     expect(res.statusCode).toBe(200);
     expect(lockState.deletes.some((d) => d.table === lockState.schemaTables.finalRanks)).toBe(true);
     expect(lockState.broadcasts.some((b) => b.payload.type === 'FINAL_RANK_REVOKED')).toBe(true);
+  });
+
+  it('commits a confirmed rank and its audit entry in one transaction', async () => {
+    resetLockState();
+
+    const res = await lockApp!.inject({
+      method: 'POST',
+      url: '/api/conferences/1/vote',
+      headers: { cookie: 'smile_session=' + lockSessionCookie(lockApp!) },
+      payload: { pupilId: 7001, rank: 'Meister' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(lockState.transactionCalls).toBe(1);
+    const tables = lockState.inserts.map((i) => tableName(i.table));
+    expect(tables).toContain('final_ranks');
+    expect(tables).toContain('audit_logs');
+  });
+
+  it('writes no revocation at all when its audit entry fails', async () => {
+    // The half-applied state that must not exist: the conference decision is deleted from
+    // final_ranks and the CONFERENCE_VOTE_REVOKED row never lands, so an official record
+    // changed with no evidence of who withdrew it.
+    resetLockState();
+    lockState.auditInsertFails = true;
+
+    const res = await lockApp!.inject({
+      method: 'POST',
+      url: '/api/conferences/1/vote',
+      headers: { cookie: 'smile_session=' + lockSessionCookie(lockApp!) },
+      payload: { pupilId: 7001, action: 'unconfirm' },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(lockState.deletes.some((d) => d.table === lockState.schemaTables.finalRanks)).toBe(false);
+    expect(lockState.broadcasts.some((b) => b.payload.type === 'FINAL_RANK_REVOKED')).toBe(false);
+  });
+
+  it('writes a whole class with one batched upsert instead of one statement per pupil', async () => {
+    resetLockState();
+    lockState.roster = [
+      { id: 7001, classId: 1 },
+      { id: 7002, classId: 1 },
+      { id: 7003, classId: 1 },
+    ];
+
+    const res = await lockApp!.inject({
+      method: 'POST',
+      url: '/api/conferences/1/vote-all',
+      headers: { cookie: 'smile_session=' + lockSessionCookie(lockApp!) },
+      payload: {
+        items: [
+          { pupilId: 7001, rank: 'Meister' },
+          { pupilId: 7002, rank: 'Geselle' },
+          { pupilId: 7003, rank: 'Lehrling' },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ success: true, count: 3 });
+    const rankInserts = lockState.inserts.filter((i) => i.table === lockState.schemaTables.finalRanks);
+    expect(rankInserts).toHaveLength(1);
+    expect(rankInserts[0]!.values).toHaveLength(3);
+    expect(lockState.inserts.filter((i) => i.table === lockState.schemaTables.auditLogs)).toHaveLength(1);
+  });
+
+  it('refuses the whole batch when any pupil belongs to another class', async () => {
+    resetLockState();
+    lockState.roster = [{ id: 7001, classId: 99 }];
+
+    const res = await lockApp!.inject({
+      method: 'POST',
+      url: '/api/conferences/1/vote-all',
+      headers: { cookie: 'smile_session=' + lockSessionCookie(lockApp!) },
+      payload: { items: [{ pupilId: 7001, rank: 'Meister' }] },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(lockState.inserts).toHaveLength(0);
   });
 
   it('confirms a whole class in one transaction while the class is locked', async () => {

@@ -23,16 +23,66 @@ vi.mock('../lib/class-round-lock.js', () => ({
   isClassRoundLocked: vi.fn((g: boolean, c: boolean) => Boolean(g || c)),
 }));
 
-vi.mock('../db/index.js', () => {
+/**
+ * Rows the mocked reads return.
+ *
+ * The rating path reads `evaluations` and then `evaluation_items`; every other read in
+ * these tests wants the open observation round, which stays the default.
+ */
+const dbState = vi.hoisted(() => ({
+  evaluations: [] as any[],
+  evaluationItems: [] as any[],
+  /** Makes the empty-cell insert lose the unique-index race and seeds the winner. */
+  itemInsertConflicts: false,
+}));
+
+vi.mock('../db/index.js', async () => {
+  const schema = await import('../db/schema.js');
   const activeRound = { id: 'round-test', isLocked: false };
-  const query = {
-    from: () => query,
+  const query: any = {
+    __table: undefined as unknown,
+    from: (table: unknown) => {
+      query.__table = table;
+      return query;
+    },
     where: () => query,
     orderBy: () => query,
-    limit: async () => [activeRound],
+    limit: async () => {
+      if (query.__table === schema.evaluations) return dbState.evaluations;
+      if (query.__table === schema.evaluationItems) return dbState.evaluationItems;
+      return [activeRound];
+    },
   };
   return {
-    db: { select: () => query },
+    db: {
+      select: () => {
+        query.__table = undefined;
+        return query;
+      },
+      insert: (table: unknown) => ({
+        values: (values: unknown) => ({
+          returning: async () => {
+            if (table === schema.evaluationItems && dbState.itemInsertConflicts) {
+              // The other teacher's tap landed first: their row exists now and this insert
+              // violates the unique index.
+              dbState.evaluationItems = [
+                {
+                  id: 'item-winner',
+                  evaluationId: 'eval-1',
+                  itemKey: 'org_1',
+                  rating: '+',
+                  version: 1,
+                  updatedByTeacherId: 7,
+                  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+                },
+              ];
+              throw new Error('duplicate key value violates unique constraint');
+            }
+            return Array.isArray(values) ? values : [values];
+          },
+        }),
+      }),
+    },
     getPool: () => ({ query: vi.fn() }),
   };
 });
@@ -123,6 +173,9 @@ async function subscribe(socket: TestSocket, classId = 101, user: AuthUser = USE
 
 afterEach(() => {
   resetLiveSyncForTests();
+  dbState.evaluations = [];
+  dbState.evaluationItems = [];
+  dbState.itemInsertConflicts = false;
   vi.mocked(getPersistedUserSessionState).mockReset().mockResolvedValue({
     sessionVersion: 0,
     mustChangePassword: false,
@@ -356,6 +409,53 @@ describe('subject-scoped WebSocket cell locks', () => {
       subjectCode: 'D',
       pupilId: 501,
     })));
+  });
+
+  it('answers an empty-cell insert race with a reconcilable CONFLICT, not an error', async () => {
+    const socket = new TestSocket();
+    await subscribe(socket);
+
+    const { findPupilInClass } = await import('../lib/guards.js');
+    const rubric = await import('../lib/rubric.js');
+    vi.mocked(findPupilInClass).mockResolvedValue({ id: 501, classId: 101 } as never);
+    vi.mocked(rubric.loadRubricIndex).mockResolvedValue({ keyToCriterion: new Map() } as never);
+    vi.mocked(rubric.resolveCriterionId).mockReturnValue(1 as never);
+    vi.mocked(rubric.isValidRating).mockReturnValue(true);
+
+    dbState.evaluations = [{ id: 'eval-1', subjectCode: 'D' }];
+    // Both clients read the cell as empty; the other client's insert won the race.
+    dbState.evaluationItems = [];
+    dbState.itemInsertConflicts = true;
+
+    await socket.receive({
+      type: 'UPDATE_RATING',
+      payload: {
+        classId: 101,
+        pupilId: 501,
+        itemKey: 'org_1',
+        subjectCode: 'D',
+        rating: 'A',
+        expectedVersion: 0,
+        clientMutationId: 'mut-race-1',
+      },
+    });
+
+    // The client reconciles a CONFLICT that carries evaluationId + currentRating +
+    // currentVersion; a bare ERROR would leave the losing teacher's screen stale with no
+    // way to learn what actually landed.
+    expect(socket.messages).toContainEqual(
+      expect.objectContaining({
+        type: 'CONFLICT',
+        evaluationId: 'eval-1',
+        pupilId: 501,
+        itemKey: 'org_1',
+        subjectCode: 'D',
+        currentRating: '+',
+        currentVersion: 1,
+        clientMutationId: 'mut-race-1',
+      }),
+    );
+    expect(socket.messages.some((message) => message.type === 'ERROR')).toBe(false);
   });
 
   it('rejects UPDATE_RATING with CLASS_CONFERENCE_LOCKED when the class conference is locked', async () => {

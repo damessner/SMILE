@@ -117,7 +117,7 @@ export interface AdminUserAccount {
   mustChangePassword: boolean;
 }
 
-/** Account list for the administrator reset flow. Never carries a hash. */
+/** Account list for the administrator's credential handover. Never carries a hash. */
 export async function getAdminUsers(): Promise<{ users: AdminUserAccount[] }> {
   const res = await apiFetch('/auth/users');
   return unwrap(res);
@@ -126,7 +126,7 @@ export async function getAdminUsers(): Promise<{ users: AdminUserAccount[] }> {
 export interface ResetStartPassword {
   success: boolean;
   username: string;
-  /** Fixed school reset password; the user must change it on next login. */
+  /** Shown exactly once by the server; the value is never stored or retrievable again. */
   temporaryPassword: string;
   mustChangePassword: boolean;
   notice: string;

@@ -274,13 +274,13 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   as well as live data.
 - ~~**One bootstrap password for every seeded account.**~~ Seeded accounts still use the
   operator-supplied `INITIAL_USER_PASSWORD` and require a change at first login. The Konten
-  panel's administrator reset (`POST /api/auth/admin/temporary-password`) deliberately resets
-  an account to the legacy shared `smile2026` value by owner request. It revokes prior
-  sessions and forces a password change before the account can mutate data. This reset value
-  is a known, previously published credential; keep this exception limited to an explicit
-  administrator action and never use it for seed-created accounts or other password flows.
-  The admin receives it only in the reset response, it is not logged, and must hand it to the
-  user out of band.
+  panel's administrator reset (`POST /api/auth/admin/temporary-password`) now generates a
+  fresh random one-time credential for each reset (`server/src/lib/temporary-credential.ts`)
+  instead of reusing the legacy shared `smile2026` value; no flow produces `smile2026` any
+  more. The reset revokes prior sessions and forces a password change before the account can
+  mutate data. The generated value is shown once in the reset response and is deliberately
+  never logged (nor copied to the clipboard by the UI), so the administrator must hand it to
+  the user out of band.
 
 ### Open owner decisions
 
@@ -300,9 +300,10 @@ implemented honestly.
 
 ## Test coverage
 
-The root `npm test` command runs the server and client workspaces. The latest local-safe run
-reported **427 server tests passed, 24 PostgreSQL integration tests skipped, and 134 client tests
-passed**.
+The root `npm test` command runs the server and client workspaces (with `PORT` set). The latest
+local-safe run reported **555 server tests passed, 27 PostgreSQL integration tests skipped, and
+245 client tests passed** (2026-10-11); `server/src/docs/contract.test.ts` keeps every document
+that quotes a total in agreement.
 
 Run it as `npm test` from the repository root. There is no root vitest config, so invoking
 `npx vitest` directly at the root collects both workspaces under the server's environment and
@@ -334,9 +335,9 @@ evidence.
   place for reversibility. No code reads them, but a deployment still running older code
   would. Drop them once no deployment does.
 - Every newly seeded teacher still shares the operator-supplied `INITIAL_USER_PASSWORD`
-  (each is flagged `mustChangePassword`). The admin reset separately reuses the known
-  `smile2026` value by owner request; both shared-password paths remain security risks until
-  per-account bootstrap delivery is available.
+  (each is flagged `mustChangePassword`). The administrator reset issues a fresh random
+  one-time credential per handover, so that shared seed password is now the only
+  shared-password path left; it stays a risk until per-account bootstrap delivery exists.
 - A conflict with no current version to reconcile (the item row disappeared, or no evaluation
   survived) now triggers an authoritative class reload on both the WebSocket and HTTP paths instead
   of leaving a stale cell on screen. The behaviour is unit-tested, but the resulting database state

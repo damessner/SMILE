@@ -22,7 +22,7 @@ const TEST_ENV: Record<string, string> = {
   SMILE_ENV_FILE: 'no-such-env-file-for-tests',
 };
 
-const { queryMock, poolMock, timeoutVisibility, canActOnTimeout, dbSelectMock, dbUpdateReturningMock, dbInsertValuesMock } = vi.hoisted(() => ({
+const { queryMock, poolMock, timeoutVisibility, canActOnTimeout, dbSelectMock, dbUpdateReturningMock, dbInsertValuesMock, classAccessMock, findPupilMock, getPupilMock } = vi.hoisted(() => ({
   queryMock: vi.fn(async (_sql: string, _params?: unknown[]) => ({ rows: [] as unknown[] })),
   poolMock: vi.fn(() => ({ query: queryMock })),
   timeoutVisibility: vi.fn<(user: unknown) => Promise<{ onDuty: boolean; classIds: number[] | null; forbidden?: boolean }>>(
@@ -31,7 +31,10 @@ const { queryMock, poolMock, timeoutVisibility, canActOnTimeout, dbSelectMock, d
   canActOnTimeout: vi.fn<(user: unknown, classId: number) => Promise<boolean>>(async () => false),
   dbSelectMock: vi.fn<() => any[]>(() => []),
   dbUpdateReturningMock: vi.fn<() => any[]>(() => []),
-  dbInsertValuesMock: vi.fn(async () => undefined),
+  dbInsertValuesMock: vi.fn((_row?: unknown) => undefined),
+  classAccessMock: vi.fn(async () => ({ exists: true, canRecord: true })),
+  findPupilMock: vi.fn(async (pupilId: number) => ({ id: pupilId })),
+  getPupilMock: vi.fn(async (pupilId: number) => ({ id: pupilId })),
 }));
 
 function makeChain(result: any) {
@@ -40,10 +43,12 @@ function makeChain(result: any) {
   p.where = () => p;
   p.limit = () => p;
   p.orderBy = () => p;
+  p.onConflictDoUpdate = () => p;
+  p.returning = () => p;
   return p;
 }
 
-const dbMock = {
+const dbMock: any = {
   select: vi.fn(() => makeChain(dbSelectMock())),
   update: vi.fn(() => ({
     set: vi.fn(() => ({
@@ -53,9 +58,14 @@ const dbMock = {
     })),
   })),
   insert: vi.fn(() => ({
-    values: dbInsertValuesMock,
+    values: vi.fn((row: unknown) => {
+      dbInsertValuesMock(row);
+      return makeChain([row]);
+    }),
   })),
 };
+// `db.transaction(async (tx) => ...)` must hand the callback the same chainable mock.
+dbMock.transaction = vi.fn(async (callback: (tx: unknown) => unknown) => callback(dbMock));
 
 vi.mock('../db/index.js', () => ({
   getPool: poolMock,
@@ -65,6 +75,18 @@ vi.mock('../db/index.js', () => ({
 vi.mock('../lib/lw-duty.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/lw-duty.js')>();
   return { ...actual, timeoutVisibility, canActOnTimeout };
+});
+
+// Only the class/pupil lookups are stubbed, so the identity and password checks under test
+// still run for real.
+vi.mock('../lib/guards.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/guards.js')>();
+  return {
+    ...actual,
+    getClassAccess: classAccessMock,
+    findPupilInClass: findPupilMock,
+    getPupil: getPupilMock,
+  };
 });
 
 vi.mock('../ws/live-sync.js', () => ({
@@ -111,6 +133,9 @@ beforeEach(() => {
   currentUser = { id: 'u1', username: 'tester', role: 'teacher', teacherId: 42 };
   dbSelectMock.mockReturnValue([]);
   dbUpdateReturningMock.mockReturnValue([]);
+  classAccessMock.mockResolvedValue({ exists: true, canRecord: true } as never);
+  findPupilMock.mockResolvedValue({ id: 5 } as never);
+  getPupilMock.mockResolvedValue({ id: 5 } as never);
 });
 
 const get = (url = '/api/timeouts/active') => app!.inject({ method: 'GET', url });
@@ -213,12 +238,64 @@ describe('POST /api/timeouts/:id/resolve — the duty supervisor is not refused'
       success: true,
       incident: { ...resolvedIncident, sentAt: sampleIncident.sentAt.toISOString() },
     });
+    // Closing the time-out and recording who closed it commit together.
+    expect(dbMock.transaction).toHaveBeenCalledTimes(1);
+    expect(dbInsertValuesMock.mock.calls.some(([row]) => (row as any)?.action === 'TIMEOUT_RESOLVED')).toBe(true);
   });
 
   it('rejects a malformed id before touching the database', async () => {
     const res = await post('not-a-uuid');
     expect(res.statusCode).toBe(400);
     expect(canActOnTimeout).not.toHaveBeenCalled();
+  });
+});
+
+describe('administrative writes fail closed when the account has no teacher record', () => {
+  const issueTimeout = (body: Record<string, unknown>) =>
+    app!.inject({ method: 'POST', url: '/api/timeouts', payload: body });
+  const acknowledge = (body: Record<string, unknown>) =>
+    app!.inject({ method: 'POST', url: '/api/timeouts/escalations/acknowledge', payload: body });
+
+  it('refuses issuing a time-out with 503 instead of writing teacher_id 0', async () => {
+    currentUser = { id: 'a1', username: 'admin', role: 'admin' };
+
+    const res = await issueTimeout({ pupilId: 5, classId: 3, taskAssignment: 'Arbeitsauftrag' });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json().code).toBe('SYSTEM_ACTOR_NOT_CONFIGURED');
+    expect(dbInsertValuesMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses acknowledging an escalation with 503 instead of writing handled_by 0', async () => {
+    currentUser = { id: 'a1', username: 'admin', role: 'admin' };
+
+    const res = await acknowledge({ pupilId: 5, milestoneCount: 3 });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json().code).toBe('SYSTEM_ACTOR_NOT_CONFIGURED');
+    expect(dbInsertValuesMock).not.toHaveBeenCalled();
+    expect(dbMock.transaction).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges an escalation and its audit entry inside one transaction', async () => {
+    currentUser = { id: 'a1', username: 'admin', role: 'admin', teacherId: 42 };
+
+    const res = await acknowledge({ pupilId: 5, milestoneCount: 3 });
+
+    expect(res.statusCode).toBe(201);
+    expect(dbMock.transaction).toHaveBeenCalledTimes(1);
+    const actions = dbInsertValuesMock.mock.calls.map(([row]) => (row as any)?.action);
+    expect(actions).toContain('TIMEOUT_ESCALATION_RESOLVED');
+    expect(dbInsertValuesMock.mock.calls.some(([row]) => (row as any)?.handledBy === 0)).toBe(false);
+  });
+
+  it('still attributes a time-out to the real teacher record', async () => {
+    const res = await issueTimeout({ pupilId: 5, classId: 3, taskAssignment: 'Arbeitsauftrag' });
+
+    expect(res.statusCode).toBe(201);
+    const inserted = dbInsertValuesMock.mock.calls.map(([row]) => row as any);
+    expect(inserted.some((row) => row?.teacherId === 42 || row?.sentByTeacherId === 42)).toBe(true);
+    expect(inserted.some((row) => row?.teacherId === 0 || row?.sentByTeacherId === 0)).toBe(false);
   });
 });
 

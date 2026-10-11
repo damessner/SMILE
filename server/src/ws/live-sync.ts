@@ -646,6 +646,38 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
         })
         .returning();
     } catch {
+      // Both clients read this empty cell as "no row" and both inserted; one lost the race
+      // on the unique index. An error message would be a dead end - the winning value is
+      // not on the loser's screen anywhere - so answer with the same reconcilable CONFLICT
+      // the version race uses and let the client apply the value that actually landed.
+      const [winner] = await db
+        .select()
+        .from(evaluationItems)
+        .where(
+          and(
+            eq(evaluationItems.evaluationId, evalRecord.id),
+            eq(evaluationItems.itemKey, itemKey),
+          ),
+        )
+        .limit(1);
+
+      if (winner) {
+        sendTo(client, {
+          type: 'CONFLICT',
+          message: 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade gesetzt.',
+          evaluationId: evalRecord.id,
+          classId,
+          pupilId,
+          itemKey,
+          subjectCode,
+          currentRating: winner.rating,
+          currentVersion: winner.version,
+          updatedAt: winner.updatedAt,
+          ...(clientMutationId ? { clientMutationId } : {}),
+        });
+        return;
+      }
+
       sendRatingError(client, clientMutationId, 'Diese Bewertung wurde gerade von einer Kollegin gesetzt.');
       return;
     }

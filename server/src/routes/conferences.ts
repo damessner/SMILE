@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import { auditLogs, classRoundLocks, finalRanks, observationRounds, pupils } from '../db/schema.js';
 import { config } from '../config.js';
@@ -352,16 +352,21 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     if (!round) return badRequest(reply, 'Kein aktiver Beobachtungszeitraum gefunden');
 
     if (action === 'unconfirm') {
-      await db
-        .delete(finalRanks)
-        .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.pupilId, pupilId)));
+      // Revocation and its audit row commit together. Split apart, a committed deletion
+      // with no CONFERENCE_VOTE_REVOKED row would remove a conference decision from the
+      // official record without leaving a trace of who withdrew it.
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(finalRanks)
+          .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.pupilId, pupilId)));
 
-      await db.insert(auditLogs).values({
-        actorId: safeTeacherId(user.teacherId),
-        action: 'CONFERENCE_VOTE_REVOKED',
-        entity: 'pupil',
-        entityId: String(pupilId),
-        payload: { classId: cid, pupilId },
+        await tx.insert(auditLogs).values({
+          actorId: safeTeacherId(user.teacherId),
+          action: 'CONFERENCE_VOTE_REVOKED',
+          entity: 'pupil',
+          entityId: String(pupilId),
+          payload: { classId: cid, pupilId },
+        });
       });
 
       broadcastToClass(cid, { type: 'FINAL_RANK_REVOKED', pupilId });
@@ -378,35 +383,41 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     const reason = overrideReason?.trim() || confirmation.overrideReason;
     if (reason.length > 2000) return badRequest(reply, 'Der Beschlussvermerk ist zu lang.');
 
-    // The unique index on (round_id, pupil_id) makes this a real upsert.
-    const [confirmed] = await db
-      .insert(finalRanks)
-      .values({
-        roundId: round.id,
-        pupilId,
-        classId: cid,
-        rank: confirmationRank,
-        overrideReason: reason,
-        confirmedBy: safeTeacherId(user.teacherId),
-        confirmedAt: confirmation.confirmedAt,
-      })
-      .onConflictDoUpdate({
-        target: [finalRanks.roundId, finalRanks.pupilId],
-        set: {
+    // The decision and its audit row commit together; a confirmed rank that the audit
+    // history never recorded is the one outcome a conference decision must not have.
+    const confirmed = await db.transaction(async (tx) => {
+      // The unique index on (round_id, pupil_id) makes this a real upsert.
+      const [row] = await tx
+        .insert(finalRanks)
+        .values({
+          roundId: round.id,
+          pupilId,
+          classId: cid,
           rank: confirmationRank,
           overrideReason: reason,
           confirmedBy: safeTeacherId(user.teacherId),
           confirmedAt: confirmation.confirmedAt,
-        },
-      })
-      .returning();
+        })
+        .onConflictDoUpdate({
+          target: [finalRanks.roundId, finalRanks.pupilId],
+          set: {
+            rank: confirmationRank,
+            overrideReason: reason,
+            confirmedBy: safeTeacherId(user.teacherId),
+            confirmedAt: confirmation.confirmedAt,
+          },
+        })
+        .returning();
 
-    await db.insert(auditLogs).values({
-      actorId: safeTeacherId(user.teacherId),
-      action: 'CONFERENCE_VOTE_CONFIRMED',
-      entity: 'pupil',
-      entityId: String(pupilId),
-      payload: { rank: confirmationRank, overrideReason: reason },
+      await tx.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'CONFERENCE_VOTE_CONFIRMED',
+        entity: 'pupil',
+        entityId: String(pupilId),
+        payload: { rank: confirmationRank, overrideReason: reason },
+      });
+
+      return row;
     });
 
     broadcastToClass(cid, {
@@ -483,63 +494,81 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     const round = await getActiveRound();
     if (!round) return badRequest(reply, 'Kein aktiver Beobachtungszeitraum gefunden');
 
-    // Validate every entry before writing anything.
+    // Validate every entry before writing anything, and check class membership in one
+    // query. The previous loop called `getPupil` per entry, so a full-class conference
+    // issued 200 sequential round trips just to answer "is this pupil in this class?".
     for (const item of items) {
       if (!item?.pupilId || !isRank(item.rank)) {
         return badRequest(reply, 'Jeder Beschluss benötigt eine gültige Schüler-ID und einen gültigen Rang.');
       }
-      const pupil = await getPupil(item.pupilId);
-      if (!pupil || pupil.classId !== cid) {
+    }
+    const requestedIds = [...new Set(items.map((item) => item.pupilId))];
+    const roster = await db
+      .select({ id: pupils.id, classId: pupils.classId })
+      .from(pupils)
+      .where(inArray(pupils.id, requestedIds));
+    const pupilClass = new Map(roster.map((row) => [row.id, row.classId]));
+    for (const item of items) {
+      if (pupilClass.get(item.pupilId) !== cid) {
         return badRequest(reply, `Schüler ${item.pupilId} gehört nicht zu dieser Klasse.`);
       }
     }
 
     const confirmation = createConferenceConfirmationMetadata();
     const reason = confirmation.overrideReason;
+    const confirmedBy = safeTeacherId(user.teacherId);
+
+    // One decision per pupil, last one wins. A duplicated pupilId would otherwise make
+    // PostgreSQL reject the whole batch with "ON CONFLICT DO UPDATE command cannot affect
+    // row a second time" - a single confused client request must not fail the conference.
+    const decisions = new Map<number, string>();
+    for (const item of items) decisions.set(item.pupilId, item.rank);
 
     await db.transaction(async (tx) => {
-      for (const item of items) {
-        await tx
-          .insert(finalRanks)
-          .values({
+      // One multi-row statement instead of one upsert per pupil: the round trips the old
+      // loop spent were sequential while the transaction stayed open for the whole class.
+      await tx
+        .insert(finalRanks)
+        .values(
+          [...decisions].map(([pupilId, rank]) => ({
             roundId: round.id,
-            pupilId: item.pupilId,
+            pupilId,
             classId: cid,
-            rank: item.rank,
+            rank,
             overrideReason: reason,
-            confirmedBy: safeTeacherId(user.teacherId),
+            confirmedBy,
             confirmedAt: confirmation.confirmedAt,
-          })
-          .onConflictDoUpdate({
-            target: [finalRanks.roundId, finalRanks.pupilId],
-            set: {
-              rank: item.rank,
-              overrideReason: reason,
-              confirmedBy: safeTeacherId(user.teacherId),
-              confirmedAt: confirmation.confirmedAt,
-            },
-          });
-      }
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [finalRanks.roundId, finalRanks.pupilId],
+          set: {
+            rank: sql`excluded.rank`,
+            overrideReason: sql`excluded.override_reason`,
+            confirmedBy: sql`excluded.confirmed_by`,
+            confirmedAt: sql`excluded.confirmed_at`,
+          },
+        });
 
       await tx.insert(auditLogs).values({
-        actorId: safeTeacherId(user.teacherId),
+        actorId: confirmedBy,
         action: 'CONFERENCE_VOTE_CONFIRMED_BULK',
         entity: 'class',
         entityId: String(cid),
-        payload: { count: items.length, roundId: round.id },
+        payload: { count: decisions.size, roundId: round.id },
       });
     });
 
-    for (const item of items) {
+    for (const [pupilId, rank] of decisions) {
       broadcastToClass(cid, {
         type: 'FINAL_RANK_CONFIRMED',
-        pupilId: item.pupilId,
-        rank: item.rank,
+        pupilId,
+        rank,
         confirmedAt: confirmation.confirmedAt,
       });
     }
 
-    return reply.send({ success: true, count: items.length });
+    return reply.send({ success: true, count: decisions.size });
   });
 
   /**

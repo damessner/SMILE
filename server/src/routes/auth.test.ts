@@ -270,13 +270,19 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect(usersRoute![0]).not.toMatch(/passwordHash/);
   });
 
-  it('resets an account to the requested fixed start password and requires changing it', () => {
+  it('issues a random one-time credential and requires changing it', () => {
     const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
     const issueRoute = /fastify\.post\(\s*['"]\/admin\/temporary-password['"][\s\S]*?\n  \);/.exec(source);
     expect(issueRoute).toBeTruthy();
     const block = issueRoute![0];
 
-    expect(block).toContain("const temporaryPassword = 'smile2026';");
+    // Generated per issuance. A constant would make every reset account share one
+    // published password again, which is the defect this route exists to avoid.
+    expect(block).toContain('const temporaryPassword = generateTemporaryPassword();');
+    expect(block).not.toMatch(/smile2026/);
+    expect(source).toMatch(
+      /import \{ generateTemporaryPassword \} from '\.\.\/lib\/temporary-credential\.js';/,
+    );
     expect(block).toContain('passwordHash: await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS)');
     expect(block).toContain('mustChangePassword: true');
     expect(block).toContain('sessionVersion: sql`${users.sessionVersion} + 1`');
