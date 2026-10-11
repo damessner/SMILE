@@ -21,7 +21,7 @@ Group=smile
 
 EnvironmentFile=/etc/smile/backup.env
 
-ExecStart=/opt/smile/scripts/restore-drill.sh
+ExecStart=/usr/bin/python3 /opt/smile/scripts/restore_drill.py
 
 NoNewPrivileges=true
 PrivateTmp=true

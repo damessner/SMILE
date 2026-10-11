@@ -111,11 +111,26 @@ def main():
         cat > /usr/local/bin/smile-sync-independent-backups.sh << 'EOF_SYNC'
 #!/bin/bash
 set -euo pipefail
-pct exec 115 -- test -d /var/backups/smile-independent || exit 0
-# Copy independent backups from LXC 115 to host storage
-cp -u /var/lib/lxc/115/rootfs/var/backups/smile-independent/*.independent.enc /var/backups/smile-independent/ 2>/dev/null || true
+
+DEST_DIR="/var/backups/smile-independent"
+mkdir -p "$DEST_DIR"
+chmod 700 "$DEST_DIR"
+
+pct status 115 2>/dev/null | grep -q "status: running" || exit 0
+
+FILES=$(pct exec 115 -- find /var/backups/smile-independent -maxdepth 1 -name "*.independent.enc" 2>/dev/null || true)
+
+for f in $FILES; do
+  fname=$(basename "$f")
+  if [ ! -f "$DEST_DIR/$fname" ]; then
+    pct pull 115 "$f" "$DEST_DIR/$fname"
+    chmod 600 "$DEST_DIR/$fname"
+    echo "Pulled $fname to host $DEST_DIR"
+  fi
+done
+
 # Prune files older than 14 days on host
-find /var/backups/smile-independent/ -type f -name "*.independent.enc" -mtime +14 -delete 2>/dev/null || true
+find "$DEST_DIR" -type f -name "*.independent.enc" -mtime +14 -delete 2>/dev/null || true
 EOF_SYNC
         chmod 755 /usr/local/bin/smile-sync-independent-backups.sh
         # Daily cron on host at 20:00 (after 19:30 container backup)

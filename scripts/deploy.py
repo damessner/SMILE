@@ -264,6 +264,7 @@ curl -s -m 5 http://127.0.0.1:3000/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\\.(j
 mkdir -p /etc/smile /var/backups/smile /var/backups/smile-independent
 chown -R smile:smile /var/backups/smile /var/backups/smile-independent
 chmod 700 /var/backups/smile /var/backups/smile-independent
+chmod +x /opt/smile/scripts/*.py /opt/smile/scripts/*.sh 2>/dev/null || true
 
 cp -a /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
 cp -a /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
