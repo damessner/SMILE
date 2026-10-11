@@ -27,6 +27,7 @@ import { statisticsRoutes } from './routes/statistics.js';
 import { timetableRoutes } from './routes/timetable.js';
 import { timeoutRoutes } from './routes/timeouts.js';
 import { registerTimeoutSweeper } from './lib/timeout-sweeper.js';
+import { bellScheduleTimezoneWarning } from './lib/period-times.js';
 import {
   closeAllWebSockets,
   handleWebSocketConnection,
@@ -276,6 +277,9 @@ export async function start() {
     }
     throw err;
   }
+
+  const tzWarning = bellScheduleTimezoneWarning();
+  if (tzWarning) fastify.log.warn(tzWarning);
 
   // Apply pending schema migrations before accepting traffic, so the app never
   // serves requests against a schema it does not expect.

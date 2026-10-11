@@ -22,6 +22,6 @@
 ---
 
 ### Test & Build Commands
-- Run all tests: `npm test` from the repository root with `PORT` set (server 555 passed + 27 PostgreSQL-skipped / 39 files; client 245 passed / 19 files, as of 2026-10-11). There is no root vitest config — do not run `npx vitest` from the root, it sweeps both workspaces under the wrong environment.
+- Run all tests: `npm test` from the repository root with `PORT` set (server 559 passed + 27 PostgreSQL-skipped / 39 files; client 245 passed / 19 files, as of 2026-10-11). There is no root vitest config — do not run `npx vitest` from the root, it sweeps both workspaces under the wrong environment.
 - Typecheck: `npm run typecheck --workspaces`
 - Build: `npm run build`

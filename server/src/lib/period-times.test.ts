@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { PERIOD_TIMES, currentPeriod, timeoutExpiry } from './period-times.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PERIOD_TIMES, bellScheduleTimezoneWarning, currentPeriod, timeoutExpiry } from './period-times.js';
 
 /**
  * These tests pin the one clock the whole Lernwerkstatt duty decision rests on: if
@@ -113,5 +113,28 @@ describe('timeoutExpiry', () => {
   it('returns null when issued at the weekend', () => {
     // Sunday 10:00
     expect(timeoutExpiry(at(7, 10, 0))).toBeNull();
+  });
+});
+
+describe('bellScheduleTimezoneWarning', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('stays silent when the host runs in the school zone', () => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: 'Europe/Vienna' }),
+    } as never);
+    expect(bellScheduleTimezoneWarning()).toBeNull();
+  });
+
+  it('warns when the host runs in another zone, naming the fix', () => {
+    vi.spyOn(Intl, 'DateTimeFormat').mockReturnValue({
+      resolvedOptions: () => ({ timeZone: 'UTC' }),
+    } as never);
+    const warning = bellScheduleTimezoneWarning();
+    expect(warning).toContain('UTC');
+    expect(warning).toContain('Europe/Vienna');
+    expect(warning).toContain('timedatectl set-timezone');
   });
 });

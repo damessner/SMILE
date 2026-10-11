@@ -10,6 +10,7 @@ import {
   getClassAccess,
   getGlobalAccess,
   getPupil,
+  hasPersistedTeacherActor,
   MAX_POSTGRES_INTEGER,
   parseIdParam,
   requireAuth,
@@ -93,26 +94,44 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
     }
 
-    const [card] = await db
-      .insert(behaviorCards)
-      .values({
-        pupilId,
-        classId,
-        teacherId: user.teacherId ?? 0,
-        cardType: typedCard,
-        note: cleanNote || null,
-      })
-      .returning();
-
-    if (typedCard === 'red') {
-      await db.insert(auditLogs).values({
-        actorId: safeTeacherId(user.teacherId),
-        action: 'RED_CARD_ISSUED',
-        entity: 'pupil',
-        entityId: String(pupilId),
-        payload: { classId, note: cleanNote, reason: 'Instant rank loss' },
+    // Bound to a const so the `is number` narrowing survives into the transaction
+    // callback. `behavior_cards.teacher_id` is a NOT NULL foreign key; the former
+    // `?? 0` attributed the card to a phantom teacher row instead of failing.
+    const actorId = user.teacherId;
+    if (!hasPersistedTeacherActor(actorId)) {
+      return reply.status(503).send({
+        error:
+          'Das Ausstellen einer Karte ist nicht verfügbar, weil Ihrem Konto kein Lehrkraftdatensatz zugeordnet ist.',
+        code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
       });
     }
+
+    // A red card costs the pupil a rank, so the card and its audit row commit
+    // together; a rank loss with no RED_CARD_ISSUED row cannot be explained later.
+    const card = await db.transaction(async (tx) => {
+      const [issued] = await tx
+        .insert(behaviorCards)
+        .values({
+          pupilId,
+          classId,
+          teacherId: actorId,
+          cardType: typedCard,
+          note: cleanNote || null,
+        })
+        .returning();
+
+      if (typedCard === 'red') {
+        await tx.insert(auditLogs).values({
+          actorId: safeTeacherId(user.teacherId),
+          action: 'RED_CARD_ISSUED',
+          entity: 'pupil',
+          entityId: String(pupilId),
+          payload: { classId, note: cleanNote, reason: 'Instant rank loss' },
+        });
+      }
+
+      return issued;
+    });
 
     // Yellow-card escalation alert.
     let alertTriggered = false;

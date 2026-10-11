@@ -78,6 +78,13 @@ describe('schema is owned by the committed migrations', () => {
     }
   });
 
+  it('migration history creates the Lernwerkstatt room row (id 999)', () => {
+    // The Time-Out broadcasts and the duty lookup assume school_classes 999 exists,
+    // but no seed or import ever created it. Without a migration owning this row, a
+    // fresh database answers every room-999 subscribe with 'Klasse nicht gefunden'.
+    expect(migrationSql).toMatch(/school_classes[\s\S]*999[\s\S]*'LW'/i);
+  });
+
   it('migration history creates class_round_locks with unique (round_id, class_id)', () => {
     expect(migrationSql).toMatch(/CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?"?class_round_locks"?/i);
     expect(migrationSql).toMatch(/UNIQUE\s*\(\s*round_id\s*,\s*class_id\s*\)/i);

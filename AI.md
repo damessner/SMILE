@@ -14,7 +14,7 @@ The most recent reconciliation (2026-10-07) is recorded in
 
 ### Quick Reference
 - **Tech Stack**: Fastify v5 (TypeScript, Node >= 22), React 19 (Vite), Drizzle ORM, PostgreSQL (`smile_db`), WebSockets.
-- **Test Suite**: `npm test` — runs **both** workspaces and needs `PORT` set (e.g. `PORT=3000 npm test`); server: 555 passed + 27 PostgreSQL-skipped across 39 files; client: 245 passed across 19 files (counts as of 2026-10-11). Not server-only.
+- **Test Suite**: `npm test` — runs **both** workspaces and needs `PORT` set (e.g. `PORT=3000 npm test`); server: 559 passed + 27 PostgreSQL-skipped across 39 files; client: 245 passed across 19 files (counts as of 2026-10-11). Not server-only.
 - **Typecheck**: `npm run typecheck --workspaces`
 - **Build**: `npm run build`
 - **Deployment**: `python scripts/deploy_to_production.py` (Proxmox LXC 115)

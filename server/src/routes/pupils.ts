@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import { auditLogs, pupils, pupilBehaviorActions, schoolClasses } from '../db/schema.js';
-import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, MAX_POSTGRES_INTEGER, parseIdParam, requireAuth, safeTeacherId } from '../lib/guards.js';
+import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parseIdParam, requireAuth, safeTeacherId } from '../lib/guards.js';
 import { BEHAVIOR_STAGES, computePupilBehaviorStage } from '../lib/behavior-stages.js';
 
 
@@ -329,29 +329,45 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'Gültige Stufe (-10 bis +10) und Titel der Maßnahme sind erforderlich.');
     }
 
-    const [action] = await db
-      .insert(pupilBehaviorActions)
-      .values({
-        pupilId: pid,
-        stageLevel,
-        stageTitle: stageTitle.trim(),
-        status: status || 'completed',
-        teacherId: user.teacherId ?? 0,
-        notes: notes?.trim() || null,
-      })
-      .returning();
+    // Bound to a const so the `is number` narrowing survives into the transaction
+    // callback. `pupil_behavior_actions.teacher_id` is a NOT NULL foreign key; the
+    // former `?? 0` attributed the record to a phantom teacher row instead of failing.
+    const actorId = user.teacherId;
+    if (!hasPersistedTeacherActor(actorId)) {
+      return reply.status(503).send({
+        error:
+          'Das Dokumentieren einer Verhaltensmaßnahme ist nicht verfügbar, weil Ihrem Konto kein Lehrkraftdatensatz zugeordnet ist.',
+        code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
+      });
+    }
 
-    await db.insert(auditLogs).values({
-      actorId: safeTeacherId(user.teacherId),
-      action: 'BEHAVIOR_STAGE_ACTION_RECORDED',
-      entity: 'pupil',
-      entityId: String(pid),
-      payload: {
-        actionId: action.id,
-        stageLevel,
-        stageTitle,
-        notes: notes?.trim(),
-      },
+    const action = await db.transaction(async (tx) => {
+      const [recorded] = await tx
+        .insert(pupilBehaviorActions)
+        .values({
+          pupilId: pid,
+          stageLevel,
+          stageTitle: stageTitle.trim(),
+          status: status || 'completed',
+          teacherId: actorId,
+          notes: notes?.trim() || null,
+        })
+        .returning();
+
+      await tx.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'BEHAVIOR_STAGE_ACTION_RECORDED',
+        entity: 'pupil',
+        entityId: String(pid),
+        payload: {
+          actionId: recorded.id,
+          stageLevel,
+          stageTitle,
+          notes: notes?.trim(),
+        },
+      });
+
+      return recorded;
     });
 
     return reply.status(201).send(action);

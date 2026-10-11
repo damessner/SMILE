@@ -266,7 +266,7 @@ describe('isSubmitted is scoped to the subjects in view', () => {
     const bewertet = screen.getByRole('button', { name: /Bewertet/ });
     expect(offen).toHaveTextContent('1');
     expect(bewertet).toHaveTextContent('0');
-    expect(within(rosterRow('Anna Muster')).getByText('0/1 Punkte')).toBeInTheDocument();
+    expect(rosterRow('Anna Muster')).toHaveTextContent(/^Anna MusterAusstehend$/);
   });
 
   it('does not tick a pupil with D submitted and M open in Gesamt (all-subject) mode', () => {
@@ -319,8 +319,8 @@ describe('the rendered cells hold no rating from another subject', () => {
     // The reset control renders only over a stored rating - a second, independent
     // read on the same fact.
     expect(screen.queryByTitle('Bewertung löschen (Leer)')).toBeNull();
-    // And the rating that is out of scope never reached the positive count.
-    expect(within(rosterRow('Anna Muster')).getByText('0/1 Punkte')).toBeInTheDocument();
+    // The out-of-scope rating cannot influence the compact roster, which only shows the rank.
+    expect(rosterRow('Anna Muster')).toHaveTextContent(/^Anna MusterAusstehend$/);
   });
 
   it('fills the cell when the subject in view holds the item', () => {
@@ -331,7 +331,7 @@ describe('the rendered cells hold no rating from another subject', () => {
 
     expect(selectedRating()).toBe('Gut (😊)');
     expect(screen.getByTitle('Bewertung löschen (Leer)')).toBeInTheDocument();
-    expect(within(rosterRow('Anna Muster')).getByText('1/1 Punkte')).toBeInTheDocument();
+    expect(rosterRow('Anna Muster')).toHaveTextContent(/^Anna MusterLehrling$/);
   });
 });
 
@@ -1179,6 +1179,37 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
     });
   });
 
+  it('shows each subject only once in the Offen/Bewertet list and omits rubric totals from rank labels', () => {
+    const meisterItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 16 ? 'smile' : 'struggle', 1)
+    );
+    const lehrlingItems = Array.from({ length: 18 }, (_, i) =>
+      item(`item_${i + 1}`, i < 6 ? 'smile' : 'struggle', 1)
+    );
+    const anna = pupil(1, 'Anna Muster', [
+      evaluation('D', { items: meisterItems }),
+      evaluation('M', { items: lehrlingItems }),
+    ]);
+
+    renderGrid({
+      pupils: [anna],
+      mySubjects: [GERMAN, MATHS],
+      criteria: EIGHTEEN_CRITERIA,
+    });
+
+    const roster = within(rosterRow('Anna Muster'));
+    expect(roster.getByText('Anna Muster')).toBeInTheDocument();
+    expect(rosterRow('Anna Muster')).toHaveTextContent(/^Anna Muster$/);
+    expect(roster.queryByText(/(?:D|M)\s+(?:Meister|Lehrling|Ausstehend)/)).toBeNull();
+    expect(roster.queryByText(/\d+\/18 Punkte/)).toBeNull();
+
+    expect(screen.getByText('D: Meister')).toBeInTheDocument();
+    expect(screen.getByText('M: Lehrling')).toBeInTheDocument();
+    expect(screen.getByText('Gilt für alle Fächer: Deutsch · Mathematik')).toBeInTheDocument();
+    expect(screen.queryByText('D: Meister (16/18)')).toBeNull();
+    expect(screen.queryByText('M: Lehrling (6/18)')).toBeNull();
+  });
+
   it('shows Ausstehend instead of Lehrling for an unrated subject', () => {
     // scoreSubject returns rank: null for an evaluation with no rated items.
     // The grid must render that as pending, not as the lowest rank: "M:
@@ -1195,9 +1226,10 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
       criteria: EIGHTEEN_CRITERIA,
     });
 
-    // Detail header chip and roster row chip both show the pending subject.
+    // The detail header still identifies the pending subject; the compact
+    // Offen/Bewertet roster deliberately contains no subject/status chips.
     expect(screen.getByText(/M: Ausstehend/i)).toBeInTheDocument();
-    expect(screen.getByText('M Ausstehend')).toBeInTheDocument();
+    expect(within(rosterRow('Anna Muster')).queryByText(/M\s+Ausstehend/i)).toBeNull();
     expect(screen.queryByText(/M:.*Lehrling/i)).toBeNull();
   });
 
@@ -1238,6 +1270,13 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
       expect(submitStatus).toHaveTextContent(/Mathematik \(M\)/i);
       expect(screen.queryByText(/Alle Schüler dieser Klasse sind jetzt bewertet/i)).toBeNull();
     });
+  });
+
+  it('shows which subjects a Gesamt quick-grade applies to', () => {
+    const anna = pupil(1, 'Anna Muster', [evaluation('D'), evaluation('M')]);
+    renderGrid({ pupils: [anna], mySubjects: [GERMAN, MATHS], criteria: EIGHTEEN_CRITERIA });
+
+    expect(screen.getByText('Gilt für alle Fächer: Deutsch · Mathematik')).toBeInTheDocument();
   });
 
   it('writes a quick grade to every subject in Gesamt mode, then only to the open tab', async () => {

@@ -46,6 +46,32 @@ export interface CurrentPeriod {
 }
 
 /**
+ * IANA zone the bell schedule, the duty roster and the timeout expiry are expressed in.
+ *
+ * `currentPeriod` reads the *server-local* clock (`Date#getHours`), so this only holds
+ * when the host actually runs in this zone. Nothing in the deploy scripts sets it — a
+ * container left on UTC silently shifts every period and every duty lookup by the UTC
+ * offset. `bellScheduleTimezoneWarning()` turns that silent shift into a boot warning.
+ */
+export const SCHOOL_TIME_ZONE = 'Europe/Vienna';
+
+/**
+ * Non-null when the host timezone disagrees with the bell schedule.
+ *
+ * Pure apart from reading the runtime zone, so the boot path can warn and tests can
+ * pin the wording without starting a server.
+ */
+export function bellScheduleTimezoneWarning(): string | null {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (zone === SCHOOL_TIME_ZONE) return null;
+  return (
+    `System timezone is ${zone ?? 'unknown'}, but the bell schedule, Lernwerkstatt duty ` +
+      `and timeout expiry are ${SCHOOL_TIME_ZONE} local time. Set the container timezone ` +
+      `("timedatectl set-timezone Europe/Vienna") or the duty roster will be off by the UTC offset.`
+  );
+}
+
+/**
  * Which lesson is running right now.
  *
  * During a break the *next* period is reported, because that is the lesson whose teacher

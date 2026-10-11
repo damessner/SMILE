@@ -172,6 +172,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           code: 'INVALID_CURRENT_PASSWORD',
         });
       }
+      // The one-time credential must actually be replaced: whoever issued it (the
+      // administrator, or anyone who learned the shared bootstrap password) would
+      // otherwise keep knowing an active password after the "change".
+      if (await bcrypt.compare(newPassword, user.passwordHash)) {
+        return badRequest(reply, 'Das neue Passwort muss sich vom bisherigen unterscheiden.');
+      }
     } else {
       if (!currentPassword) {
         return badRequest(reply, 'Bitte geben Sie Ihr aktuelles Passwort an.');

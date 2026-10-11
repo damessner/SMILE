@@ -290,6 +290,21 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect(block).toContain('temporaryPassword,');
   });
 
+  it('rejects keeping the one-time credential as the new password', () => {
+    const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
+    const passwordRoute = /fastify\.post\(\s*['"]\/password['"][\s\S]*?\n  \);/.exec(source);
+    expect(passwordRoute).toBeTruthy();
+    const block = passwordRoute![0];
+
+    // Both branches must refuse a "change" that keeps the current hash: the client
+    // checks this too, but a crafted request bypasses the UI, and whoever issued the
+    // one-time credential would otherwise keep knowing an active password.
+    const mustChangeBranch = /if \(user\.mustChangePassword\) \{([\s\S]*?)\n    \} else \{/.exec(block);
+    expect(mustChangeBranch).toBeTruthy();
+    expect(mustChangeBranch![1]).toContain('bcrypt.compare(newPassword, user.passwordHash)');
+    expect(mustChangeBranch![1]).toContain('muss sich vom bisherigen unterscheiden');
+  });
+
   it('never logs the issued credential', () => {
     const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
     const issueRoute = /fastify\.post\(\s*['"]\/admin\/temporary-password['"][\s\S]*?\n  \);/.exec(source);

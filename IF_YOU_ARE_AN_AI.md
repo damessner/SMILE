@@ -260,7 +260,7 @@ Run commands from the repository root:
 npm run dev
 
 # Run the Vitest test suite — BOTH workspaces (PORT must be set, e.g. `PORT=3000 npm test`)
-#   server: 39 suites / 555 tests (+27 PostgreSQL-integration tests, skipped without
+#   server: 39 suites / 559 tests (+27 PostgreSQL-integration tests, skipped without
 #           TEST_DATABASE_URL)   client: 19 suites / 245 tests
 #   Counts last verified 2026-10-11; they grow with every added test.
 # The client suites use jsdom + Testing Library and include

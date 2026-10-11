@@ -43,6 +43,13 @@
       "when": 1791590000000,
       "tag": "0005_class_round_locks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791700000000,
+      "tag": "0006_lernwerkstatt_room",
+      "breakpoints": true
     }
   ]
 }

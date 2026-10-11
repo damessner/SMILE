@@ -1120,51 +1120,23 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       <span className="font-semibold text-sm truncate block leading-tight">{p.fullName}</span>
                       {pDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      {isAllSubjectsMode ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {mySubjects.map((s) => {
-                            const sc = scoreSubject(p.evaluations, s.code, rubricItemKeys);
-                            return (
-                              <span key={s.code} className="text-[10px] text-slate-400">
-                                {s.code}: {sc.positiveCount}/{rubricItemKeys.length}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-slate-400">{pRank.pos}/{rubricItemKeys.length} Punkte</span>
-                      )}
-                      {p.greenCardCount > 0 && (
-                        <span className="text-[10px] text-emerald-400 font-bold">
-                          ★ {p.greenCardCount}
-                        </span>
-                      )}
-                      {p.yellowCardCount > 0 && (
-                        <span className="text-[10px] text-amber-400 font-bold">
-                          ▲ {p.yellowCardCount}
-                        </span>
-                      )}
-                    </div>
+                    {(p.greenCardCount > 0 || p.yellowCardCount > 0) && (
+                      <div className="flex items-center gap-2 mt-1">
+                        {p.greenCardCount > 0 && (
+                          <span className="text-[10px] text-emerald-400 font-bold">
+                            ★ {p.greenCardCount}
+                          </span>
+                        )}
+                        {p.yellowCardCount > 0 && (
+                          <span className="text-[10px] text-amber-400 font-bold">
+                            ▲ {p.yellowCardCount}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {isAllSubjectsMode ? (
-                    <div className="flex flex-col sm:flex-row items-end gap-1 flex-shrink-0">
-                      {mySubjects.map((s) => {
-                        const sc = scoreSubject(p.evaluations, s.code, rubricItemKeys);
-                        const r = sc.rank ?? 'Ausstehend';
-                        const color = getRankVisuals(sc.rank).badgeBg;
-                        return (
-                          <span
-                            key={s.code}
-                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${color}`}
-                          >
-                            {s.code} {r}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : (
+                  {!isAllSubjectsMode && (
                     <span
                       className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
                     >
@@ -1250,14 +1222,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         key={s.code}
                         className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${color}`}
                       >
-                        {s.code}: {sRank} ({scored.positiveCount}/{rubricItemKeys.length})
+                        {s.code}: {sRank}
                       </span>
                     );
                   })}
                 </div>
               ) : (
                 <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${rankColor}`}>
-                  {rank ?? 'Ausstehend'} ({positiveTicks}/{rubricItemKeys.length})
+                  {rank ?? 'Ausstehend'}
                 </span>
               )}
 
@@ -1406,6 +1378,11 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 </span>
               )}
             </div>
+            {isAllSubjectsMode && (
+              <p className="text-[11px] text-amber-400/80">
+                Gilt für alle Fächer: {mySubjects.map((subject) => subject.name).join(' · ')}
+              </p>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {[
