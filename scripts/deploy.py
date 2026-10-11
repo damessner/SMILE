@@ -259,14 +259,18 @@ curl -s -m 5 http://127.0.0.1:3000/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\\.(j
        label='5. recent log warnings')
     ex(f'ls -la /var/backups/smile/ | tail -5', label='5. backups on disk')
 
-    # --- 6. M365 backup timer & environment setup ------------------------
+    # --- 6. Backup timers & environment setup ----------------------------
     ex('''
-mkdir -p /etc/smile /var/backups/smile
-chown -R smile:smile /var/backups/smile
-chmod 700 /var/backups/smile
+mkdir -p /etc/smile /var/backups/smile /var/backups/smile-independent
+chown -R smile:smile /var/backups/smile /var/backups/smile-independent
+chmod 700 /var/backups/smile /var/backups/smile-independent
 
 cp -a /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
 cp -a /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
+cp -a /opt/smile/scripts/systemd/smile-restore-drill.service /etc/systemd/system/
+cp -a /opt/smile/scripts/systemd/smile-restore-drill.timer /etc/systemd/system/
+cp -a /opt/smile/scripts/systemd/smile-independent-backup.service /etc/systemd/system/
+cp -a /opt/smile/scripts/systemd/smile-independent-backup.timer /etc/systemd/system/
 systemctl daemon-reload
 
 if [ ! -f /etc/smile/backup.env ]; then
@@ -287,19 +291,22 @@ EOF_ENV
   echo "NOTICE: M365_PASSWORD is empty. Fill it in /etc/smile/backup.env before the backup can run."
 fi
 
-# Arm the timer only if the backup can actually run. Without this gate a
-# half-configured server starts a 10-minute cycle of failing jobs, and the
-# 'CHANGE_ME' placeholder that used to be written here passed every check.
+# Arm M365 backup timer
 if sudo -u smile /usr/bin/python3 /opt/smile/scripts/backup_m365.py --check; then
   systemctl enable --now smile-m365-backup.timer
   echo "M365 backup timer armed."
 else
   systemctl enable smile-m365-backup.timer
   echo "WARN: preflight failed — timer installed but NOT started."
-  echo "      Fix the reported items, then: systemctl start smile-m365-backup.timer"
 fi
-systemctl status smile-m365-backup.timer --no-pager
-''', label='6. M365 backup timer status')
+
+# Arm restore-drill and independent-backup timers
+systemctl enable --now smile-restore-drill.timer
+systemctl enable --now smile-independent-backup.timer
+echo "Restore drill and independent backup timers armed."
+
+systemctl status smile-m365-backup.timer smile-restore-drill.timer smile-independent-backup.timer --no-pager
+''', label='6. Backup timers status')
 
     print('\n✓ DEPLOYMENT SUCCESSFUL')
 finally:

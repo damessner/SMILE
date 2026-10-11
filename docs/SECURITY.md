@@ -268,10 +268,10 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   the PostgreSQL integration suite against a fresh restricted test database, Python SSH
   security tests, and the production build. Local PostgreSQL tests require the explicit
   `TEST_DATABASE_URL`; a local opt-out does not count as integration-test evidence.
-- **Backup caveat: one destination.** One Drive folder holding every copy. A 3-2-1
-  arrangement would want a second, independently encrypted target. The key also lives on
-  the same host as the data, so a full compromise of LXC 115 exposes historical backups
-  as well as live data.
+- ~~**Backup caveat: one destination.**~~ Resolved: A 3-2-1 backup architecture is now enforced:
+  1. Primary cloud destination: 10-minute daytime backups with AES-256-CBC encryption to Microsoft 365 OneDrive (`scripts/backup_m365.py`, triggered by `smile-m365-backup.timer`).
+  2. Independent off-host copy: Asymmetric 4096-bit RSA public key encryption (`scripts/backup_independent.py`, triggered by `smile-independent-backup.timer`). The private key is stored exclusively off-host on the Proxmox host (`/etc/smile-security/independent_backup_private.key`, mode 0600) and never touches LXC 115. A total compromise of LXC 115 cannot decrypt historical independent copies. Synced daily to Proxmox host storage (`/var/backups/smile-independent/`).
+  3. Automated restore drill: Weekly scheduled restore verification into an isolated scratch database (`scripts/restore_drill.py`, triggered by `smile-restore-drill.timer`). Verifies table counts against live data, verifies pupil count (>= 100), proves 0 data loss, writes status receipt, and cleanly drops the isolated database without touching live data.
 - ~~**One bootstrap password for every seeded account.**~~ Seeded accounts still use the
   operator-supplied `INITIAL_USER_PASSWORD` and require a change at first login. The Konten
   panel's administrator reset (`POST /api/auth/admin/temporary-password`) now generates a
