@@ -463,11 +463,13 @@ export function App() {
   const isHeadmaster = isSchoolLeadership;
 
   /**
-   * Credential handover is an administrator capability, not a leadership one. MED and SLC
-   * get school-wide read/record rights, but issuing login credentials is reserved for the
-   * `admin` role so the audit trail has exactly one accountable group.
+   * Account administration (credential handover, one-time credentials, forced reset
+   * locks) is available to the school leadership (SLC/MED) as well as the system
+   * administrator (decision 2026-10-12). Backup restore stays admin-only: it replaces
+   * the whole database and must keep the narrowest possible audience.
    */
-  const isAccountAdministrator = currentUser?.role === 'admin';
+  const isAccountAdministrator = isSchoolLeadership;
+  const isSystemAdministrator = currentUser?.role === 'admin';
 
   const isAnyKv = classes.some((cls) => {
     const kv1 = (cls.headTeacher1 || '').toUpperCase();
@@ -683,7 +685,7 @@ export function App() {
             </button>
           )}
 
-          {isAccountAdministrator && (
+          {isSystemAdministrator && (
             <button
               onClick={() => setAdminRestoreOpen(true)}
               className="pressable focus-ring min-h-[44px] px-3 py-2 rounded-lg bg-slate-800 text-slate-200 hover:text-rose-400 hover:bg-slate-700 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
@@ -965,7 +967,7 @@ export function App() {
         <AdminAccountsModal onClose={() => setAdminAccountsOpen(false)} />
       )}
 
-      {adminRestoreOpen && isAccountAdministrator && (
+      {adminRestoreOpen && isSystemAdministrator && (
         <AdminRestoreModal onClose={() => setAdminRestoreOpen(false)} />
       )}
 

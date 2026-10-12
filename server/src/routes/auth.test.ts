@@ -4,6 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   assertPasswordCurrent,
   buildAuthenticate,
+  buildRequireAccountAdministrator,
   buildRequireRole,
   clearUserMustChangePassword,
   isUserForcedToChangePassword,
@@ -387,17 +388,115 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     clearUserMustChangePassword(userId);
   });
 
-  it('restricts the credential endpoints to administrators', () => {
+  it('restricts the credential endpoints to administrators and school leadership', () => {
     const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
 
     // A missing role guard here would let any teacher mint credentials for any account.
-    for (const route of ['/users', '/admin/temporary-password']) {
+    for (const route of ['/users', '/admin/temporary-password', '/request-reset']) {
       const routeBlock = new RegExp(
         `fastify\\.(?:get|post)\\(\\s*['"]${route.replace('/', '\\/')}['"][\\s\\S]*?\\n  \\);`,
       ).exec(source);
       expect(routeBlock, `no handler found for ${route}`).toBeTruthy();
-      expect(routeBlock![0]).toMatch(/requireRole\('admin'\)/);
+      expect(routeBlock![0]).toMatch(/requireAccountAdministrator/);
     }
+  });
+
+  it('allows administrators without a teacher lookup', async () => {
+    const req = {} as FastifyRequest;
+    const calls: Array<{ status?: number; body?: unknown }> = [];
+    const reply = {
+      status: (code: number) => {
+        calls.push({ status: code });
+        return reply;
+      },
+      send: (body: unknown) => {
+        calls.push({ body });
+        return reply;
+      },
+    } as unknown as FastifyReply;
+    const lookup = vi.fn();
+
+    const handler = buildRequireAccountAdministrator(
+      async () => ({ id: 'admin-1', username: 'admin', role: 'admin' }),
+      lookup as any,
+    );
+    await (handler as any)(req, reply);
+
+    expect(req.authUser?.role).toBe('admin');
+    expect(lookup).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+  });
+
+  it('allows the school leadership (MED/SLC) through the teacher row', async () => {
+    const req = {} as FastifyRequest;
+    const calls: Array<{ status?: number; body?: unknown }> = [];
+    const reply = {
+      status: (code: number) => {
+        calls.push({ status: code });
+        return reply;
+      },
+      send: (body: unknown) => {
+        calls.push({ body });
+        return reply;
+      },
+    } as unknown as FastifyReply;
+
+    const handler = buildRequireAccountAdministrator(
+      async () => ({ id: 't-1', username: 'muster', role: 'teacher', teacherId: 42 }),
+      async () => ({ shortName: 'SLC' }) as any,
+    );
+    await (handler as any)(req, reply);
+
+    expect(req.authUser?.role).toBe('teacher');
+    expect(calls).toEqual([]);
+  });
+
+  it('keeps ordinary teachers out of account administration', async () => {
+    const req = {} as FastifyRequest;
+    const calls: Array<{ status?: number; body?: unknown }> = [];
+    const reply = {
+      status: (code: number) => {
+        calls.push({ status: code });
+        return reply;
+      },
+      send: (body: unknown) => {
+        calls.push({ body });
+        return reply;
+      },
+    } as unknown as FastifyReply;
+
+    const handler = buildRequireAccountAdministrator(
+      async () => ({ id: 't-2', username: 'lehrer', role: 'teacher', teacherId: 7 }),
+      async () => ({ shortName: 'AUT' }) as any,
+    );
+    await (handler as any)(req, reply);
+
+    expect(calls).toEqual([
+      { status: 403 },
+      { body: { error: 'Für diese Aktion fehlt Ihnen die Berechtigung.' } },
+    ]);
+  });
+
+  it('fails closed on an unverifiable token', async () => {
+    const req = {} as FastifyRequest;
+    const calls: Array<{ status?: number; body?: unknown }> = [];
+    const reply = {
+      status: (code: number) => {
+        calls.push({ status: code });
+        return reply;
+      },
+      send: (body: unknown) => {
+        calls.push({ body });
+        return reply;
+      },
+    } as unknown as FastifyReply;
+
+    const handler = buildRequireAccountAdministrator(async () => {
+      throw new Error('bad token');
+    });
+    await (handler as any)(req, reply);
+
+    expect(calls).toEqual([{ status: 401 }, { body: { error: 'Nicht authentifiziert' } }]);
   });
 
   it('never selects or returns the password hash', () => {

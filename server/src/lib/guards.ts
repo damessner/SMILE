@@ -29,6 +29,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     authenticate: preValidationHookHandler;
     requireRole: (...roles: Role[]) => preValidationHookHandler;
+    requireAccountAdministrator: preValidationHookHandler;
     rateLimitLoginMax: number;
     rateLimitLoginWindowSeconds: number;
   }
@@ -471,6 +472,53 @@ export function buildRequireRole(
     };
     return handler;
   };
+}
+
+/**
+ * Builds the account-administration gate (credential handover, forced password
+ * resets). Administrators and the school leadership (SLC/MED) may manage accounts;
+ * the capability was administrator-only until the 2026-10-12 decision. Runs
+ * authentication inline like `buildRequireRole`, so `request.authUser` is populated
+ * before the role decision.
+ */
+export function buildRequireAccountAdministrator(
+  jwtVerify: (request: FastifyRequest) => Promise<unknown>,
+  lookupTeacher: typeof getTeacher = getTeacher,
+): preValidationHookHandler {
+  const handler: preValidationHookHandler = async function requireAccountAdministrator(request, reply) {
+    // Authenticate inline rather than composing handlers, so there is one code path
+    // that can populate `request.authUser`.
+    try {
+      const payload = (await jwtVerify(request)) as AuthUser;
+      const mustChange = Boolean(payload.mustChangePassword || isUserForcedToChangePassword(String(payload.id)));
+      request.authUser = {
+        id: String(payload.id),
+        username: payload.username,
+        role: payload.role,
+        teacherId: payload.teacherId,
+        pupilId: payload.pupilId,
+        mustChangePassword: mustChange,
+        sessionVersion: Number.isSafeInteger(payload.sessionVersion) && (payload.sessionVersion ?? 0) >= 0
+          ? payload.sessionVersion
+          : 0,
+      };
+    } catch {
+      await reply.status(401).send({ error: 'Nicht authentifiziert' });
+      return;
+    }
+    const user = request.authUser;
+    if (!user) {
+      await reply.status(401).send({ error: 'Nicht authentifiziert' });
+      return;
+    }
+    const isAdmin = user.role === 'admin';
+    const teacher = !isAdmin && user.teacherId ? await lookupTeacher(user.teacherId) : null;
+    if (!isAdmin && !isHeadmasterUser(user, teacher)) {
+      await reply.status(403).send({ error: 'Für diese Aktion fehlt Ihnen die Berechtigung.' });
+      return;
+    }
+  };
+  return handler;
 }
 
 /**

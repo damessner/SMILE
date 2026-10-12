@@ -11,12 +11,14 @@ import {
   AlertTriangle,
   ChevronDown,
   Layers,
+  Download,
   Filter,
 } from 'lucide-react';
 import { SchoolClass, User } from '../types';
 import { getConferenceSummary, getAllClasses } from '../services/api';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
 import { formatSubjectEvidence, type SubjectEvidenceItem } from '../lib/conferenceEvidence';
+import { buildConferenceExportHtml, type ConferenceExportClass } from '../lib/conferenceExportHtml';
 
 interface TeacherVote {
   teacherId: number;
@@ -178,6 +180,79 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
     window.print();
   };
 
+  const filterLabel =
+    exportFilter === 'after'
+      ? 'Konferenz-Abschlussprotokoll'
+      : exportFilter === 'before'
+      ? 'Vorkonferenz-Übersicht (Voten)'
+      : 'Konferenzprotokoll & Votenübersicht';
+
+  const handleDownloadHtml = () => {
+    const exportClasses: ConferenceExportClass[] = targetClasses.map((cls) => {
+      const classEntry = dataMap.get(cls.id);
+      const summary = classEntry?.summary || [];
+      const totalPupils = summary.length;
+      const confirmedCount = summary.filter((p) => p.isConfirmed).length;
+      const lehrlingCount = summary.filter((p) => (p.isConfirmed ? p.finalRank : p.suggestedRank) === 'Lehrling').length;
+      const geselleCount = summary.filter((p) => (p.isConfirmed ? p.finalRank : p.suggestedRank) === 'Geselle').length;
+      const meisterCount = summary.filter((p) => (p.isConfirmed ? p.finalRank : p.suggestedRank) === 'Meister').length;
+      const classPct = (n: number) => (totalPupils > 0 ? Math.round((n / totalPupils) * 100) : 0);
+
+      return {
+        className: cls.name,
+        kvInfo: [cls.headTeacher1, cls.headTeacher2].filter(Boolean).join(' & ') || 'Klassenvorstand',
+        totalPupils,
+        totalClassTeachers: classEntry?.totalClassTeachers || 0,
+        confirmedCount,
+        openDecisionCount: totalPupils - confirmedCount,
+        lehrlingCount,
+        geselleCount,
+        meisterCount,
+        pctLehrling: classPct(lehrlingCount),
+        pctGeselle: classPct(geselleCount),
+        pctMeister: classPct(meisterCount),
+        pupils: summary.map((p, pIdx) => {
+          const vStats = p.voteStats || { Lehrling: 0, Geselle: 0, Meister: 0 };
+          const totalVotes = vStats.Lehrling + vStats.Geselle + vStats.Meister;
+          const votePct = (n: number) => (totalVotes > 0 ? Math.round((n / totalVotes) * 100) : 0);
+          return {
+            index: pIdx + 1,
+            name: p.fullName,
+            raster: formatSubjectEvidence(p.subjectEvidence),
+            lehrlingVotes: vStats.Lehrling,
+            geselleVotes: vStats.Geselle,
+            meisterVotes: vStats.Meister,
+            pctLehrling: vStats.pctLehrling ?? votePct(vStats.Lehrling),
+            pctGeselle: vStats.pctGeselle ?? votePct(vStats.Geselle),
+            pctMeister: vStats.pctMeister ?? votePct(vStats.Meister),
+            suggestedRank: p.suggestedRank,
+            hasRedCardDemotion: p.hasRedCardDemotion,
+            confirmedRank: p.isConfirmed ? p.finalRank : null,
+            redCards: p.cards?.red?.length ?? 0,
+            yellowCards: p.cards?.yellow?.length ?? 0,
+            note: p.overrideReason || p.teacherVotes[0]?.comment || '—',
+          };
+        }),
+      };
+    });
+
+    const html = buildConferenceExportHtml({
+      classes: exportClasses,
+      filterLabel,
+      generatedAt: `${currentDateStr}, ${currentTimeStr} Uhr`,
+    });
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `SMILE_Gesamtexport_${new Date().toISOString().slice(0, 10)}.html`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const currentDateStr = new Date().toLocaleDateString('de-AT', {
     day: '2-digit',
     month: '2-digit',
@@ -209,8 +284,15 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
             print-color-adjust: exact !important;
             -webkit-print-color-adjust: exact !important;
           }
-          body > div#root > *:not(#all-classes-export-modal-backdrop) {
+          div#root > div > *:not(#all-classes-export-modal-backdrop) {
             display: none !important;
+          }
+          div#root > div {
+            display: block !important;
+            min-height: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
           }
           #all-classes-export-modal-backdrop {
             position: static !important;
@@ -343,6 +425,15 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
               <Printer className="w-4 h-4" />
               <span>Drucken / Als PDF speichern</span>
             </button>
+            <button
+              onClick={handleDownloadHtml}
+              disabled={loadingAll}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-100 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
+              title="Druckfertige HTML-Datei (1 Seite pro Klasse) herunterladen"
+            >
+              <Download className="w-4 h-4" />
+              <span>HTML herunterladen</span>
+            </button>
 
             <button
               onClick={onClose}
@@ -410,11 +501,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                           Klasse {cls.name}
                         </h1>
                         <span className="text-xs px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                          {exportFilter === 'after'
-                            ? 'Konferenz-Abschlussprotokoll'
-                            : exportFilter === 'before'
-                            ? 'Vorkonferenz-Übersicht (Voten)'
-                            : 'Konferenzprotokoll & Votenübersicht'}
+                          {filterLabel}
                         </span>
                       </div>
                     </div>
