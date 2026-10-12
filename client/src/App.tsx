@@ -36,7 +36,7 @@ import {
   exportBackup,
   SESSION_EXPIRED_EVENT,
 } from './services/api';
-import { useLiveSync } from './hooks/useLiveSync';
+import { useLiveSync, type LiveSyncEvent } from './hooks/useLiveSync';
 import { LoginModal } from './components/LoginModal';
 import { AdminAccountsModal } from './components/AdminAccountsModal';
 import { AdminRestoreModal } from './components/AdminRestoreModal';
@@ -259,7 +259,7 @@ export function App() {
   }, [selectedClassId]);
 
   // Live Sync Callback
-  const handleRatingUpdated = useCallback((data: any) => {
+  const handleRatingUpdated = useCallback((data: LiveSyncEvent) => {
     if (
       data.type === 'CARD_ISSUED' ||
       data.type === 'CARD_REVOKED' ||

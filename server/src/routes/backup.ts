@@ -27,6 +27,7 @@ import {
   users,
 } from '../db/schema.js';
 import { assertPasswordCurrent, requireAuth, safeTeacherId } from '../lib/guards.js';
+import { parsePageParams } from '../lib/pagination.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -235,14 +236,11 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
     { preValidation: [fastify.requireRole('admin')] },
     async (request, reply) => {
       requireAuth(request);
-      const { limit, offset, action } = request.query as {
-        limit?: string;
-        offset?: string;
-        action?: string;
-      };
+      const { action } = (request.query ?? {}) as { action?: string };
 
-      const take = Math.min(Math.max(Number.parseInt(limit ?? '100', 10) || 100, 1), 500);
-      const skip = Math.max(Number.parseInt(offset ?? '0', 10) || 0, 0);
+      const parsed = parsePageParams(request.query);
+      if (!parsed.ok) return reply.status(400).send({ error: parsed.error });
+      const { limit: take, offset: skip } = parsed.page;
 
       const params: unknown[] = [take, skip];
       let actionFilter = '';

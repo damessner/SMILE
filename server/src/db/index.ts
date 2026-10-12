@@ -59,7 +59,7 @@ export const db = new Proxy({} as ReturnType<typeof drizzle>, {
   get(_target, prop) {
     const real = getPool();
     const value = drizzle(real, { schema });
-    return (value as any)[prop];
+    return Reflect.get(value, prop);
   },
 });
 

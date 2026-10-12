@@ -22,7 +22,7 @@ interface WsLike {
   close(code?: number, reason?: string): void;
   ping?(): void;
   terminate?(): void;
-  on(event: string, cb: (...args: any[]) => void): void;
+  on(event: string, cb: (...args: unknown[]) => void): void;
 }
 
 /** RFC 6455: OPEN === 1. Hardcoded so we never depend on a global WebSocket class. */
@@ -70,13 +70,26 @@ function acknowledgeRatingWrite(client: ClientConnection, clientMutationId: stri
   if (clientMutationId) sendTo(client, { type: 'RATING_ACK', clientMutationId });
 }
 
+function isPayloadRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function hasOnlyKeys(payload: unknown, allowedKeys: readonly string[]): payload is Record<string, unknown> {
-  return Boolean(
-    payload &&
-      typeof payload === 'object' &&
-      !Array.isArray(payload) &&
-      Object.keys(payload).every((key) => allowedKeys.includes(key)),
-  );
+  return isPayloadRecord(payload) && Object.keys(payload).every((key) => allowedKeys.includes(key));
+}
+
+interface InboundEnvelope {
+  type: string;
+  payload?: unknown;
+}
+
+function isInboundEnvelope(value: unknown): value is InboundEnvelope {
+  return isPayloadRecord(value) && typeof value.type === 'string';
+}
+
+function rawMessageLength(raw: unknown): number | undefined {
+  const length = (raw as { length?: unknown } | null | undefined)?.length;
+  return typeof length === 'number' ? length : undefined;
 }
 
 interface ClientConnection {
@@ -235,10 +248,11 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
   const rateBucket = new TokenBucket(config.wsRateLimit.perSecond, config.wsRateLimit.burst);
   let rateLimitViolations = 0;
 
-  ws.on('message', async (raw: any) => {
+  ws.on('message', async (raw: unknown) => {
     let responseMutationId: string | undefined;
     try {
-      if (typeof raw?.length === 'number' && raw.length > MAX_MESSAGE_BYTES) {
+      const rawLength = rawMessageLength(raw);
+      if (rawLength !== undefined && rawLength > MAX_MESSAGE_BYTES) {
         ws.close(CLOSE_TOO_BIG, 'message too large');
         return;
       }
@@ -261,28 +275,30 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
       }
       rateLimitViolations = 0;
 
-      const data = JSON.parse(raw.toString());
-      if (!data || typeof data.type !== 'string') return;
-      if (data.type === 'UPDATE_RATING' && isClientMutationId(data.payload?.clientMutationId)) {
-        responseMutationId = data.payload.clientMutationId;
+      const envelope: unknown = JSON.parse(String(raw));
+      if (!isInboundEnvelope(envelope)) return;
+      const payload = envelope.payload ?? {};
+      if (envelope.type === 'UPDATE_RATING' && isPayloadRecord(payload) && isClientMutationId(payload.clientMutationId)) {
+        responseMutationId = payload.clientMutationId;
       }
       if (!(await ensureLiveSession(client, responseMutationId))) return;
 
-      switch (data.type) {
+      // Unknown types are dropped without a reply; the rate-limit and deactivation tests rely on this.
+      switch (envelope.type) {
         case 'SUBSCRIBE_CLASS':
-          await onSubscribe(client, data.payload ?? {});
+          await onSubscribe(client, payload);
           break;
         case 'UNSUBSCRIBE_CLASS':
-          await onUnsubscribe(client, data.payload ?? {});
+          await onUnsubscribe(client, payload);
           break;
         case 'CELL_FOCUS':
-          await onCellFocus(client, data.payload ?? {});
+          await onCellFocus(client, payload);
           break;
         case 'CELL_BLUR':
-          await onCellBlur(client, data.payload ?? {});
+          await onCellBlur(client, payload);
           break;
         case 'UPDATE_RATING':
-          await onUpdateRating(client, data.payload ?? {});
+          await onUpdateRating(client, payload);
           break;
         default:
           break;
@@ -306,7 +322,7 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
   });
 }
 
-async function onSubscribe(client: ClientConnection, payload: any): Promise<void> {
+async function onSubscribe(client: ClientConnection, payload: unknown): Promise<void> {
   if (!hasOnlyKeys(payload, SUBSCRIBE_PAYLOAD_KEYS)) {
     sendTo(client, { type: 'ERROR', message: 'Ungültige Klassenanmeldung.' });
     return;
@@ -381,7 +397,7 @@ async function onSubscribe(client: ClientConnection, payload: any): Promise<void
   }
 }
 
-async function onUnsubscribe(client: ClientConnection, payload: any): Promise<void> {
+async function onUnsubscribe(client: ClientConnection, payload: unknown): Promise<void> {
   if (!hasOnlyKeys(payload, SUBSCRIBE_PAYLOAD_KEYS)) {
     sendTo(client, { type: 'ERROR', message: 'Ungültige Klassenabmeldung.' });
     return;
@@ -394,7 +410,7 @@ function ws_disconnect(client: ClientConnection): void {
   client.ws.close(CLOSE_POLICY_VIOLATION, 'not authorised');
 }
 
-async function onCellFocus(client: ClientConnection, payload: any): Promise<void> {
+async function onCellFocus(client: ClientConnection, payload: unknown): Promise<void> {
   if (!hasOnlyKeys(payload, FOCUS_PAYLOAD_KEYS)) return;
   const classId = parsePositiveInt(payload?.classId);
   const pupilId = parsePositiveInt(payload?.pupilId);
@@ -438,7 +454,7 @@ async function onCellFocus(client: ClientConnection, payload: any): Promise<void
   );
 }
 
-async function onCellBlur(client: ClientConnection, payload: any): Promise<void> {
+async function onCellBlur(client: ClientConnection, payload: unknown): Promise<void> {
   if (!hasOnlyKeys(payload, FOCUS_PAYLOAD_KEYS)) return;
   const classId = parsePositiveInt(payload?.classId);
   const pupilId = parsePositiveInt(payload?.pupilId);
@@ -461,11 +477,10 @@ async function onCellBlur(client: ClientConnection, payload: any): Promise<void>
  *   - the pupil must actually belong to the class
  *   - the item key must exist in the active rubric, and the rating must be a known value
  */
-async function onUpdateRating(client: ClientConnection, payload: any): Promise<void> {
-  const clientMutationId = isClientMutationId(payload?.clientMutationId)
-    ? payload.clientMutationId
-    : undefined;
-  if (payload?.clientMutationId !== undefined && !clientMutationId) {
+async function onUpdateRating(client: ClientConnection, payload: unknown): Promise<void> {
+  const rawMutationId = isPayloadRecord(payload) ? payload.clientMutationId : undefined;
+  const clientMutationId = isClientMutationId(rawMutationId) ? rawMutationId : undefined;
+  if (rawMutationId !== undefined && !clientMutationId) {
     sendRatingError(client, undefined, 'Ungültige Bewertungsnachricht.');
     return;
   }

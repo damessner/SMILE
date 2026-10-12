@@ -2,8 +2,8 @@
 
 **Scope:** full repository review (server, client, scripts, docs, CI, production state), followed by an
 authorized fix pass, CI repair, and production deployment.
-**Supersedes:** `CRITICAL_REVIEW_SMILE.md` (early AI-generated review; contains now-stale claims, e.g.
-"BeobachtungsGrid.tsx not found" and unverified invariant status).
+**Supersedes:** the early AI-generated `CRITICAL_REVIEW_SMILE.md`, which has been deleted (it contained
+now-stale claims, e.g. "BeobachtungsGrid.tsx not found" and unverified invariant status).
 
 ## 1. Verified evidence
 
@@ -111,5 +111,4 @@ tests executed in CI:
 3. `RANK_AGGREGATION=total` semantics (unbounded multi-teacher tallies on server-side conference
    evidence) remain a product decision — see `bugfix.md` decision list.
 4. Client bundle is ~529 kB without code splitting (warned by Vite); consider route-level splitting.
-5. `CRITICAL_REVIEW_SMILE.md` at the repo root is superseded by this document; consider deleting it or
-   adding a pointer note.
+5. `CRITICAL_REVIEW_SMILE.md` was superseded by this document and has been deleted.

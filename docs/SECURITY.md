@@ -262,8 +262,8 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   `--force`.
 - **Remaining npm advisories.** 4 moderate, all `esbuild` via `drizzle-kit` at build time.
   Production dependencies audit clean (`npm audit --omit=dev` → 0 vulnerabilities).
-- **`PLAN.md` still describes the old stack** (React 18 / Fastify 4 / Node 20, shared
-  default passwords). Update it or it will mislead the next reader.
+- **`docs/archive/PLAN.md` describes the old stack** (React 18 / Fastify 4 / Node 20, shared
+  default passwords). It is archived history; do not treat it as current guidance.
 - **CI workflow.** `.github/workflows/ci.yml` runs workspace typechecks, server/client tests,
   the PostgreSQL integration suite against a fresh restricted test database, Python SSH
   security tests, and the production build. Local PostgreSQL tests require the explicit
@@ -300,10 +300,9 @@ implemented honestly.
 
 ## Test coverage
 
-The root `npm test` command runs the server and client workspaces (with `PORT` set). The latest
-local-safe run reported **581 server tests passed, 27 PostgreSQL integration tests skipped, and
-244 client tests passed** (2026-10-12); `server/src/docs/contract.test.ts` keeps every document
-that quotes a total in agreement.
+The root `npm test` command runs the server and client workspaces (with `PORT` set). Pass counts
+are not recorded in documentation; read them from the runner output. `server/src/docs/contract.test.ts`
+fails if any document hand-types a total.
 
 Run it as `npm test` from the repository root. There is no root vitest config, so invoking
 `npx vitest` directly at the root collects both workspaces under the server's environment and
