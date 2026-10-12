@@ -33,6 +33,9 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
   const subjectResults = effectiveSubjects.map((s) => {
     const scored = scoreSubject(pupil.evaluations, s.code, rubricItemKeys);
     const evalRecord = pupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, s.code));
+    // Only real, teacher-entered cells carry a raster rank (2026-10-12 decision).
+    // A submitted proposal without cells is still shown, clearly labelled.
+    const proposed = evalRecord?.proposedStatus ?? null;
 
     let rankBadgeStyle = 'bg-slate-300 text-slate-700 font-bold';
     if (scored.rank === 'Meister') {
@@ -41,12 +44,15 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
       rankBadgeStyle = 'bg-blue-500 text-slate-50 font-bold';
     } else if (scored.rank === 'Lehrling') {
       rankBadgeStyle = 'bg-rose-500 text-slate-50 font-bold';
+    } else if (proposed) {
+      rankBadgeStyle = 'bg-slate-600 text-slate-50 font-bold';
     }
 
     return {
       subject: s,
       scored,
-      rank: scored.rank ?? 'Ausstehend',
+      proposed,
+      rank: scored.rank ?? (proposed ? `Vorschlag: ${proposed}` : 'Ausstehend'),
       rankBadgeStyle,
       evalRecord,
     };
@@ -120,7 +126,11 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
                   <h2 className="text-base font-bold text-slate-900">{sr.subject.name} ({sr.subject.code})</h2>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Status ({sr.scored.positiveCount}/{rubricItemKeys.length})</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block">
+                    {sr.scored.totalRated === 0
+                      ? 'Status: nicht bewertet'
+                      : `Status: ${sr.scored.positiveCount} positiv · ${sr.scored.totalRated} bewertet`}
+                  </span>
                   <span className={`inline-block px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider shadow-sm ${sr.rankBadgeStyle}`}>
                     {sr.rank}
                   </span>
@@ -137,7 +147,6 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
                     const critKeys = crit.items.map((i) => i.key);
                     const critScore = scoreSubject(pupil.evaluations, sr.subject.code, critKeys);
                     const pos = critScore.positiveCount;
-                    const total = crit.items.length;
                     const isStrong = pos >= 2;
 
                     return (
@@ -148,10 +157,16 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
                         <div>
                           <span className="font-bold text-xs text-slate-900 block">{crit.name}</span>
                           <span className="text-[11px] text-slate-500">
-                            {pos} von {total} Merkmalen sicher erreicht
+                            {critScore.totalRated === 0
+                              ? 'Nicht bewertet'
+                              : `${pos} von ${critScore.totalRated} bewerteten Merkmalen positiv`}
                           </span>
                         </div>
-                        {isStrong ? (
+                        {critScore.totalRated === 0 ? (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-bold">
+                            Nicht bewertet
+                          </span>
+                        ) : isStrong ? (
                           <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
                             Kompetent
                           </span>
@@ -174,7 +189,9 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
                 <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 min-h-[50px]">
                   <p className="text-xs text-slate-700 italic">
                     {sr.evalRecord?.nextStep ||
-                      'Lernorganisation eigenständig vertiefen und gezielt Fragen bei Arbeitsaufträgen formulieren.'}
+                      sr.evalRecord?.comment || (
+                        <span className="text-slate-400">Noch keine Eintragung.</span>
+                      )}
                   </p>
                 </div>
               </div>
