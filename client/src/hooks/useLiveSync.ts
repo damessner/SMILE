@@ -16,8 +16,187 @@ export interface ConflictEvent {
   subjectCode?: string;
   currentRating: string;
   currentVersion: number;
-  updatedBy: string;
+  /** Not sent by the server for every conflict (e.g. the lost-insert race). */
+  updatedBy?: string;
   message: string;
+}
+
+// ---------------------------------------------------------------------------
+// Wire protocol (server → client). Field shapes mirror server/src/ws/live-sync.ts.
+// ---------------------------------------------------------------------------
+
+export interface CellLockedMessage {
+  type: 'CELL_LOCKED';
+  classId: number;
+  subjectCode: string;
+  pupilId: number;
+  itemKey: string;
+  teacherName: string;
+  lockedAt: number;
+}
+
+export interface CellUnlockedMessage {
+  type: 'CELL_UNLOCKED';
+  classId: number;
+  subjectCode: string;
+  pupilId: number;
+  itemKey: string;
+}
+
+/** Broadcast after a successful write. Also synthesized from CONFLICT and the HTTP fallback. */
+export interface RatingUpdatedMessage {
+  type: 'RATING_UPDATED';
+  evaluationId: string;
+  pupilId: number;
+  itemKey: string;
+  rating: string;
+  version: number;
+  subjectCode: string;
+  updatedBy?: string;
+  updatedAt?: string | null;
+  /** Only set on events synthesized by the client (HTTP fallback). */
+  classId?: number;
+  /** Only set on events synthesized by the client (HTTP fallback). */
+  itemId?: string;
+}
+
+export interface RatingAckMessage {
+  type: 'RATING_ACK';
+  clientMutationId: string;
+}
+
+export interface ConflictMessage {
+  type: 'CONFLICT';
+  message: string;
+  classId: number;
+  pupilId: number;
+  itemKey: string;
+  subjectCode: string;
+  /** Absent when no evaluation row survived the conflict. */
+  evaluationId?: string;
+  currentRating: string;
+  currentVersion: number;
+  updatedBy?: string;
+  updatedAt?: string | null;
+  clientMutationId?: string;
+}
+
+export interface VotingLockChangedMessage {
+  type: 'VOTING_LOCK_CHANGED';
+  classId: number;
+  isLocked: boolean;
+}
+
+export interface SyncedMessage {
+  type: 'SYNCED';
+  classId: number;
+  isLockedByConference?: boolean;
+  canRate?: boolean;
+}
+
+export interface ErrorMessage {
+  type: 'ERROR';
+  message?: string;
+  code?: string;
+  clientMutationId?: string;
+}
+
+/** Broadcasts relayed unchanged to `onRatingUpdated`; the consumer reloads or patches the class. */
+export const PASSTHROUGH_LIVE_SYNC_TYPES = [
+  'CARD_ISSUED',
+  'CARD_REVOKED',
+  'BATCH_ITEMS_UPDATED',
+  'BATCH_DEFAULTS_APPLIED',
+  'PUPIL_RANKING_SUBMITTED',
+  'PUPIL_RANKING_REOPENED',
+  'STATUS_UPDATED',
+  'TIMEOUT_ISSUED',
+  'TIMEOUT_RESOLVED',
+  'FINAL_RANK_CONFIRMED',
+  'FINAL_RANK_REVOKED',
+] as const;
+
+export type PassthroughLiveSyncType = (typeof PASSTHROUGH_LIVE_SYNC_TYPES)[number];
+
+/**
+ * One member per passthrough type, so each `type` is a unit literal and consumers that
+ * exclude these types with `===` checks narrow the union to the rating event.
+ */
+export type PassthroughMessage = {
+  [K in PassthroughLiveSyncType]: {
+    type: K;
+    classId?: number;
+    pupilId?: number;
+    /** Event-specific fields. Consumers narrow on `type` before reading them. */
+    [field: string]: unknown;
+  };
+}[PassthroughLiveSyncType];
+
+/** Any server → client frame this hook dispatches, discriminated on `type`. */
+export type LiveSyncInbound =
+  | CellLockedMessage
+  | CellUnlockedMessage
+  | RatingUpdatedMessage
+  | RatingAckMessage
+  | ConflictMessage
+  | VotingLockChangedMessage
+  | SyncedMessage
+  | ErrorMessage
+  | PassthroughMessage;
+
+/** Payload delivered to `onRatingUpdated`. */
+export type LiveSyncEvent = RatingUpdatedMessage | PassthroughMessage;
+
+/** One row of the POST /evaluations/batch-items response, as serialised to JSON. */
+interface BatchUpdatedItem {
+  id: string;
+  evaluationId: string;
+  itemKey: string;
+  rating: string;
+  version: number;
+  updatedAt: string;
+}
+
+interface BatchItemsResponse {
+  items?: BatchUpdatedItem[];
+}
+
+/** `details` of the 409 returned by POST /evaluations/batch-items. */
+interface BatchConflictDetails {
+  evaluationId?: string;
+  classId: number;
+  pupilId: number;
+  itemKey: string;
+  subjectCode: string;
+  currentRating?: string;
+  currentVersion?: number;
+  updatedAt?: string | null;
+  updatedBy?: string;
+}
+
+const LIVE_SYNC_TYPES: ReadonlySet<string> = new Set<string>([
+  'CELL_LOCKED',
+  'CELL_UNLOCKED',
+  'RATING_UPDATED',
+  'RATING_ACK',
+  'CONFLICT',
+  'VOTING_LOCK_CHANGED',
+  'SYNCED',
+  'ERROR',
+  ...PASSTHROUGH_LIVE_SYNC_TYPES,
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Runtime gate for a parsed frame: it must be an object whose `type` is a broadcast this
+ * client handles. Per-field values are not revalidated (the handlers keep their own
+ * checks where they existed before), so the predicate only vouches for the envelope.
+ */
+function isLiveSyncInbound(value: unknown): value is LiveSyncInbound {
+  return isRecord(value) && typeof value.type === 'string' && LIVE_SYNC_TYPES.has(value.type);
 }
 
 interface PendingRatingWrite {
@@ -63,7 +242,7 @@ export interface ClassSyncState {
 export function useLiveSync(
   classId: number | number[] | null,
   user: User | null,
-  onRatingUpdated?: (data: any) => void
+  onRatingUpdated?: (data: LiveSyncEvent) => void
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRatingWritesRef = useRef(new Map<string, PendingRatingWrite>());
@@ -180,7 +359,13 @@ export function useLiveSync(
 
         ws.onmessage = (event) => {
           try {
-            const msg = JSON.parse(event.data);
+            const parsed: unknown = JSON.parse(String(event.data));
+            if (!isLiveSyncInbound(parsed)) {
+              // Unknown or malformed envelope: log and drop, never dispatch.
+              console.warn('Unknown live sync message type:', isRecord(parsed) ? parsed.type : undefined);
+              return;
+            }
+            const msg = parsed;
 
             switch (msg.type) {
               case 'CELL_LOCKED': {
@@ -327,9 +512,12 @@ export function useLiveSync(
                 break;
               }
 
-              default:
-                console.warn('Unknown live sync message type:', (msg as any)?.type);
+              default: {
+                // Unreachable: isLiveSyncInbound admits only the types handled above.
+                const unhandled: never = msg;
+                console.warn('Unknown live sync message type:', (unhandled as { type?: unknown }).type);
                 break;
+              }
             }
           } catch (e) {
             console.error('Failed to parse WebSocket message', e);
@@ -438,16 +626,18 @@ export function useLiveSync(
 
       return batchUpdateItems(pupilId, primaryClassId, subjectCode, [
         { criterionId, itemKey, rating, version: expectedVersion },
-      ]).then((result: any) => {
-        const updatedItem = Array.isArray(result?.items)
-          ? result.items.find((item: any) => item?.itemKey === itemKey)
+      ]).then((result: BatchItemsResponse) => {
+        const items = result?.items;
+        const updatedItem = Array.isArray(items)
+          ? items.find((item) => item?.itemKey === itemKey)
           : undefined;
         if (updatedItem) {
           onRatingUpdated?.({
             type: 'RATING_UPDATED',
             evaluationId: updatedItem.evaluationId,
             pupilId,
-            classId,
+            // The subscribed class, not the hook argument (which may be an array of rooms).
+            classId: primaryClassId,
             itemId: updatedItem.id,
             itemKey: updatedItem.itemKey,
             rating: updatedItem.rating,
@@ -458,29 +648,17 @@ export function useLiveSync(
         } else {
           // Keep the disconnected client consistent even if a compatible server
           // responds without the newer item representation.
-          onRatingUpdated?.({ type: 'BATCH_ITEMS_UPDATED', classId, pupilId, subjectCode });
+          onRatingUpdated?.({ type: 'BATCH_ITEMS_UPDATED', classId: primaryClassId, pupilId, subjectCode });
         }
       }).catch((error: unknown) => {
-        const conflict = error as {
-          code?: unknown;
-          details?: {
-            evaluationId?: unknown;
-            classId?: unknown;
-            pupilId?: unknown;
-            itemKey?: unknown;
-            subjectCode?: unknown;
-            currentRating?: unknown;
-            currentVersion?: unknown;
-            updatedAt?: unknown;
-            updatedBy?: unknown;
-          };
-        };
+        const conflict = error as { code?: unknown; details?: BatchConflictDetails };
         const details = conflict?.details;
         if (conflict?.code === 'CONFLICT' && typeof details?.subjectCode === 'string') {
-          const reconcilesOneCell =
+          if (
+            typeof details.evaluationId === 'string' &&
             typeof details.currentRating === 'string' &&
-            typeof details.currentVersion === 'number';
-          if (typeof details.evaluationId === 'string' && reconcilesOneCell) {
+            typeof details.currentVersion === 'number'
+          ) {
             onRatingUpdated?.({
               type: 'RATING_UPDATED',
               evaluationId: details.evaluationId,

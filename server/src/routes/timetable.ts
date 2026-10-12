@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { teachingAssignments, timetableLessons } from '../db/schema.js';
 import { badRequest, getTeacher, parseIdParam, requireAuth, isHeadmasterUser } from '../lib/guards.js';
+import { parsePageParams } from '../lib/pagination.js';
 // The bell schedule lives in lib/period-times.ts: the Lernwerkstatt duty lookup needs the
 // same clock, and two copies of the timetable would eventually disagree about the period.
 import { PERIOD_TIMES, currentPeriod } from '../lib/period-times.js';
@@ -83,6 +84,9 @@ export const timetableRoutes: FastifyPluginAsync = async (fastify) => {
     const tid = parseIdParam(teacherId, 'teacherId');
     if (!tid) return badRequest(reply, 'Ungültige Lehrpersonen-ID.');
 
+    const parsed = parsePageParams(request.query);
+    if (!parsed.ok) return reply.status(400).send({ error: parsed.error });
+
     const isSelf = user.teacherId === tid;
     const targetTeacher = await getTeacher(tid);
     if (!targetTeacher) return reply.status(404).send({ error: 'Lehrperson nicht gefunden' });
@@ -128,11 +132,14 @@ export const timetableRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
+    // `id` breaks ties so pages do not reshuffle when two rows share a slot (team teaching).
     const lessons = await db
       .select()
       .from(timetableLessons)
       .where(eq(timetableLessons.teacherId, tid))
-      .orderBy(timetableLessons.dayOfWeek, timetableLessons.period);
+      .orderBy(timetableLessons.dayOfWeek, timetableLessons.period, timetableLessons.id)
+      .limit(parsed.page.limit)
+      .offset(parsed.page.offset);
 
     return reply.send(lessons);
   });

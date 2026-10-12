@@ -116,7 +116,7 @@ function quotedCount(doc: string, scope: 'server' | 'client'): number | null {
   return null;
 }
 
-describe('quoted test counts agree with each other', () => {
+describe('documents do not hand-type test totals', () => {
   const docs: Array<[string, string]> = [
     ['AGENTS.md', AGENTS],
     ['AI.md', AI],
@@ -124,22 +124,19 @@ describe('quoted test counts agree with each other', () => {
     ['docs/SECURITY.md', SECURITY],
   ];
 
-  // Cross-consistency, not a hardcoded number. The count changes every time a test is
-  // added, and a test that hardcodes it just creates a second thing to forget -- which is
-  // the drift this file exists to prevent. What must hold is that the documents do not
-  // disagree with each other.
-  it.each(['server', 'client'] as const)('%s totals are consistent across documents', (scope) => {
+  // Hand-typed totals drift the moment a test is added, and the documents then disagree
+  // with each other (the reason this check exists). The runner output from `npm test` is
+  // the only source of truth, so no document may quote a total for either workspace.
+  it.each(['server', 'client'] as const)('no document quotes a %s total', (scope) => {
     const quoted = docs
       .map(([name, doc]) => [name, quotedCount(doc, scope)] as const)
       .filter((entry): entry is readonly [string, number] => entry[1] !== null);
 
-    expect(quoted.length).toBeGreaterThan(1);
-    const distinct = new Set(quoted.map(([, value]) => value));
-    if (distinct.size > 1) {
+    if (quoted.length > 0) {
       const detail = quoted.map(([name, value]) => `${name}=${value}`).join(', ');
       throw new Error(
-        `Documents quote ${distinct.size} different ${scope} test totals (${detail}). ` +
-          `Update every document in the same change as the tests themselves.`,
+        `Documents hand-type ${scope} test totals (${detail}). ` +
+          `Remove the number and point to \`npm test\` instead.`,
       );
     }
   });

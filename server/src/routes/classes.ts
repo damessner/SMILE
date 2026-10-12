@@ -24,6 +24,7 @@ import {
 } from '../lib/guards.js';
 import { normalizeSubject } from '../utils/subject.js';
 import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
+import { paginate, parsePageParams } from '../lib/pagination.js';
 
 /**
  * Per-class permission results, filled in as classes are opened.
@@ -51,13 +52,16 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/all', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     requireAuth(request);
 
+    const parsed = parsePageParams(request.query);
+    if (!parsed.ok) return reply.status(400).send({ error: parsed.error });
+
     const realClasses = await db
       .select()
       .from(schoolClasses)
       .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
-      .orderBy(schoolClasses.grade, schoolClasses.name);
+      .orderBy(schoolClasses.grade, schoolClasses.name, schoolClasses.id);
 
-    return reply.send(realClasses);
+    return reply.send(paginate(realClasses, parsed.page));
   });
 
   /** GET /api/classes — the classes this user may open. */
@@ -65,15 +69,19 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     const global = await getGlobalAccess(user);
 
+    const parsed = parsePageParams(request.query);
+    if (!parsed.ok) return reply.status(400).send({ error: parsed.error });
+    const page = parsed.page;
+
     const realClasses = await db
       .select()
       .from(schoolClasses)
       .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
-      .orderBy(schoolClasses.grade, schoolClasses.name);
+      .orderBy(schoolClasses.grade, schoolClasses.name, schoolClasses.id);
 
     const { all } = (request.query || {}) as { all?: string };
     if (all === 'true' || all === '1') {
-      return reply.send(realClasses);
+      return reply.send(paginate(realClasses, page));
     }
 
     // Look up teacher's timetable lesson hours across classes and subjects
@@ -118,7 +126,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         : [];
 
       return reply.send(
-        realClasses.map((c) => {
+        paginate(realClasses, page).map((c) => {
           const subs = normaliseSubjects(
             mine.filter((a) => a.classId === c.id).map((a) => a.subjectCode || a.subjectName),
           );
@@ -136,7 +144,12 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (global.classIds.length === 0) return reply.send([]);
 
-    const classes = realClasses.filter((c) => global.classIds!.includes(c.id));
+    // Filter by access first, then page: paging before the filter would hand back
+    // short or empty pages for a teacher whose classes sit beyond the first window.
+    const classes = paginate(
+      realClasses.filter((c) => global.classIds!.includes(c.id)),
+      page,
+    );
 
     // Resolve permissions for exactly the classes being listed.
     const resolved = await Promise.all(classes.map((c) => getClassAccess(user, c.id)));
