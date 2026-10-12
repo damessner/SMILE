@@ -98,7 +98,7 @@ const SUBJECT_ALIASES: Record<string, string> = {
   gwb: 'GWB',
   sgwb: 'GWB',
   geographieundwirtschaftlichebildung: 'GWB',
-  smilageographie: 'GWB',
+  smilegeographie: 'GWB',
   geographie: 'GWB',
   // GZ - Geometrisches Zeichnen
   gz: 'GZ',

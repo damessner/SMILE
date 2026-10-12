@@ -4,7 +4,7 @@ export interface NormalizedSubject {
   isCoreSmile: boolean;
 }
 
-const CANONICAL_MAP: Record<string, { code: string; name: string; isCoreSmile: boolean }> = {
+export const CANONICAL_MAP: Record<string, { code: string; name: string; isCoreSmile: boolean }> = {
   // Core SMILE subjects (German, English, Math)
   'd': { code: 'D', name: 'Deutsch', isCoreSmile: true },
   'sd': { code: 'D', name: 'Deutsch', isCoreSmile: true },
