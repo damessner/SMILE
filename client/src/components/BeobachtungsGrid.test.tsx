@@ -1513,5 +1513,25 @@ describe('Quick-grade selection reflects the rank that will be submitted', () =>
     rerenderWith({ mySubjects: [GERMAN, MATHS] });
     expect(screen.getByText('🌟 Gesamtbewertung')).toBeInTheDocument();
   });
+
+  it('locks the rating cells while a submission stands and points at the reopen path', () => {
+    const anna = pupil(1, 'Anna Muster', [evaluation('D', { isSubmitted: true })]);
+
+    renderGrid({ pupils: [anna], mySubjects: [GERMAN], selectedPupilIdProp: 1 });
+
+    expect(screen.getByText('Erst zurücknehmen, um zu ändern.')).toBeInTheDocument();
+    expect(screen.getAllByTitle('Gut (😊)')[0]).toBeDisabled();
+    expect(screen.getAllByTitle(/Alle Merkmale dieser Kategorie mit Krone/)[0]).toBeDisabled();
+    expect(screen.getByTitle('Alle 18 Bewertungen leeren / zurücksetzen')).toBeDisabled();
+  });
+
+  it('keeps the rating cells editable while nothing is submitted', () => {
+    const anna = pupil(1, 'Anna Muster', [evaluation('D')]);
+
+    renderGrid({ pupils: [anna], mySubjects: [GERMAN], selectedPupilIdProp: 1 });
+
+    expect(screen.queryByText('Erst zurücknehmen, um zu ändern.')).toBeNull();
+    expect(screen.getAllByTitle('Gut (😊)')[0]).not.toBeDisabled();
+  });
 });
 

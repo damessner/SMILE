@@ -438,7 +438,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     itemKey: string,
     rating: string,
   ) => {
-    if (!canWrite || isLockedByConference) return;
+    if (!canWrite || isLockedByConference || isSubmitted) return;
     beginSave();
 
     try {
@@ -714,7 +714,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Reset all 18 criteria for pupil
   const handleResetAll = async () => {
-    if (!canWrite || isLockedByConference || !selectedPupil) return;
+    if (!canWrite || isLockedByConference || isSubmitted || !selectedPupil) return;
     const ok = await confirm({
       title: 'Alle Bewertungen leeren?',
       message: isAllSubjectsMode
@@ -765,7 +765,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
 
   // Quick fill entire category (3 items)
   const handleQuickFillCategory = async (crit: RubricCriterion, rating: string) => {
-    if (!canWrite || isLockedByConference || !selectedPupil) return;
+    if (!canWrite || isLockedByConference || isSubmitted || !selectedPupil) return;
     beginSave();
     const catItems = crit.items.map((it) => ({
       criterionId: crit.id,
@@ -1197,6 +1197,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       <span>Wieder öffnen</span>
                     </button>
                   )}
+                  <span className="text-[10px] text-slate-400">Erst zurücknehmen, um zu ändern.</span>
                 </div>
               )}
             </div>
@@ -1300,7 +1301,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             <button
               type="button"
               onClick={handleResetAll}
-              disabled={!canWrite || isLockedByConference || isPastDeadline}
+              disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
               title="Alle 18 Bewertungen leeren / zurücksetzen"
               className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
             >
@@ -1463,7 +1464,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       <span className="text-[9px] text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
                       <button
                         type="button"
-                        disabled={!canWrite || isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
                         onClick={() => handleQuickFillCategory(crit, 'crown')}
                         title="Alle Merkmale dieser Kategorie mit Krone (👑) füllen" aria-label="Alle Merkmale dieser Kategorie mit Krone füllen"
                         className="pressable focus-ring w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
@@ -1472,7 +1473,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={!canWrite || isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
                         onClick={() => handleQuickFillCategory(crit, 'smile')}
                         title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen" aria-label="Alle Merkmale dieser Kategorie mit Gut füllen"
                         className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1481,7 +1482,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={!canWrite || isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
                         onClick={() => handleQuickFillCategory(crit, 'struggle')}
                         title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen" aria-label="Alle Merkmale dieser Kategorie mit Mühe füllen"
                         className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1490,7 +1491,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={!canWrite || isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
                         onClick={() => handleQuickFillCategory(crit, 'sad')}
                         title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen" aria-label="Alle Merkmale dieser Kategorie mit Traurig füllen"
                         className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1499,7 +1500,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={!canWrite || isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
                         onClick={() => handleQuickFillCategory(crit, 'newstart')}
                         title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen" aria-label="Alle Merkmale dieser Kategorie mit Neustart füllen"
                         className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1508,7 +1509,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                       </button>
                       <button
                         type="button"
-                        disabled={!canWrite || isLockedByConference || isPastDeadline}
+                        disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
                         onClick={() => handleQuickFillCategory(crit, '')}
                         title="Kategorie leeren" aria-label="Kategorie leeren"
                         className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
@@ -1616,7 +1617,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                 <button
                                   key={btn.val}
                                   type="button"
-                                  disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline}
+                                  disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline || isSubmitted}
                                   title={btn.title} aria-label={btn.title} aria-pressed={isActive}
                                    onFocus={() => targetSubjectCodes.forEach((subjectCode) => onSendFocus(selectedPupil.id, it.key, subjectCode))}
                                    onBlur={() => targetSubjectCodes.forEach((subjectCode) => onSendBlur(selectedPupil.id, it.key, subjectCode))}
@@ -1640,7 +1641,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                             {currentRating && currentRating !== 'n.b.' && currentRating !== '' && (
                               <button
                                 type="button"
-                                disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline}
+                                disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline || isSubmitted}
                                 title="Bewertung löschen (Leer)" aria-label="Bewertung löschen"
                                 onClick={() => void saveCellRating(selectedPupil, crit.id, it.key, '')}
                                 className="w-6 h-6 pointer-coarse:w-9 pointer-coarse:h-9 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"

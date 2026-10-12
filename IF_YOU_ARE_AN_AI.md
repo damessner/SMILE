@@ -258,7 +258,7 @@ npm run dev
 
 # Run the Vitest test suite — BOTH workspaces (PORT must be set, e.g. `PORT=3000 npm test`)
 #   server: 41 suites / 581 tests (+27 PostgreSQL-integration tests, skipped without
-#           TEST_DATABASE_URL; they run in CI)   client: 19 suites / 242 tests
+#           TEST_DATABASE_URL; they run in CI)   client: 19 suites / 244 tests
 #   Counts last verified 2026-10-12; they grow with every added test.
 # The client suites use jsdom + Testing Library and include
 # client/src/components/BeobachtungsGrid.test.tsx, which renders the real component.
