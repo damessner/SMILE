@@ -38,7 +38,7 @@
 ### Verification run for this review
 
 - `npm test` (from the repository root, `PORT` set): **581 server tests passed, 27 PostgreSQL
-  integration tests skipped across 41 files**, **241 client tests passed across 19 files**
+  integration tests skipped across 41 files**, **242 client tests passed across 19 files**
   (re-measured 2026-10-12). `SKIP_POSTGRES_INTEGRATION=true` was set; see `docs/SECURITY.md`
   for why a local opt-out is not integration evidence.
 - `npm run typecheck --workspaces`: passed, 0 errors.
@@ -94,7 +94,7 @@ are closed in the current tree. They are kept rather than deleted so the reasoni
 | P2 | No reconnect, swallowed socket errors, locks never expire, conflicts not applied | **Fixed** — reconnect with backoff, TTL locks, conflict reconciliation, correlated errors. A concurrent insert into an empty cell (unique-index race) now answers with the same reconcilable `CONFLICT` payload as a version race instead of a dead-end error (2026-10-11) |
 | P2 | Audit writes sit outside the data transaction in 14 places | **Mostly fixed (2026-10-11)** — `/submit`, `/reopen` (`evaluations.ts`), `/vote` confirm/unconfirm (`conferences.ts`), card issue (`cards.ts`), behavior-action record (`pupils.ts`) and time-out resolve/escalation acknowledge (`timeouts.ts`) now write the data row and its audit row in one transaction; `/vote-all`, `/lock` and behavior-action delete already did. Still bare: card revoke, pupil roster writes and the backup-export audit rows |
 | P2 | `batch-default` ~540 serial round trips; `vote-all` 200 sequential `getPupil` calls | **Fixed (2026-10-11)** — `/batch-default` writes the roster and all items in two multi-row statements; `/vote-all` resolves class membership in one `IN` query and upserts every decision in one statement |
-| P2 | Stale docs and contradictory test totals | **Mostly fixed (2026-10-12)** — a docs-truth pass reconciled `IF_YOU_ARE_AN_AI.md`, `AI.md`, `docs/SECURITY.md` and this file with the code at `c76e652`: the Invariant 2/5 "open violation" notes are marked resolved, test totals now read 581 server (+27 PostgreSQL-skipped) / 241 client (2026-10-12), and the archive item is closed. The historical sections below still contain stale line references; treat them as history |
+| P2 | Stale docs and contradictory test totals | **Mostly fixed (2026-10-12)** — a docs-truth pass reconciled `IF_YOU_ARE_AN_AI.md`, `AI.md`, `docs/SECURITY.md` and this file with the code at `c76e652`: the Invariant 2/5 "open violation" notes are marked resolved, test totals now read 581 server (+27 PostgreSQL-skipped) / 242 client (2026-10-12), and the archive item is closed. The historical sections below still contain stale line references; treat them as history |
 
 ## Decisions Required Before the Related Implementation
 
@@ -408,7 +408,7 @@ Add accessible names and `aria-pressed` to rating buttons; proper `role="dialog"
 
 ## Current-Review Limits
 
-- The PostgreSQL behavioral tests are **not executed locally** (Docker is unavailable, and the ignored scratch database is intentionally unused). Local runs set `SKIP_POSTGRES_INTEGRATION=true` explicitly and the guard refuses to treat that as evidence; the CI zero-skip run is the required proof. Latest local-safe run (2026-10-12): 581 server tests passed / 27 PostgreSQL skipped, 241 client tests passed, typecheck and build green.
+- The PostgreSQL behavioral tests are **not executed locally** (Docker is unavailable, and the ignored scratch database is intentionally unused). Local runs set `SKIP_POSTGRES_INTEGRATION=true` explicitly and the guard refuses to treat that as evidence; the CI zero-skip run is the required proof. Latest local-safe run (2026-10-12): 581 server tests passed / 27 PostgreSQL skipped, 242 client tests passed, typecheck and build green.
 - No live database contents, production environment values, archive contents, or credential values were inspected. Credential literal presence was checked without printing values.
 - The reported “school-wide statistics / foreign comments” defaults are marked as intentional policy and are not silently changed here.
 - This document is an implementation backlog, not evidence that any listed fix has shipped. Update status only after code, tests, migration review, and acceptance evidence exist.

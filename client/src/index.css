@@ -366,3 +366,16 @@
 @supports (corner-shape: squircle) {
   .continuous { corner-shape: squircle; }
 }
+
+/*
+   iPadOS zooms the page when a focused form control has a font size below 16px.
+   Raising fields to at least 16px on touch devices stops that jump without
+   changing the compact desktop density.
+*/
+@media (pointer: coarse) {
+  input, select, textarea { font-size: max(16px, 1em); }
+}
+
+/* Used by the horizontally scrollable chip rows; hides the scrollbar affordance. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

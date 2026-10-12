@@ -137,19 +137,24 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     mySubjects.length > 1 ? '__ALL__' : (mySubjects[0]?.code || 'D')
   );
 
+  // Only a multi-subject class owns an explicit subject selection. A class where
+  // the teacher has a single subject must not overwrite the stored choice —
+  // otherwise a detour through such a class loses a Gesamtbewertung selection
+  // made in a multi-subject class (reported 2026-10-12).
   useEffect(() => {
     if (mySubjects.length > 1) {
       if (selectedSubjectCode !== '__ALL__' && !mySubjects.some((s) => s.code === selectedSubjectCode)) {
         setSelectedSubjectCode('__ALL__');
       }
-    } else if (mySubjects.length === 1) {
-      if (selectedSubjectCode === '__ALL__' || !mySubjects.some((s) => s.code === selectedSubjectCode)) {
-        setSelectedSubjectCode(mySubjects[0].code);
-      }
     }
   }, [mySubjects]);
 
-  const isAllSubjectsMode = mySubjects.length > 1 && selectedSubjectCode === '__ALL__';
+  // Effective selection: with a single subject there is no choice to store, so the
+  // subject is derived while the stored selection stays intact.
+  const activeSubjectCode =
+    mySubjects.length > 1 ? selectedSubjectCode : (mySubjects[0]?.code || 'D');
+
+  const isAllSubjectsMode = mySubjects.length > 1 && activeSubjectCode === '__ALL__';
   const primarySubject = mySubjects[0] || { code: 'D', name: 'Fach', isCoreSmile: true };
   const mySubject = isAllSubjectsMode
     ? {
@@ -157,7 +162,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         name: `Gesamt (${mySubjects.map((s) => s.code).join(' + ')})`,
         isCoreSmile: mySubjects.some((s) => s.isCoreSmile),
       }
-    : (mySubjects.find((s) => s.code === selectedSubjectCode) || primarySubject);
+    : (mySubjects.find((s) => s.code === activeSubjectCode) || primarySubject);
 
   const mySubjectCode = mySubject.code;
   const isSubjectCore = mySubjects.length > 0 ? mySubject.isCoreSmile : canAccessRaster;
@@ -212,7 +217,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
         label: 'Gesamt (alle deine Fächer)',
       };
     }
-    const currentSub = mySubjects.find((s) => s.code === selectedSubjectCode) || mySubjects[0];
+    const currentSub = mySubjects.find((s) => s.code === activeSubjectCode) || mySubjects[0];
     if (!currentSub || !currentSub.hours) return null;
     return {
       hours: currentSub.hours,
@@ -220,7 +225,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       isTeamTeaching: currentSub.isCoreSmile,
       label: currentSub.name,
     };
-  }, [mySubjects, isAllSubjectsMode, selectedSubjectCode]);
+  }, [mySubjects, isAllSubjectsMode, activeSubjectCode]);
 
   // Target subjects for write operations (all subjects in Gesamt mode, or the selected individual subject)
   const targetSubjectCodes = isAllSubjectsMode
@@ -1169,7 +1174,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               <span>🌟 Gesamt (alle {mySubjects.length} Fächer)</span>
             </button>
             {mySubjects.map((s) => {
-              const isActive = selectedSubjectCode === s.code;
+              const isActive = activeSubjectCode === s.code;
               return (
                 <button
                   key={s.code}
@@ -1514,8 +1519,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         type="button"
                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'crown')}
-                        title="Alle Merkmale dieser Kategorie mit Krone (👑) füllen"
-                        className="pressable focus-ring w-6 h-6 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
+                        title="Alle Merkmale dieser Kategorie mit Krone (👑) füllen" aria-label="Alle Merkmale dieser Kategorie mit Krone füllen"
+                        className="pressable focus-ring w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
                       >
                         <Crown className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
@@ -1523,8 +1528,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         type="button"
                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'smile')}
-                        title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen"
-                        className="w-6 h-6 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                        title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen" aria-label="Alle Merkmale dieser Kategorie mit Gut füllen"
+                        className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
                       >
                         😊
                       </button>
@@ -1532,8 +1537,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         type="button"
                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'struggle')}
-                        title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen"
-                        className="w-6 h-6 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                        title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen" aria-label="Alle Merkmale dieser Kategorie mit Mühe füllen"
+                        className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
                       >
                         😖
                       </button>
@@ -1541,8 +1546,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         type="button"
                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'sad')}
-                        title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen"
-                        className="w-6 h-6 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                        title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen" aria-label="Alle Merkmale dieser Kategorie mit Traurig füllen"
+                        className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
                       >
                         😢
                       </button>
@@ -1550,8 +1555,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         type="button"
                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, 'newstart')}
-                        title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen"
-                        className="w-6 h-6 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                        title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen" aria-label="Alle Merkmale dieser Kategorie mit Neustart füllen"
+                        className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
                       >
                         🔄
                       </button>
@@ -1559,8 +1564,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                         type="button"
                         disabled={!canWrite || isLockedByConference || isPastDeadline}
                         onClick={() => handleQuickFillCategory(crit, '')}
-                        title="Kategorie leeren"
-                        className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
+                        title="Kategorie leeren" aria-label="Kategorie leeren"
+                        className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
                       >
                         ✕
                       </button>
@@ -1666,7 +1671,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                   key={btn.val}
                                   type="button"
                                   disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline}
-                                  title={btn.title}
+                                  title={btn.title} aria-label={btn.title} aria-pressed={isActive}
                                    onFocus={() => targetSubjectCodes.forEach((subjectCode) => onSendFocus(selectedPupil.id, it.key, subjectCode))}
                                    onBlur={() => targetSubjectCodes.forEach((subjectCode) => onSendBlur(selectedPupil.id, it.key, subjectCode))}
                                   onClick={() => {
@@ -1674,7 +1679,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                                     const nextVal = isActive ? '' : btn.val;
                                     void saveCellRating(selectedPupil, crit.id, it.key, nextVal);
                                   }}
-                                  className={`flex-1 min-w-0 max-w-[40px] h-8 sm:h-8.5 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
+                                  className={`flex-1 min-w-0 max-w-[40px] pointer-coarse:max-w-[44px] h-8 sm:h-8.5 pointer-coarse:h-11 rounded-lg flex items-center justify-center transition active:scale-90 disabled:opacity-40 ${
                                     isActive
                                       ? btn.activeBg
                                       : 'bg-slate-800/80 hover:bg-slate-700/80 hover:scale-105 border border-slate-700/60 text-slate-300'
@@ -1690,9 +1695,9 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                               <button
                                 type="button"
                                 disabled={!canWrite || isLockedByConference || !!softLock || isPastDeadline}
-                                title="Bewertung löschen (Leer)"
+                                title="Bewertung löschen (Leer)" aria-label="Bewertung löschen"
                                 onClick={() => void saveCellRating(selectedPupil, crit.id, it.key, '')}
-                                className="w-6 h-6 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
+                                className="w-6 h-6 pointer-coarse:w-9 pointer-coarse:h-9 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
                               >
                                 ✕
                               </button>

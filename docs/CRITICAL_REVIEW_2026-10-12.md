@@ -10,7 +10,7 @@ authorized fix pass, CI repair, and production deployment.
 | Check | Result |
 | --- | --- |
 | `npm test` (server) | 581 passed + 27 PostgreSQL-skipped / 41 files |
-| `npm test` (client) | 241 passed / 19 files |
+| `npm test` (client) | 242 passed / 19 files |
 | `npm run typecheck --workspaces` | clean |
 | `npm run build` | clean (client bundle `index-vjGu06BJ.js`, 528.83 kB / gzip 137.89 kB) |
 | CI | run `38278008091` fully green (incl. the 27 PostgreSQL integration tests and the Python backup tests) |
