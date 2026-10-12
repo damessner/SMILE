@@ -10,7 +10,7 @@ import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 import { assertServerConfig, config, ConfigError, insecureConfigWarnings, jwtSecret } from './config.js';
-import { buildAuthenticate, buildRequireRole, buildSessionGuard, getTeacher } from './lib/guards.js';
+import { buildAuthenticate, buildRequireAccountAdministrator, buildRequireRole, buildSessionGuard, getTeacher } from './lib/guards.js';
 import type { PersistedUserSessionState } from './lib/session.js';
 import { rateLimitKey } from './lib/rate-limit.js';
 import { safeErrorLogFields } from './lib/log-safety.js';
@@ -181,6 +181,7 @@ export async function buildServer(
   const authenticate = buildAuthenticate((request) => request.jwtVerify());
   fastify.decorate('authenticate', authenticate);
   fastify.decorate('requireRole', buildRequireRole((request) => request.jwtVerify()));
+  fastify.decorate('requireAccountAdministrator', buildRequireAccountAdministrator((request) => request.jwtVerify()));
 
   await fastify.register(websocket, {
     options: { maxPayload: 64 * 1024 },

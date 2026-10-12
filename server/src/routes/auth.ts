@@ -249,7 +249,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     '/users',
     {
-      preValidation: [fastify.requireRole('admin')],
+      preValidation: [fastify.requireAccountAdministrator],
     },
     async (request, reply) => {
       const requester = requireAuth(request);
@@ -298,7 +298,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/admin/temporary-password',
     {
-      preValidation: [fastify.requireRole('admin')],
+      preValidation: [fastify.requireAccountAdministrator],
       schema: {
         body: {
           type: 'object',
@@ -414,7 +414,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/request-reset',
     {
-      preValidation: [fastify.requireRole('admin')],
+      preValidation: [fastify.requireAccountAdministrator],
       schema: {
         body: {
           type: 'object',
