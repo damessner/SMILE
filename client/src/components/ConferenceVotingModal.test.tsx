@@ -173,9 +173,11 @@ describe('ConferenceVotingModal', () => {
       expect(screen.getByText('Anna Muster')).toBeInTheDocument();
     });
 
-    fireEvent.keyDown(window, { key: 'ArrowRight' });
-
+    // The keydown listener re-attaches after the async summary load commits.
+    // Retry the dispatch so a keydown racing that effect flush is not lost
+    // (with two pupils the clamp keeps this idempotent).
     await waitFor(() => {
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
       expect(screen.getByText('Bernd Berger')).toBeInTheDocument();
     });
   });

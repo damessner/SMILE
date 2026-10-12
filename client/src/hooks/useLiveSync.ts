@@ -393,7 +393,7 @@ export function useLiveSync(
       itemKey: string,
       rating: string,
       expectedVersion: number,
-      subjectCode: string = 'D'
+      subjectCode: string
     ): Promise<void> => {
       if (!primaryClassId) return Promise.reject(new Error('Keine Klasse für die Bewertung ausgewählt.'));
 

@@ -334,7 +334,7 @@ export async function submitEvaluation(
   return unwrap(res);
 }
 
-export async function reopenEvaluation(pupilId: number, classId: number, subjectCode: string = 'SD') {
+export async function reopenEvaluation(pupilId: number, classId: number, subjectCode: string) {
   const res = await apiFetch('/evaluations/reopen', {
     method: 'POST',
     body: JSON.stringify({ pupilId, classId, subjectCode }),

@@ -62,7 +62,7 @@ interface BeobachtungsGridProps {
     itemKey: string,
     rating: string,
     expectedVersion: number,
-    subjectCode?: string
+    subjectCode: string
   ) => void | Promise<void>;
   onOpenCardDrawer: (pupilId: number, name: string) => void;
   onOpenKelReport: (pupil: PupilWithData) => void;
@@ -319,9 +319,6 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode],
       itemKey
     );
-
-  const isPositiveRating = (r?: string) =>
-    r === 'crown' || r === 'smile' || r === '++' || r === '+';
 
   const rubricItemKeys = React.useMemo(
     () => Array.from(new Set(criteria.flatMap((c) => c.items.map((i) => i.key)))),
