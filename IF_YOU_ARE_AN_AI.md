@@ -29,7 +29,7 @@
 - **Backend**: Node.js $\ge 22.0.0$ ESM, Fastify v5, `@fastify/websocket`, `@fastify/jwt`, `@fastify/cookie`.
 - **Database & ORM**: PostgreSQL (`smile_db`), Drizzle ORM (`0.45.x`), raw pooled queries via `getPool()`.
 - **Frontend**: React 19, TypeScript, Vite 8, Tailwind CSS, Lucide React icons.
-- **Testing**: Vitest, run across **both** workspaces by the root `npm test` (`npm run test --workspaces`): 11 server suites (`server/src/**/*.test.ts`) and 4 client suites (`client/src/**/*.test.{ts,tsx}`, jsdom + Testing Library). `npm test` is not server-only — a change that touches the client must keep the client suites green too.
+- **Testing**: Vitest, run across **both** workspaces by the root `npm test` (`npm run test --workspaces`): the server suites (`server/src/**/*.test.ts`) and the client suites (`client/src/**/*.test.{ts,tsx}`, jsdom + Testing Library). `npm test` is not server-only — a change that touches the client must keep the client suites green too. Current counts live in §9; do not restate them here.
 - **Live Deployment**: Proxmox VE 8.x LXC 115 (`172.16.1.11`), host `172.16.1.54`, systemd `smile.service`.
 
 ---
@@ -89,7 +89,7 @@ If you modify this codebase, **you must maintain these invariants**:
 - **Rule**: NEVER store full German strings (e.g. `Berufsorientierung`) or legacy codes (`SD`, `SE`, `SM`) in `evaluations.subject_code`.
 - **Requirement**: ALWAYS pass subject inputs through `normalizeSubject()` in [`server/src/utils/subject.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/utils/subject.ts).
 - Canonical codes are: `D`, `E`, `M`, `BO`, `PH`, `MUS`, `TUD`, `BUB`, `BS`, `CH`, `DIGGB`, `EH`, `GPB`, `GWB`, `GZ`, `ITAL`, `KUG`, `DAZ`, `RKATH`, `RISLA`, `REV`, `BFUD`, `BFUR`, `BFUM`, `BFUE`, `SL`, `ZI`, `LW`.
-- **Unknown codes must be REJECTED on a write path, not coerced.** This is the half of the rule that was always easy to miss. `normalizeSubject()` is not a validator: it ends in a fallback at [`server/src/utils/subject.ts:163`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/utils/subject.ts) that mints a code from whatever it was handed —
+- **Unknown codes must be REJECTED on a write path, not coerced.** This is the half of the rule that was always easy to miss. `normalizeSubject()` is not a validator: it ends in a fallback at [`server/src/utils/subject.ts:173`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/utils/subject.ts) that mints a code from whatever it was handed —
   ```ts
   return { code: rawName.toUpperCase().replace(/[^A-Z0-9]/g, '_'), ... }
   ```
@@ -112,6 +112,8 @@ If you modify this codebase, **you must maintain these invariants**:
 
   Subject-level **authorization** is also in place: `canRateSubject(access, code)` (`guards.ts`) checks the caller's `access.subjects`, so a D-only teacher cannot write an M row. A previous revision of this file said the subject-code allowlist "does not exist" and warned that a forged code adds both rating mass and a conference vote — that was true of the code at `bf35249` and is no longer true of this one.
 
+  **Missing codes are rejected too (verified 2026-10-12).** The `= 'D'` fallbacks were removed from all four HTTP handlers (`/status`, `/submit`, `/reopen`, `/batch-items`) and from the WS `UPDATE_RATING` path (`payload.subjectCode` no longer defaults to `'D'` when `undefined`). A request that omits `subjectCode` now fails the existing `normalizeKnownSubject` check and returns 400 `Ungültiges Unterrichtsfach.` — it can no longer silently write a Deutsch row. Regression-tested in `server/src/ws/live-sync.behavior.test.ts` ("rejects a live rating write with no subject instead of silently defaulting to Deutsch").
+
 ### Invariant 2: Database Natural Keys & OCC Concurrency
 - **Rule**: The table `evaluations` has a unique constraint on:
   ```sql
@@ -126,7 +128,10 @@ If you modify this codebase, **you must maintain these invariants**:
 - **Both write paths honour this now.** The WS path (`live-sync.ts`) updates with `WHERE version = $expected` and emits `CONFLICT` on a zero-row match; the HTTP path (`evaluations.ts`) uses `onConflictDoUpdate` with `version: sql\`${evaluationItems.version} + 1\`` and never reads a version at all.
 - **Every subject carries its own `expectedVersion`.** Resolve it with `itemVersionForSubject(evaluations, code, itemKey)` from `client/src/lib/pupilItems.ts`. Resolving one version for the whole grid and sending it for every subject makes the server's `WHERE version = $4` match zero rows for all but the first subject — a `CONFLICT` on cells nobody else touched. This applies to the **single-cell rating path** (`BeobachtungsGrid.tsx`, the two `onRate` call sites in the grid body), which is the only path that reaches the WS write. Regression-tested at the component level: `BeobachtungsGrid.test.tsx`, "a rating write carries the version of the subject it targets".
   - ⚠️ **Two deliberate exceptions, both on the bulk-fill paths.** `handleInstantRank`, `handleResetAll` and `handleQuickFillCategory` pass a hardcoded `expectedVersion: 1` to `onRate`. Those three only run in the `else` branch taken when **`onBatchUpdate` is absent**, and `App.tsx` always supplies `onBatchUpdate`, so the branch is dead in production and the literal is unreachable. Do not cite those three sites as examples of this rule, and do not "fix" them without first establishing that `onBatchUpdate` can be absent.
-- ⚠️ **Known sharp edge**: `live-sync.ts:261` defaults `expectedVersion` to `1` when the payload omits it. A missing version is therefore *not* rejected; it is silently treated as "expect version 1". Note also that the HTTP fallback (`useLiveSync.ts:204-208` → `batchUpdateItems`) sends **no** `expectedVersion` field at all, and `/batch-items` never reads one — it relies on the atomic increment instead. So the two paths have different, both-intentional concurrency models; do not unify them by copying one field into the other.
+- ✅ **RESOLVED (verified 2026-10-12). A missing `expectedVersion` is rejected on both paths; do not reintroduce a default.**
+  - The WS path (`live-sync.ts`, `onUpdateRating`) **requires** a safe integer `expectedVersion` (0..`MAX_POSTGRES_INTEGER`) and answers `Ungültige Bewertungsversion.` otherwise — it no longer defaults to `1`. Regression-tested in `server/src/ws/live-sync.behavior.test.ts` ("rejects malformed expectedVersion instead of silently defaulting to version 1", "rejects a live rating write with no expectedVersion").
+  - The HTTP fallback is version-aware too, contrary to an earlier revision of this file: `useLiveSync.ts` sends `version: expectedVersion` to `/batch-items`, `validateBatchItems` (`rubric.ts`) rejects a missing or invalid version, and `evaluations.ts` applies `setWhere: eq(evaluationItems.version, it.version)` when `version > 0` (version `0` means create-only), returning a reconcilable `CONFLICT` on a mismatch.
+  - The two paths remain structurally different — WS compares `WHERE version = $expected` on one cell; HTTP uses the conditional upsert for a batch. Do not unify them by copying one mechanism into the other; both are version-aware by design.
 
 ### Invariant 3: LiveSync Event Bus Symmetry
 - When the backend broadcasts a message via `broadcastToClass(classId, msg)` in [`server/src/ws/live-sync.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/ws/live-sync.ts), it **must** be handled in:
@@ -144,18 +149,17 @@ If you modify this codebase, **you must maintain these invariants**:
 - **The sanctioned reads are `hasSubmittedForSubject` and `isPupilFullySubmitted`**, both from [`client/src/lib/pupilItems.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/lib/pupilItems.ts). Use them; do not re-derive the check.
   - `hasSubmittedForSubject(evaluations, code)` — is this pupil submitted for **one** subject?
   - `isPupilFullySubmitted(evaluations, codes)` — submitted for **every** subject in `codes`? Pass the subject codes actually in scope (all of `mySubjects` in Gesamt mode, the single active subject otherwise). An empty `codes` is `false`, never vacuously `true`: a caller holding no subject set has not established that anything is done.
-- If you must inline the check, it must be gated on `isSubjectMatch(e.subjectCode, code)`. That is still correct and still appears in production code — `BeobachtungsGrid.tsx:199`, `:202`, `:213`, `:741`, `:744` and `ClassOverview.tsx:75` all do it. It is the **unscoped** form that is forbidden.
+- If you must inline the check, it must be gated on `isSubjectMatch(e.subjectCode, code)`. That is still correct and still appears in production code — `BeobachtungsGrid.tsx:234`, `:237`, `:248`, `:287`, `:958-963` all do it. It is the **unscoped** form that is forbidden.
 - Never check `evaluations.some(e => e.isSubmitted)` across all subjects, because a submission in English must NOT mark German or Math as submitted! A pupil who submitted only Deutsch is still open in Mathematik, and the teacher skips them. This was the concrete failure mode; it is regression-tested in [`client/src/components/BeobachtungsGrid.test.tsx`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/components/BeobachtungsGrid.test.tsx) ("does not tick a pupil who submitted Deutsch when Mathematik is still open").
 - The same scoping applies to item lookup. `findItemForSubjects(evaluations, codes, itemKey)` searches only the subjects in `codes` and returns `null` when none of them holds the item — deliberately, so an unrated pupil shows empty cells rather than another subject's ratings. Do not reintroduce a fallback that widens the search. Both levels are tested (Historical Trap 5).
 
 ### Invariant 5: 18-Item Rubric Boundary
 - A student rubric has exactly **18 items** (6 dimensions $\times$ 3 items).
-- In [`BeobachtungsGrid.tsx`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/components/BeobachtungsGrid.tsx), `calculateRank` takes a `pupil` parameter and iterates the criteria items displayed in the grid, resolving each one through `getItemData(pupil, it.key)` (`:296`). That helper (`:281-286`) is a one-line delegation:
+- In [`BeobachtungsGrid.tsx`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/components/BeobachtungsGrid.tsx), `calculateRank` (`:334-339`) is a one-line delegation to the sanctioned scorer:
   ```ts
-  findItemForSubjects(pupil.evaluations,
-    isAllSubjectsMode ? mySubjects.map((s) => s.code) : [mySubjectCode], itemKey)
+  const scored = scoreSubject(pupil.evaluations, targetCode, rubricItemKeys);
   ```
-  Cite those two, not a paraphrase — `selectedPupil` and `subCode` are **write**-path names (`:1695`, `:1725`) and are not in scope inside `calculateRank`.
+  `targetCode` is the explicitly passed `subjectCode`, or the active subject (single-subject mode) / the primary subject (Gesamt mode). `getItemData` (`:316-321`) still exists, but only for cell rendering — do not cite it as the rank path.
   - ✅ **RESOLVED (verified 2026-10-10, roadmap E13 closed).** The caveat that used to sit here — that `findItemForSubjects` merged across `mySubjects` and `handleSubmitPupil` sent that one rank for every `subCode` — is no longer the code. `handleSubmitPupil` now computes the rank **per subject** through `scoreSubject(selectedPupil.evaluations, subCode, rubricItemKeys)`, so a pupil rated in Mathematik alone is submitted under a Mathematik-derived rank, never a Deutsch-derived one. `calculateRank` keeps the merged read for *display* only. What replaced it is a different, deliberate rule, and it is what the tests now pin:
     - A subject with a calculated rank submits that rank.
     - An **unrated** subject inherits the teacher's explicit manual proposal (`votedRank`) if one exists.
@@ -163,35 +167,28 @@ If you modify this codebase, **you must maintain these invariants**:
     - Consequence, intended: `isSubmitted` in Gesamt mode requires **every** subject, so a pupil with one unrated subject stays open and never reaches the submitted list. A teacher who wants that pupil closed must rate the subject or set a proposal. Regression-tested in `BeobachtungsGrid.test.tsx` ("never submits a fabricated rank for an unrated subject", "lets an unrated subject inherit an explicit manual proposal").
 - Never do `pupil.evaluations.flatMap(e => e.items)` to calculate positive counts, as pupils with multiple subject evaluations will accumulate $> 18$ items and artificially trigger *Meister*!
 - [`client/src/lib/pupilItems.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/lib/pupilItems.ts) is the client-side counterpart of this rule and of Invariant 4. It is the sanctioned home for subject-scoped reads; the grid already routes through it.
-- ⚠️ **OPEN VIOLATION — the four client report/overview rank implementations inflate positives. The bug's *shape* changed and the old description is wrong.**
+- ✅ **RESOLVED (verified 2026-10-12). The report/overview views no longer merge ranks across subjects — they render per-subject rasters.**
 
-  An earlier revision of this file said these four `flatMap` every evaluation, so their positive count is unbounded past 18. **That is no longer the code.** They now dedupe by item key, so the count is bounded at 18 — but the *semantics* are worse in a way that is easy to miss:
+  An earlier revision of this file recorded a live violation here: four implementations merged item ratings across a pupil's subject evaluations with an "any positive wins" rule (`|| isPositiveRating(...)`), so three teachers rating disjoint 6-key sets each produced **18/18 → Meister** while each teacher saw 6/18. That merge was removed in commit `9dfce72` ("subject-scoped results, conference class locks, and delivered rubric config", 2026-10-10); the doc was not corrected at the time. All four now call the sanctioned per-subject scorer `scoreSubject(evaluations, subjectCode, rubricItemKeys)` ([`client/src/lib/pupilItems.ts:350-412`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/lib/pupilItems.ts)), which dedupes by item key with **newest-`updatedAt`-wins** and never prefers a positive rating:
 
-  ```ts
-  if (!evaluatedItemsMap.has(it.itemKey) || isPositiveRating(it.rating)) {
-    evaluatedItemsMap.set(it.itemKey, it.rating);
-  }
-  ```
+  - `Schulalltag.tsx` — `getPupilSubjectResults` (`:225-269`) scores each subject independently; `getPupilRank` (`:271-286`) deliberately derives **no** pupil-level rank.
+  - `KelPdfModal.tsx:33-53` and `TeacherClassReportModal.tsx:43-58` — one `scoreSubject` per subject; no merged count anywhere.
+  - `ClassOverview.tsx` was deleted (2026-10-12) as a dead component — only its own test imported it.
 
-  The `|| isPositiveRating(...)` means **any** teacher's positive rating for a key wins. With three core-subject teachers rating disjoint sets of 6 keys each, a pupil scores **18/18 → automatic Meister**, where each teacher individually saw 6/18 → **Lehrling**. The bound was restored; the inflation moved from the count into the merge. Two of these four render documents that get printed for parent conferences (`KelPdfModal`, `TeacherClassReportModal`), and `Schulalltag` is the main classroom view.
+  The chosen semantics are (a) from the old list of options: distinct subjects are distinct rasters, displayed per subject. Regression-tested in `Schulalltag.test.tsx` ("shows per-subject results in the detail panel…"), `KelPdfModal.test.tsx` (no synthetic `18/18`) and `TeacherClassReportModal.test.tsx` ("does not merge results into one aggregate score"). Thresholds arrive through `scoreSubject`'s default `thresholds = activeRankThresholds()` (read at call time); the denominator is `rubricItemKeys.length` from the delivered `criteria` prop — not `activeRubricItemCount()`, which is used by `conferenceEvidence.ts`.
 
-  | File | Function | Reachable from the UI? |
-  |---|---|---|
-  | `client/src/components/Schulalltag.tsx:211` | `getPupilRank` | yes — main classroom view |
-  | `client/src/components/KelPdfModal.tsx:21` | inline count | yes — parent conference printout |
-  | `client/src/components/TeacherClassReportModal.tsx:39` | inline count | yes — teacher report printout |
-  | `client/src/components/ClassOverview.tsx:59` | `getPupilRank` | **no** — not imported by `App.tsx`; dead component |
+  ⚠️ The *server-side* aggregate is deliberately additive where it is used: `summarizeRatings` under the default `RANK_AGGREGATION=total` sums across the evaluation groups it is handed ([`server/src/lib/ranking.ts:109-141`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/lib/ranking.ts)), so a pupil rated by multiple teachers can exceed 18 items in a *stored* tally. Production callers (`conferences.ts`) pass one evaluation group per subject and report the raster per subject as evidence; any future multi-group caller needs the deferred unification decision (roadmap C9/E13). Do not "simplify" it back into a merged per-key read.
 
-  Treat these four ranks as **display-only and untrustworthy** until unification lands. `BeobachtungsGrid.tsx` is correct about scoping and is the reference implementation. **The fix needs a product decision, not just a refactor:** the correct merge is one of (a) scope each view to `mySubjects` and treat distinct subjects as distinct rasters, (b) average the per-subject ranks, or (c) any-positive across subjects, which is what the code does today and which the 18-item invariant argues against. Do not pick one in code without the school's answer — see the Gesamt-mode caveat above and roadmap E13. Unification alone only decides *where* the count comes from. **Partially resolved since the last revision:** all four now read the *thresholds and denominator* from the delivered config (§8), so they agree with the server about where the bars are; the *merge semantics* above are unchanged and still open.
+- **Related hardcoding, resolved since the last revision**: the thresholds (`14` / `8`) and the `/18` denominator were literals in the client. They are now **delivered**, not copied: `GET /api/classes/:classId/pupils` answers with `rubricConfig` read from `server/src/config.ts` (`rankThresholds`, `rubricItemCount`, `rankAggregation`), `App.tsx` installs it via `setActiveRubricConfig`, `scoreSubject` reads the thresholds through `activeRankThresholds()`, `conferenceEvidence.ts` additionally uses `activeRubricItemCount()`, and the per-subject views derive their denominator from the delivered `criteria` list. See §8.
 
-- **Related hardcoding, resolved since the last revision**: the thresholds (`14` / `8`) and the `/18` denominator were literals in the client. They are now **delivered**, not copied: `GET /api/classes/:classId/pupils` answers with `rubricConfig` read from `server/src/config.ts` (`rankThresholds`, `rubricItemCount`, `rankAggregation`), `App.tsx` installs it via `setActiveRubricConfig`, and the raster maths reads it through `activeRankThresholds()` / `activeRubricItemCount()`. See §8.
-
-- **Resolved since the last revision**: the deadline is no longer a local-time literal. `submissionDeadline` now arrives from the API (`/api/classes/:id/pupils` → `App.tsx` → props) and is parsed as a UTC ISO string. `BeobachtungsGrid.tsx` fails **closed** when it is absent (`!Number.isFinite(deadlineAt) || now > deadlineAt` → writes disabled), so a missing deadline locks the grid rather than unlocking it. `ClassOverview.tsx` still carries a hardcoded `'2026-10-30T21:59:59.000Z'` fallback, but that component is not wired in.
+- **Resolved since the last revision**: the deadline is no longer a local-time literal. `submissionDeadline` now arrives from the API (`/api/classes/:id/pupils` → `App.tsx` → props) and is parsed as a UTC ISO string. `BeobachtungsGrid.tsx` fails **closed** when it is absent (`!Number.isFinite(deadlineAt) || now > deadlineAt` → writes disabled), so a missing deadline locks the grid rather than unlocking it. `ClassOverview.tsx`, which still carried a hardcoded `'2026-10-30T21:59:59.000Z'` fallback, has been deleted (2026-10-12) as a dead component.
 
 ### Invariant 6: Authentication & Cookies
 - The app uses **HttpOnly, SameSite cookies** for both REST API and WebSockets.
 - WebSocket handshakes authenticate via the browser's cookie header during the HTTP upgrade. Do NOT attach JWT tokens in WS URL query strings.
 - If `user.mustChangePassword === true`, WebSockets must be rejected with close code `1008`.
+- ✅ **Deactivation is enforced on every request (added 2026-10-12), not just at login.** `buildSessionGuard` (`guards.ts`) reads `teachers.active` through the cached session state (`lib/session.ts`, left join) and answers `403 ACCOUNT_DEACTIVATED` with the session cookie cleared when it is `false`; the WS layer closes `1008` on the next message (`ensureLiveSession`). Admins are exempt — their placeholder teacher rows are `active: false` by design (migration 0002). Regression-tested in `auth.test.ts` and `live-sync.behavior.test.ts`.
+- ✅ **Inbound WS messages are rate-limited (added 2026-10-12).** WS frames bypass the HTTP rate limiter, so each socket carries a token bucket (`WS_RATE_LIMIT_PER_SECOND` / `WS_RATE_LIMIT_BURST`, defaults 10/s and 40) in `live-sync.ts`; the first drop sends one `ERROR` with code `RATE_LIMITED`, and 20 consecutive violations close the socket with `1008`. The HTTP side keeps its global limiter plus the stricter `/login` limit. Unit-tested in `lib/ws-rate-limit.test.ts`, wired in `live-sync.behavior.test.ts`.
 
 ---
 
@@ -235,7 +232,7 @@ server/src/config.ts                (env → validated values)
 3. **Bug: Subject code naming divergence**:  
    `teaching_assignments` used German full names, while `timetable_lessons` used WebUntis abbreviations. Lookups failed and returned `hours: 0`. Fixed with canonical subject normalizer.
 4. **Bug: Multi-subject item count inflation**:  
-   `calculateRank` concatenated items across all evaluations, counting up to 36+ items instead of 18. Fixed in `BeobachtungsGrid.tsx` by scoping strictly to active criteria items. **Still unfixed elsewhere** — see the known violation under Invariant 5.
+   `calculateRank` concatenated items across all evaluations, counting up to 36+ items instead of 18. Fixed in `BeobachtungsGrid.tsx` by scoping strictly to active criteria items. The four report/overview implementations that had re-introduced a merged read were fixed in `9dfce72` — see the resolved note under Invariant 5.
 5. **Bug: Cross-subject `getItemData` fallback**:  
    The grid looked through the active subject and, on a miss, fell back to scanning **every** evaluation the pupil had in **every** subject. One teacher was shown another teacher's ratings, those ratings fed the displayed rank, and the wrong evaluation's `version` was paired with the active subject's write — so the optimistic-concurrency guard matched zero rows and reported a conflict on a cell nobody else had touched. The function still exists at [`BeobachtungsGrid.tsx:281`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/client/src/components/BeobachtungsGrid.tsx), but its body is now a single delegation to `findItemForSubjects`, which searches only the subjects in scope and returns `null` rather than widening. Do not restore a widening branch inside it.
 
@@ -245,9 +242,9 @@ server/src/config.ts                (env → validated values)
 6. **Bug: Unvalidated `batch-items`**:  
    `POST /api/evaluations/batch-items` checked only that `itemKey` was *present*, then wrote the client's own `criterionId`. A batch of 200 invented keys rated `'++'` became 200 positive ratings — an automatic *Meister*, forgeable by any teacher with write access to one pupil. Fixed by `validateBatchItems` in [`server/src/lib/rubric.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/lib/rubric.ts): every key must exist in the active rubric, the rating must be in `VALID_RATINGS`, the criterion is derived server-side, and rejection is all-or-nothing. The validator's own behaviour is regression-tested in [`server/src/lib/rubric.test.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/lib/rubric.test.ts).
 
-   **That unit test does not cover the route.** ⚠️ Whether `evaluations.ts` *calls* the validator and iterates **its** output is pinned only structurally, in [`server/src/routes/evaluations.test.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.test.ts) — a source assertion, not a behavioural one, because the handler reaches PostgreSQL (`loadRubricIndex`, `getClassAccess`, `findPupilInClass`, `getOpenRound`, the transaction) before the decision and this repository has no database in CI. Deleting the two calls and restoring the inline loop *is* caught; a wrong call, a discarded result, or a reordered handler would not be. Treat the item-key forgery fix as unit-tested and **wiring-unpinned** until a database-backed route test exists.
+   **The route wiring is now behaviour-tested too (verified 2026-10-12).** The unit test above covers the validator; the route's *use* of it is pinned behaviourally in [`server/src/routes/evaluations.integration.test.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.integration.test.ts) ("Rank Forgery Prevention (Behavioral)": a 200-key forged batch answers 400 and writes zero items; a mixed valid+forged batch is rejected all-or-nothing). Those tests need `TEST_DATABASE_URL` and are skipped locally without it, but they run in CI (`.github/workflows/ci.yml` provisions PostgreSQL). The structural source assertions in [`server/src/routes/evaluations.test.ts`](file:///c:/Users/dames/OneDrive/Documents/antigravity/SMILE/server/src/routes/evaluations.test.ts) remain as a cheap guard; do not weaken either layer.
 
-   The item-key allowlist is the pattern the **subject-code** half of Invariant 1 still lacks — see that invariant.
+   The item-key allowlist is the same pattern the subject-code write paths use (Invariant 1); both are allowlists now.
 
 ---
 
@@ -260,12 +257,11 @@ Run commands from the repository root:
 npm run dev
 
 # Run the Vitest test suite — BOTH workspaces (PORT must be set, e.g. `PORT=3000 npm test`)
-#   server: 39 suites / 559 tests (+27 PostgreSQL-integration tests, skipped without
-#           TEST_DATABASE_URL)   client: 19 suites / 245 tests
-#   Counts last verified 2026-10-11; they grow with every added test.
+#   server: 41 suites / 577 tests (+27 PostgreSQL-integration tests, skipped without
+#           TEST_DATABASE_URL; they run in CI)   client: 18 suites / 235 tests
+#   Counts last verified 2026-10-12; they grow with every added test.
 # The client suites use jsdom + Testing Library and include
-# client/src/components/BeobachtungsGrid.test.tsx and
-# client/src/components/ClassOverview.test.tsx, which render the real components.
+# client/src/components/BeobachtungsGrid.test.tsx, which renders the real component.
 npm test
 
 # Run TypeScript typecheck across all workspaces (MUST PASS WITH 0 ERRORS)
@@ -293,7 +289,7 @@ When reviewing changes or writing code:
 - [ ] Does your change preserve atomic versioning on `evaluation_items`?
 - [ ] If you emitted a new WebSocket event on the backend, did you handle it on the client — and did you check the `type` string matches byte-for-byte, not just that a similar-looking `case` exists?
 - [ ] If you renamed a WebSocket event, did you rename it on **both** sides? (The server's `type` strings are canonical: `TIMEOUT_ISSUED`, `FINAL_RANK_CONFIRMED`, `TIMEOUT_RESOLVED`, `FINAL_RANK_REVOKED`. The historical one-sided rename that broke this is fixed; never re-apply it.)
-- [ ] Does every write path that accepts a subject code **reject** an unknown one, rather than letting `normalizeSubject()` coerce it into a new code?
+- [ ] Does every write path that accepts a subject code **reject** an unknown *or missing* one, rather than letting `normalizeSubject()` coerce it into a new code or defaulting to `'D'`?
 - [ ] Did you use `findItemForSubjects` / `hasSubmittedForSubject` / `isPupilFullySubmitted` rather than an inline or unscoped scan?
 - [ ] If you computed a rank or a positive count, did you scope it to the subjects in view instead of `flatMap`ing every evaluation?
 - [ ] If you touched `CANONICAL_MAP` in `server/src/utils/subject.ts`, did you regenerate the copy in `client/src/lib/pupilItems.ts`?

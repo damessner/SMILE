@@ -37,9 +37,9 @@
 
 ### Verification run for this review
 
-- `npm test` (from the repository root, `PORT` set): **559 server tests passed, 27 PostgreSQL
-  integration tests skipped across 39 files**, **245 client tests passed across 19 files**
-  (re-measured 2026-10-11). `SKIP_POSTGRES_INTEGRATION=true` was set; see `docs/SECURITY.md`
+- `npm test` (from the repository root, `PORT` set): **577 server tests passed, 27 PostgreSQL
+  integration tests skipped across 41 files**, **235 client tests passed across 18 files**
+  (re-measured 2026-10-12). `SKIP_POSTGRES_INTEGRATION=true` was set; see `docs/SECURITY.md`
   for why a local opt-out is not integration evidence.
 - `npm run typecheck --workspaces`: passed, 0 errors.
 - **Correction (2026-10-08).** This section previously reported "159 server / 79 client tests" and
@@ -58,7 +58,7 @@
 - `server/src/lib/rubric.ts` + `/batch-items`: item keys are checked against the rubric and `criterionId` is derived server-side.
 - `client/src/lib/pupilItems.ts` + `BeobachtungsGrid`: item reads and submission state are subject-scoped; rating writes resolve their OCC version per subject.
 - Conference-comment autosave persists, retries after failures, and does not display “Gesichert” until the API call resolves.
-- `ClassOverview.getPupilRank` deduplicates the same item key across its relevant subjects. This is not the canonical ranking implementation and the component is not currently wired into `App.tsx`; it does not eliminate the other rank-calculation defects below.
+- `ClassOverview.tsx` was deleted on 2026-10-12 as dead code (only its own test imported it); its `getPupilRank` any-positive merge had already been removed in `9dfce72`. The canonical ranking implementation is `scoreSubject` in `client/src/lib/pupilItems.ts`.
 - `/status` avoids a class-wide reload broadcast for comment-only writes; a report already open on a co-teacher's screen can still be stale (Task 13).
 - Existing guards prevent many class/pupil mismatches; parameterized SQL is used in the reviewed raw-query sites. This audit found no SQL-injection vector in those parameterized queries.
 
@@ -75,10 +75,10 @@ are closed in the current tree. They are kept rather than deleted so the reasoni
 | Was | Finding | Status now |
 |---|---|---|
 | P0 | Integration test can migrate and clear an arbitrary configured database | **Fixed** — `test-db-guard` requires an explicit loopback `smile_db_test` target, and a local opt-out is rejected as evidence |
-| P0 | Plaintext credentials in ignored local scripts; pupil-data archives in the synced tree | **Partly fixed.** Scripts read credentials from the environment; **the archives are still in the tree** (`docs/SECURITY.md` item 5) |
+| P0 | Plaintext credentials in ignored local scripts; pupil-data archives in the synced tree | **Fixed (2026-10-12).** Scripts read credentials from the environment; all three archives were moved out of the working tree to owner-controlled storage and `node scripts/verify-env.mjs` exits 0 (`docs/SECURITY.md` item 5) |
 | P0 | Unknown subject codes create unlimited evaluations; authorization class-wide, not subject-specific | **Fixed** — `normalizeKnownSubject()` on all write paths; `canRateSubject()` checks `access.subjects` |
 | P0 | Conference vote counts claim uncast yes votes | **Fixed** — participation is derived from submitted evaluations; the hand-typed tally is gone |
-| P1 | Class-scoped lock request updates one global round lock; readers/writers may pick different rounds | **Still open** — needs a per-class lock table (schema change) |
+| P1 | Class-scoped lock request updates one global round lock; readers/writers may pick different rounds | **Fixed (2026-10-09/10).** Migration `0005_class_round_locks` adds the per-class table; `lib/class-round-lock.ts` (`getClassRoundLockState`/`isClassRoundLocked`, OR-semantics) is used by `conferences.ts`, `evaluations.ts`, `live-sync.ts` and `classes.ts`; covered by `class-round-lock.test.ts`, `live-sync.locks.test.ts`, conference route tests and the PostgreSQL integration suite |
 | P1 | `getGlobalAccess` treats a missing `teacherId` as unrestricted; `/timeouts/active` unscoped and unbounded | **Fixed** — fails closed; `/timeouts/active` refuses pupils and is `LIMIT 100`. **Its school-wide visibility is an open product decision**, not a code defect |
 | P1 | Cross-pupil behaviour-action delete authorizes on `:id`, deletes `:actionId` | **Fixed** — the select filters on both `id` and `pupilId` |
 | P1 | CSRF Origin check allows every origin with the default empty allowlist; `/ws` bypasses it | **Fixed** — same-origin is resolved against `request.headers.host`; the allowlist is additive; the WS upgrade is checked |
@@ -88,13 +88,13 @@ are closed in the current tree. They are kept rather than deleted so the reasoni
 | P1 | `pupil_id_seq` missing from the only migration; `pupil_behavior_actions` created by runtime DDL | **Fixed (2026-10-08)** — migration `0003_pupil_id_sequence_and_behavior_actions`; the hand-written DDL is gone from `runMigrations()`; `server/src/db/migrations.test.ts` prevents recurrence |
 | P1 | Administrative writes use `teacherId ?? 0` against non-null FKs | **Fixed (2026-10-11)** — migration `0002` gives admins a real teacher row; every write path fails closed with `SYSTEM_ACTOR_NOT_CONFIGURED`. The remaining `?? 0` sites in `timeouts.ts`, `cards.ts` (card issue) and `pupils.ts` (behavior-action record) now guard with `hasPersistedTeacherActor` before the insert; no `?? 0` actor write remains in non-test code |
 | P1 | Two WebSocket message names do not match | **Fixed** — client now handles the server's names; all 20 emitted types have handlers |
-| P1 | Rank semantics unbounded; client reports flatten all evaluations | **Changed shape, still open.** The `flatMap` is gone; four files now merge with `|| isPositiveRating(...)`, which is bounded at 18 but inflates across subjects. Needs a product decision — see `IF_YOU_ARE_AN_AI.md` Invariant 5 |
+| P1 | Rank semantics unbounded; client reports flatten all evaluations | **Fixed (2026-10-10).** The any-positive merge was removed in `9dfce72`; all report surfaces score per subject via `scoreSubject` (newest-`updatedAt`-wins) and no pupil-level merged rank is derived. `ClassOverview.tsx` deleted 2026-10-12. Server `summarizeRatings` remains additive by design under `RANK_AGGREGATION=total` (decision 5 below) — see `IF_YOU_ARE_AN_AI.md` Invariant 5 |
 | **P0** | **Conference summary readable for any class by any teacher** (`!canRead && !teacherId && !admin` never refused a teacher) | **Fixed (2026-10-08)** — extracted `canReadConferenceSummary()`, unit-tested. Not in the original table; found in the 2026-10-08 review |
 | **P0** | **Full-database export wrote no audit record** | **Fixed (2026-10-08)** — writes `FULL_DATA_EXPORTED`. Also from the 2026-10-08 review |
 | P2 | No reconnect, swallowed socket errors, locks never expire, conflicts not applied | **Fixed** — reconnect with backoff, TTL locks, conflict reconciliation, correlated errors. A concurrent insert into an empty cell (unique-index race) now answers with the same reconcilable `CONFLICT` payload as a version race instead of a dead-end error (2026-10-11) |
 | P2 | Audit writes sit outside the data transaction in 14 places | **Mostly fixed (2026-10-11)** — `/submit`, `/reopen` (`evaluations.ts`), `/vote` confirm/unconfirm (`conferences.ts`), card issue (`cards.ts`), behavior-action record (`pupils.ts`) and time-out resolve/escalation acknowledge (`timeouts.ts`) now write the data row and its audit row in one transaction; `/vote-all`, `/lock` and behavior-action delete already did. Still bare: card revoke, pupil roster writes and the backup-export audit rows |
 | P2 | `batch-default` ~540 serial round trips; `vote-all` 200 sequential `getPupil` calls | **Fixed (2026-10-11)** — `/batch-default` writes the roster and all items in two multi-row statements; `/vote-all` resolves class membership in one `IN` query and upserts every decision in one statement |
-| P2 | Stale docs and contradictory test totals | **Partly fixed (2026-10-08)** — the four actively-misleading claims are corrected; the roadmap below still carries stale line references |
+| P2 | Stale docs and contradictory test totals | **Mostly fixed (2026-10-12)** — a docs-truth pass reconciled `IF_YOU_ARE_AN_AI.md`, `AI.md`, `docs/SECURITY.md` and this file with the code at `c76e652`: the Invariant 2/5 "open violation" notes are marked resolved, test totals now read 577 server (+27 PostgreSQL-skipped) / 235 client (2026-10-12), and the archive item is closed. The historical sections below still contain stale line references; treat them as history |
 
 ## Decisions Required Before the Related Implementation
 
@@ -103,7 +103,7 @@ Record the decision in the PR/issue before changing the corresponding data model
 1. **Conference voting:** Are actual individual yes/no/abstain ballots required, or is an authorized administrator recording a final decision? Current code labels a final rank with fabricated `votesYes`/`votesNo`. Recommended: store one signed ballot per eligible voter and compute the tally; if this is an override workflow, store no fictional tally and label it as an administrative decision.
 2. **Co-teaching:** Should each co-teacher submit a distinct subject vote, or should co-teachers share one subject evaluation? Current natural key permits one row per pupil/subject, so the “both teachers submitted” branch is impossible and the first teacher attribution persists.
 3. **Conference lock scope:** Does a lock apply school-wide or per class? The URL, broadcast, and comments indicate per-class; the database field is global. Recommended: per-class lock state.
-4. **Rank across subjects:** In Gesamt mode, should the composite rank be written to every subject, or should each subject receive a rank based on its own evaluation? This is roadmap E13. Recommended: do not finalize per-subject rows from a merged score unless the school explicitly confirms that policy.
+4. **Rank across subjects — RESOLVED (per-subject ranks).** Gesamt mode now scores and submits each subject independently (`handleSubmitPupil` in `BeobachtungsGrid.tsx` scores every `targetSubjectCodes` entry via `scoreSubject`; an unrated subject submits nothing or inherits an explicit manual proposal). This implements roadmap E13 as recommended: per-subject rows are never finalized from a merged score.
 5. **Rank aggregation:** Should the 14/8 threshold mean 14/8 of one 18-item raster, an average normalized per evaluation, or historical total positives across core subjects? The current default is unbounded `total`; “normalized” is currently a mathematical no-op.
 6. **Lernwerkstatt active list:** Is `/timeouts/active` intentionally school-wide for any authenticated staff member, or only a scheduled LW supervisor? Recommended: explicit supervisor authorization and minimum necessary fields; do not rely on “any authenticated account.”
 7. **Statistics policy:** `STATISTICS_SCHOOL_WIDE=true` and `STATISTICS_SHOW_FOREIGN_COMMENTS=true` are deliberate configuration defaults. Confirm the school’s intended visibility; do not silently flip them in code.
@@ -408,7 +408,7 @@ Add accessible names and `aria-pressed` to rating buttons; proper `role="dialog"
 
 ## Current-Review Limits
 
-- The PostgreSQL behavioral tests are **not executed locally** (Docker is unavailable, and the ignored scratch database is intentionally unused). Local runs set `SKIP_POSTGRES_INTEGRATION=true` explicitly and the guard refuses to treat that as evidence; the CI zero-skip run is the required proof. Latest local-safe run: 306 server tests passed / 24 PostgreSQL skipped, 123 client tests passed, typecheck and build green.
+- The PostgreSQL behavioral tests are **not executed locally** (Docker is unavailable, and the ignored scratch database is intentionally unused). Local runs set `SKIP_POSTGRES_INTEGRATION=true` explicitly and the guard refuses to treat that as evidence; the CI zero-skip run is the required proof. Latest local-safe run (2026-10-12): 577 server tests passed / 27 PostgreSQL skipped, 235 client tests passed, typecheck and build green.
 - No live database contents, production environment values, archive contents, or credential values were inspected. Credential literal presence was checked without printing values.
 - The reported “school-wide statistics / foreign comments” defaults are marked as intentional policy and are not silently changed here.
 - This document is an implementation backlog, not evidence that any listed fix has shipped. Update status only after code, tests, migration review, and acceptance evidence exist.

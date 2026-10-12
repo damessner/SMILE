@@ -10,6 +10,10 @@
 
 **Spec:** This document. The findings it addresses are in `docs/superpowers/plans/2026-10-06-hardening-roadmap.md` (Phase A).
 
+> **Status note (2026-10-12):** The checkboxes in this plan are historical. The work was executed
+> and verified (see `IF_YOU_ARE_AN_AI.md` and `bugfix.md`), but the boxes were never ticked; they
+> are not an open queue. Treat them as a record of the TDD sequence, not as pending tasks.
+
 ## Global Constraints
 
 - Node `>= 22.0.0`, ESM. **In `server/src`,** all relative imports use the `.js` extension — that is the Node ESM loader's requirement. **`client/src` uses extensionless relative imports** (62 existing imports, zero with `.js`), because Vite resolves them. Match whichever tree you are editing; do not "fix" the other one.

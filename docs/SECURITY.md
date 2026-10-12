@@ -63,19 +63,17 @@ archives (which contain the full pupil database).
 Initialise the repository **after** rotating the secrets above, so history never contains
 them.
 
-### 5. Move the backup archives out of the working tree — **STILL OUTSTANDING**
+### 5. Move the backup archives out of the working tree — **RESOLVED (2026-10-12)**
 
-`backup_date_time.zip` and `backup_2026-10-01_17-39-50.zip` are byte-identical (both 403,162
-bytes, both dated 2026-10-01) and sit in the project root. One is redundant. Verify a restore
-works, then move them to controlled storage with a retention policy.
+`backup_date_time.zip` and `backup_2026-10-01_17-39-50.zip` were byte-identical (both 403,162
+bytes, both dated 2026-10-01); `backup.zip` (31,863,901 bytes) held the full dump. All three
+were moved out of the working tree on 2026-10-12 to owner-controlled storage outside the synced
+folder, and `node scripts/verify-env.mjs` now exits 0. The archives remain git-ignored
+(`.gitignore` covers `backup_*` and `*.zip`), so `git status` alone will not show a new one.
 
-**As of 2026-10-07 this has not been done.** Both files are still in the working tree. They are
-git-ignored (`.gitignore` covers `backup_*` and `*.zip`) and `git status` reports nothing, which
-makes them easy to mistake for already-handled.
-
-`npm install` therefore **fails** on a developer workstation. Running the guard directly
-(`node scripts/verify-env.mjs`) exits 1, and `.env` is clean, so the archives are the only
-remaining problem and the sole cause. The guard reports both by name and size and points here:
+Before the move, `npm install` **failed** on a developer workstation: running the guard directly
+(`node scripts/verify-env.mjs`) exited 1, and `.env` was clean, so the archives were the sole
+cause. The guard reported them by name and size and pointed here — kept as the historical example:
 
 ```
 [verify-env] Problems found:
@@ -84,13 +82,11 @@ remaining problem and the sole cause. The guard reports both by name and size an
 See docs/SECURITY.md.
 ```
 
-Everything up to that point installs fine, so the failure surfaces as an unrelated `postinstall`
-error. Meanwhile the archives hold the full pupil database on a machine that is not the controlled
-storage this item asks for.
-
-Moving or deleting them is **not** a code change and was deliberately left to the owner of that
-data. Note that this item is also why a clean checkout on another machine cannot reproduce the
-failure — the archives are not in version control, so a fresh clone has nothing to remove.
+Everything up to that point installed fine, so the failure surfaced as an unrelated `postinstall`
+error. Moving the archives is **not** a code change and was deliberately left to the owner of
+that data; it was completed on 2026-10-12. Note that this item is also why a clean checkout on
+another machine could not reproduce the failure — the archives are not in version control, so a
+fresh clone has nothing to remove.
 
 The guard (`scripts/verify-env.mjs`) has been updated to perform a directory-wide scan for any
 backup files matching `backup*.zip`, `*.dump`, or `*.sql.gz`. All three files (`backup.zip`,
@@ -252,11 +248,15 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
 - **No TLS.** The app serves plain HTTP on the school LAN, as originally specified. The
   session cookie is `httpOnly` and `SameSite=Strict`, but the token still crosses the
   network in clear text and is interceptable by anyone on a switched network. Set
-  `COOKIE_SECURE=true` and put it behind a TLS-terminating proxy when you can.
+  `COOKIE_SECURE=true` and put it behind a TLS-terminating proxy when you can. While
+  `COOKIE_SECURE` is false the server now logs a boot warning (`insecureConfigWarnings`
+  in `server/src/config.ts`, emitted by `start()`), so the state is visible in the
+  journal instead of silent.
 - ~~**No automated backup schedule.**~~ Resolved: hourly encrypted `pg_dump` to Google
   Drive with tiered retention, `cryptcheck` verification, a restore script, and a weekly
-  unattended restore drill. See [`docs/BACKUP.md`](BACKUP.md). `README.md` §8 still
-  references `python scratch/create_backup.py`, which does not exist — update or delete it.
+  unattended restore drill. See [`docs/BACKUP.md`](BACKUP.md). (A stale note here claimed
+  `README.md` §8 referenced `python scratch/create_backup.py`; checked on 2026-10-12, no
+  such reference exists.)
 - ~~**Restore is not implemented.**~~ Resolved: `restore-from-gdrive.sh` restores into a
   scratch database by default and refuses to overwrite the live database without
   `--force`.
@@ -301,8 +301,8 @@ implemented honestly.
 ## Test coverage
 
 The root `npm test` command runs the server and client workspaces (with `PORT` set). The latest
-local-safe run reported **559 server tests passed, 27 PostgreSQL integration tests skipped, and
-245 client tests passed** (2026-10-11); `server/src/docs/contract.test.ts` keeps every document
+local-safe run reported **577 server tests passed, 27 PostgreSQL integration tests skipped, and
+235 client tests passed** (2026-10-12); `server/src/docs/contract.test.ts` keeps every document
 that quotes a total in agreement.
 
 Run it as `npm test` from the repository root. There is no root vitest config, so invoking
@@ -314,7 +314,7 @@ A local run must either set `TEST_DATABASE_URL` (a throwaway, loopback, empty `s
 with a restricted role) or set `SKIP_POSTGRES_INTEGRATION=true` explicitly. The guard rejects the
 skipped run as evidence: the integration suite fails loudly rather than silently reporting green.
 
-The 24 skipped tests are guarded PostgreSQL behavioral cases (including writes, session revocation,
+The 27 skipped tests are guarded PostgreSQL behavioral cases (including writes, session revocation,
 and cleanup isolation). They were not run locally: Docker is unavailable, and the ignored scratch
 database was intentionally not used. The CI workflow provisions a fresh restricted test database;
 its zero-skip run remains the required proof for those cases. A local opt-out is not integration

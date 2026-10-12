@@ -114,12 +114,13 @@ const REJECTED_ITEM_ERROR = 'Unbekanntes Beobachtungsmerkmal oder ungültiger Be
  * rubric and the criterion is derived here, which is what the WebSocket path
  * already did.
  *
- * What it does *not* fix: the positive count itself is still summed across every
- * evaluation a pupil has, so it remains unbounded past the 18-item raster
- * (`summarizeRatings` under the default `RANK_AGGREGATION=total`, and the four
- * client implementations that `flatMap` across subjects — roadmap C9 and the
- * deferred rank-logic unification). This validator makes each *write* honest; it
- * does not make the *aggregate* bounded.
+ * What it does *not* fix: `summarizeRatings` under the default
+ * `RANK_AGGREGATION=total` still sums across every evaluation group it is handed,
+ * so a *stored* multi-group tally can exceed the 18-item raster (roadmap C9 and
+ * the deferred rank-logic unification). This validator makes each *write* honest;
+ * it does not make that aggregate bounded. The four client implementations that
+ * once merged any-positive across subjects were fixed in `9dfce72` and score per
+ * subject — do not cite them here as unbounded again.
  *
  * Rejection is all-or-nothing. Returning the valid items and dropping the forged
  * ones would silently look like a successful save, so the first problem fails the
