@@ -1356,7 +1356,8 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
         expect(resReopen.statusCode).toBe(423);
         expect(resReopen.json().code).toBe('CLASS_CONFERENCE_LOCKED');
 
-        // 5. /batch-items
+        // 5. /batch-items — a real rubric key, so the payload passes validation
+        // and the class lock is what rejects the request (423), not a 400.
         const resBatchItems = await app!.inject({
           method: 'POST',
           url: '/api/evaluations/batch-items',
@@ -1365,7 +1366,7 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
             pupilId: 7001,
             classId: 501,
             subjectCode: 'D',
-            items: [{ itemKey: 'item_1', rating: 'smile', version: 0 }],
+            items: [{ itemKey: 'arb_selbstaendig', rating: 'smile', version: 0 }],
           },
         });
         expect(resBatchItems.statusCode).toBe(423);
