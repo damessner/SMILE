@@ -125,7 +125,12 @@ describe('weekly hours (the conference weight)', () => {
 });
 
 (hasRealExport ? describe : describe.skip)('against the real Stundenplan.TXT export', () => {
-  const result = parseTimetableExport(fs.readFileSync(exportPath, 'utf-8'));
+  // Read lazily-safe: this factory body runs at collection even when the suite is
+  // skipped (no Stundenplan.TXT in CI), so never touch the filesystem unless the
+  // export actually exists.
+  const result = hasRealExport
+    ? parseTimetableExport(fs.readFileSync(exportPath, 'utf-8'))
+    : ({} as ReturnType<typeof parseTimetableExport>);
 
   it('reproduces the loaded production row count', () => {
     // 1065 lines in the file, 44 without a class, 1021 class-bearing lessons - which is

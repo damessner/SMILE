@@ -895,7 +895,7 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
       });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().evaluation.subjectCode).toBe('D');
+      expect(res.json().subjectCode).toBe('D');
     });
 
     it('refuses an administrator rating until a non-sentinel actor FK is configured', async () => {
@@ -1069,6 +1069,13 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
       });
       expect(freshSession.statusCode).toBe(200);
       expect(freshSession.json().mustChangePassword).toBe(false);
+
+      // Restore the fixture so later tests can keep signing sessionVersion 0.
+      const { invalidateSessionStateCache } = await import('../lib/session.js');
+      await db.update(schema.users)
+        .set({ mustChangePassword: false, sessionVersion: 0 })
+        .where(eq(schema.users.id, TEST_USER_IDS.teacher101));
+      invalidateSessionStateCache(TEST_USER_IDS.teacher101);
     });
 
     it('closes an already-open WebSocket after an administrator reset', async () => {
@@ -1113,10 +1120,12 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
             clientMutationId: 'reset-ws-test-1',
           },
         });
+        // The reset pushes this ERROR from closeUserWebSockets, which is not tied
+        // to a client mutation, so no clientMutationId is attached.
         expect(socket.messages).toContainEqual(expect.objectContaining({
           type: 'ERROR',
           code: 'PASSWORD_CHANGE_REQUIRED',
-          clientMutationId: 'reset-ws-test-1',
+          message: 'Bitte setzen Sie zuerst ein neues Passwort.',
         }));
         expect(socket.closeCode).toBe(1008);
 
@@ -1128,6 +1137,11 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
       } finally {
         socket.close();
         resetLiveSyncForTests();
+        const { invalidateSessionStateCache } = await import('../lib/session.js');
+        await db.update(schema.users)
+          .set({ mustChangePassword: false, sessionVersion: 0 })
+          .where(eq(schema.users.id, TEST_USER_IDS.teacher102));
+        invalidateSessionStateCache(TEST_USER_IDS.teacher102);
       }
     });
 
@@ -1138,6 +1152,10 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
           sessionVersion: sql`${schema.users.sessionVersion} + 1`,
         })
         .where(eq(schema.users.id, TEST_USER_IDS.admin));
+      // A raw SQL update bypasses the in-process session-state cache, so drop the
+      // cached admin state before the request reads it.
+      const { invalidateSessionStateCache } = await import('../lib/session.js');
+      invalidateSessionStateCache(TEST_USER_IDS.admin);
       const staleAdminToken = app!.jwt.sign({
         id: TEST_USER_IDS.admin,
         username: 'test-admin',
@@ -1146,15 +1164,22 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
         mustChangePassword: false,
       }, { expiresIn: '1h' });
 
-      const res = await app!.inject({
-        method: 'POST',
-        url: '/api/auth/request-reset',
-        headers: { cookie: `smile_session=${staleAdminToken}` },
-        payload: { username: 'teacher101' },
-      });
+      try {
+        const res = await app!.inject({
+          method: 'POST',
+          url: '/api/auth/request-reset',
+          headers: { cookie: `smile_session=${staleAdminToken}` },
+          payload: { username: 'teacher101' },
+        });
 
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('PASSWORD_CHANGE_REQUIRED');
+        expect(res.statusCode).toBe(403);
+        expect(res.json().code).toBe('PASSWORD_CHANGE_REQUIRED');
+      } finally {
+        await db.update(schema.users)
+          .set({ mustChangePassword: false, sessionVersion: 0 })
+          .where(eq(schema.users.id, TEST_USER_IDS.admin));
+        invalidateSessionStateCache(TEST_USER_IDS.admin);
+      }
     });
   });
 
@@ -1168,7 +1193,30 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
         classId: 501,
         subjectCode: 'M',
         subjectName: 'Mathematik',
+      }).onConflictDoUpdate({
+        target: schema.teachingAssignments.id,
+        set: { teacherId: 101, classId: 501, subjectCode: 'M', subjectName: 'Mathematik' },
       });
+
+      // Earlier legitimate-write tests may already have created this exact
+      // evaluation (round, pupil, class, subject). Reset it so the seeded item is
+      // the only one scored (the test asserts positiveCount === 1).
+      const existingEvalD = await db
+        .select({ id: schema.evaluations.id })
+        .from(schema.evaluations)
+        .where(and(
+          eq(schema.evaluations.roundId, testRoundId!),
+          eq(schema.evaluations.pupilId, 7001),
+          eq(schema.evaluations.classId, 501),
+          eq(schema.evaluations.subjectCode, 'D'),
+        ))
+        .limit(1);
+      if (existingEvalD[0]) {
+        await db.delete(schema.evaluationItems)
+          .where(eq(schema.evaluationItems.evaluationId, existingEvalD[0].id));
+        await db.delete(schema.evaluations)
+          .where(eq(schema.evaluations.id, existingEvalD[0].id));
+      }
 
       // Seed an evaluation for pupil 7001 in D
       const [evalD] = await db.insert(schema.evaluations).values({
@@ -1191,6 +1239,10 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
       });
 
       // Seed a confirmed conference decision (Meister) for pupil 7001
+      await db.delete(schema.finalRanks).where(and(
+        eq(schema.finalRanks.pupilId, 7001),
+        eq(schema.finalRanks.roundId, testRoundId!),
+      ));
       await db.insert(schema.finalRanks).values({
         roundId: testRoundId!,
         pupilId: 7001,
@@ -1334,10 +1386,19 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
         // calls previously targeted /api/conferences/confirm and /api/conferences/unconfirm,
         // which have never been registered: both 404'd, so the "conferences stay
         // usable under lock" property had no working guard at all.
+        // Conference decisions are restricted to the Schulleitung, so the
+        // "still usable under lock" steps use an admin token.
+        const leadershipToken = app!.jwt.sign({
+          id: TEST_USER_IDS.admin,
+          username: 'test-admin',
+          role: 'admin',
+          sessionVersion: 0,
+          mustChangePassword: false,
+        }, { expiresIn: '1h' });
         const resConfirm = await app!.inject({
           method: 'POST',
           url: '/api/conferences/501/vote',
-          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          headers: { cookie: `smile_session=${leadershipToken}` },
           payload: {
             pupilId: 7001,
             action: 'confirm',
@@ -1351,7 +1412,7 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
         const resUnconfirm = await app!.inject({
           method: 'POST',
           url: '/api/conferences/501/vote',
-          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          headers: { cookie: `smile_session=${leadershipToken}` },
           payload: { pupilId: 7001, action: 'unconfirm' },
         });
         expect(resUnconfirm.statusCode).toBe(200);
@@ -1361,7 +1422,7 @@ describe.runIf(isDbReachable)('Evaluations PostgreSQL Integration Tests', () => 
         const resVoteAll = await app!.inject({
           method: 'POST',
           url: '/api/conferences/501/vote-all',
-          headers: { cookie: `smile_session=${sessionCookie(101)}` },
+          headers: { cookie: `smile_session=${leadershipToken}` },
           payload: { items: [{ pupilId: 7001, rank: 'Meister' }] },
         });
         expect(resVoteAll.statusCode).toBe(200);
