@@ -31,7 +31,6 @@ import {
   scoreSubject,
 } from '../lib/pupilItems';
 import { getRankVisuals } from '../lib/conferenceEvidence';
-import { quickGradeFills } from '../lib/rubricConfig';
 import { saveEvaluationComment } from '../services/api';
 import { SoftLock, ConflictEvent } from '../hooks/useLiveSync';
 import { useConfirm } from './ConfirmDialog';
@@ -686,83 +685,30 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
     }
   }, [submitToast]);
 
-  // Instant Rank Handlers
-  const handleInstantRank = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
-    if (!canWrite || isLockedByConference || !selectedPupil) return;
-    beginSave();
-
-    const totalCells = criteria.reduce((n, crit) => n + crit.items.length, 0);
-    // The fill pattern comes from the active thresholds, not fixed numbers, so
-    // a one-click grade keeps producing the rank it was asked for after a
-    // reconfiguration (see quickGradeFills).
-    const fills = quickGradeFills(targetRank, totalCells);
-    let fillIndex = 0;
-
-    const allCritItems: Array<{ criterionId: string; itemKey: string; rating: string }> = [];
-    for (const crit of criteria) {
-      for (const it of crit.items) {
-        allCritItems.push({ criterionId: crit.id, itemKey: it.key, rating: fills[fillIndex++] });
-      }
-    }
-
-    try {
-      for (const subCode of targetSubjectCodes) {
-        if (onBatchUpdate) {
-          const versionedItems = allCritItems.map((item) => ({
-            ...item,
-            version: itemVersionForSubject(selectedPupil.evaluations, subCode, item.itemKey),
-          }));
-          await onBatchUpdate(selectedPupil.id, versionedItems, subCode);
-        } else {
-          await settleAllWrites(allCritItems.map((it) =>
-            Promise.resolve(onRate(
-              selectedPupil.id,
-              it.criterionId,
-              it.itemKey,
-              it.rating,
-              itemVersionForSubject(selectedPupil.evaluations, subCode, it.itemKey),
-              subCode,
-            )),
-          ));
-        }
-      }
-      // Only after the server has taken the write: a rejected quick-grade must
-      // not leave "Gewählt" showing a rank the server never stored.
-      setVotedRank(targetRank);
-      finishSave();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bewertung konnte nicht gespeichert werden.';
-      finishSave(error);
-      toast.error(message);
-    }
-  };
-
-  // Unified 1-Click Quick Grade Handler (Core & Non-Core)
+  // Unified 1-Click Quick Grade Handler (Core & Non-Core).
+  // Rank-only by design (2026-10-12 decision): the one-click grade never writes
+  // criterion cells — points count only when a teacher really taps them. The
+  // rank is submitted as the proposal for every subject in scope.
   const handleQuickGrade = async (targetRank: 'Lehrling' | 'Geselle' | 'Meister') => {
     if (!canWrite || !selectedPupil || isLockedByConference || isPastDeadline) return;
-    if (effectiveCanAccessRaster) {
-      // handleInstantRank sets the selection once its writes have resolved.
-      await handleInstantRank(targetRank);
-    } else {
-      beginSave();
-      try {
-        for (const subCode of targetSubjectCodes) {
-          if (onSubmitPupil) {
-            await onSubmitPupil(
-              selectedPupil.id,
-              targetRank,
-              votedComment.trim() || undefined,
-              subCode
-            );
-          }
+    beginSave();
+    try {
+      for (const subCode of targetSubjectCodes) {
+        if (onSubmitPupil) {
+          await onSubmitPupil(
+            selectedPupil.id,
+            targetRank,
+            votedComment.trim() || undefined,
+            subCode
+          );
         }
-        setVotedRank(targetRank);
-        finishSave();
-        setSaveSuccessMsg(`Rang „${targetRank}“ gespeichert`);
-      } catch (err) {
-        finishSave(err);
-        toast.error('Rang konnte nicht gespeichert werden');
       }
+      setVotedRank(targetRank);
+      finishSave();
+      setSaveSuccessMsg(`Rang „${targetRank}“ übermittelt`);
+    } catch (err) {
+      finishSave(err);
+      toast.error('Rang konnte nicht gespeichert werden');
     }
   };
 

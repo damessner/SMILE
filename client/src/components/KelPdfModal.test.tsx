@@ -121,8 +121,8 @@ describe('KelPdfModal subject-scoped KEL report sections', () => {
       />,
     );
 
-    // Denominator is the configured rubric length (6), not the hardcoded 18
-    expect(screen.getByText(/Status \(6\/6\)/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Status \(6\/18\)/i)).toBeNull();
+    // Status counts only real entered cells (configured length 6, not 18)
+    expect(screen.getByText(/Status: 6 positiv · 6 bewertet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/18 bewertet/i)).toBeNull();
   });
 });

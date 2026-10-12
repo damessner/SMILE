@@ -1279,18 +1279,18 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
     expect(screen.getByText('Gilt für alle Fächer: Deutsch · Mathematik')).toBeInTheDocument();
   });
 
-  it('writes a quick grade to every subject in Gesamt mode, then only to the open tab', async () => {
-    // Gesamt mode writes one raster across every subject the teacher owns.
-    // Leaving it by clicking a subject tab narrows the target silently: the
-    // same click must touch that one subject and nothing else, or a
-    // correction in Mathe quietly overwrites Deutsch too.
+  it('submits the 1-click rank to every subject in Gesamt mode, then only to the open tab', async () => {
+    // Rank-only by design: the one-click grade never writes criterion cells
+    // (points count only from real taps); it submits the rank as the proposal.
+    // Leaving Gesamt by clicking a subject tab narrows the target silently, so
+    // a correction in Mathe does not touch Deutsch.
     const anna = pupil(1, 'Anna Muster', [
       evaluation('D', { items: [] }),
       evaluation('M', { items: [] }),
     ]);
-    const writtenSubjects: string[] = [];
-    const onBatchUpdate = vi.fn(async (_id: number, _items: unknown, subCode: string) => {
-      writtenSubjects.push(subCode);
+    const submittedSubjects: string[] = [];
+    const onSubmitPupil = vi.fn(async (_id: number, _rank: string, _comment: string | undefined, subCode: string) => {
+      submittedSubjects.push(subCode);
     });
 
     renderGrid({
@@ -1298,18 +1298,18 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
       mySubjects: [GERMAN, MATHS],
       criteria: EIGHTEEN_CRITERIA,
       selectedPupilIdProp: 1,
-      onBatchUpdate,
+      onSubmitPupil,
     });
 
     fireEvent.click(screen.getByRole('button', { name: /Lehrling.*Basis/i }));
 
-    // Gesamt: one write per subject.
+    // Gesamt: one submitted rank per subject.
     await vi.waitFor(() => {
-      expect(writtenSubjects).toEqual(['D', 'M']);
+      expect(submittedSubjects).toEqual(['D', 'M']);
     });
 
     // Narrow to Mathe: the same click is Mathe-only from here on. The
-    // "Gewählt" badge is set after the write loop settles, so waiting for it
+    // "Gewählt" badge is set after the submit loop settles, so waiting for it
     // keeps the assertion below from reading a half-finished loop.
     fireEvent.click(screen.getByRole('button', { name: /M \(Mathematik\)/ }));
     fireEvent.click(screen.getByRole('button', { name: /Meister.*Spitzenleistung/i }));
@@ -1318,7 +1318,7 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
       expect(screen.getByRole('button', { name: /Meister.*Spitzenleistung/i }).className)
         .toContain('ring-amber-400/50');
     });
-    expect(writtenSubjects).toEqual(['D', 'M', 'M']);
+    expect(submittedSubjects).toEqual(['D', 'M', 'M']);
   });
 
   it('lets an unrated subject inherit an explicit manual proposal', async () => {    // The other half of Decision 0.1: when the teacher HAS proposed a rank,
@@ -1409,11 +1409,12 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
       expect(saveEvaluationComment).not.toHaveBeenCalled();
     });
 
-    it('leaves no "Gewählt" behind when a quick-grade write is rejected', async () => {
-      // The rank badge used to be set optimistically before the write; a
-      // rejection then left a selection the server never stored.
+    it('leaves no "Gewählt" behind when a quick-grade submit is rejected', async () => {
+      // Rank-only quick grade (2026-10-12): the badge is set only after the
+      // server accepted the submit; a rejection must not leave a selection the
+      // server never stored.
       const anna = pupil(1, 'Anna Muster', [evaluation('D')]);
-      const onRate = vi.fn().mockRejectedValue(
+      const onSubmitPupil = vi.fn().mockRejectedValue(
         Object.assign(new Error('Bewertung wurde zwischenzeitlich geändert.'), {
           name: 'ApiError',
           status: 409,
@@ -1421,12 +1422,12 @@ describe('Gesamt mode subject-scoped scoring and submission', () => {
         }),
       );
 
-      renderGrid({ pupils: [anna], mySubjects: [GERMAN], onRate });
+      renderGrid({ pupils: [anna], mySubjects: [GERMAN], onSubmitPupil });
 
       fireEvent.click(screen.getByRole('button', { name: /Meister/ }));
 
       await vi.waitFor(() => {
-        expect(onRate).toHaveBeenCalled();
+        expect(onSubmitPupil).toHaveBeenCalled();
       });
       expect(screen.queryByText('Gewählt')).toBeNull();
     });
