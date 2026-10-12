@@ -19,7 +19,7 @@ const TEST_ENV: Record<string, string> = {
 
 let app: FastifyInstance | null = null;
 let ajvStrictWarnings: string[] = [];
-const sessionStateReader = vi.fn(async (_userId: string) => ({ sessionVersion: 0, mustChangePassword: false }));
+const sessionStateReader = vi.fn(async (_userId: string) => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
 
 beforeAll(async () => {
   const saved = { ...process.env };
@@ -146,6 +146,7 @@ describe('durable session guard ordering', () => {
     sessionStateReader.mockImplementation(async (userId) => ({
       sessionVersion: userId === 'revoked-admin' ? 1 : 0,
       mustChangePassword: false,
+      teacherActive: true,
     }));
     try {
       const token = app!.jwt.sign({
@@ -164,7 +165,7 @@ describe('durable session guard ordering', () => {
       expect(res.statusCode).toBe(401);
       expect(res.json().error).toBe('Nicht authentifiziert');
     } finally {
-      sessionStateReader.mockImplementation(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+      sessionStateReader.mockImplementation(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
     }
   });
 
@@ -172,6 +173,7 @@ describe('durable session guard ordering', () => {
     sessionStateReader.mockImplementation(async (userId) => ({
       sessionVersion: userId === 'reset-required-admin' ? 1 : 0,
       mustChangePassword: userId === 'reset-required-admin',
+      teacherActive: true,
     }));
     try {
       const token = app!.jwt.sign({
@@ -191,7 +193,7 @@ describe('durable session guard ordering', () => {
       expect(res.statusCode).toBe(403);
       expect(res.json().error).toContain('Passwort');
     } finally {
-      sessionStateReader.mockImplementation(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+      sessionStateReader.mockImplementation(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
     }
   });
 
@@ -199,6 +201,7 @@ describe('durable session guard ordering', () => {
     sessionStateReader.mockImplementation(async (userId) => ({
       sessionVersion: userId === 'reset-pending-teacher' ? 1 : 0,
       mustChangePassword: userId === 'reset-pending-teacher',
+      teacherActive: true,
     }));
     try {
       const token = app!.jwt.sign({
@@ -218,7 +221,7 @@ describe('durable session guard ordering', () => {
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('PASSWORD_CHANGE_REQUIRED');
     } finally {
-      sessionStateReader.mockImplementation(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+      sessionStateReader.mockImplementation(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
     }
   });
 });

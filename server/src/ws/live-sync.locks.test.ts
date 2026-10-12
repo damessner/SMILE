@@ -91,6 +91,7 @@ vi.mock('../config.js', () => ({
   config: {
     wsRoomMaxClients: 20,
     wsSoftLockTtlMs: 1_000,
+    wsRateLimit: { perSecond: 10, burst: 40 },
     submissionDeadline: new Date('2099-01-01T00:00:00.000Z'),
   },
 }));
@@ -123,6 +124,7 @@ vi.mock('../lib/session.js', () => ({
   getPersistedUserSessionState: vi.fn(async () => ({
     sessionVersion: 0,
     mustChangePassword: false,
+    teacherActive: true,
   })),
 }));
 
@@ -179,6 +181,7 @@ afterEach(() => {
   vi.mocked(getPersistedUserSessionState).mockReset().mockResolvedValue({
     sessionVersion: 0,
     mustChangePassword: false,
+    teacherActive: true,
   });
   vi.useRealTimers();
 });
@@ -361,6 +364,7 @@ describe('subject-scoped WebSocket cell locks', () => {
     vi.mocked(getPersistedUserSessionState).mockResolvedValueOnce({
       sessionVersion: 1,
       mustChangePassword: false,
+      teacherActive: true,
     });
     const staleSocket = new TestSocket();
     await subscribe(staleSocket, 101, { ...USER, id: 'revoked-teacher', sessionVersion: 0 });
@@ -376,6 +380,7 @@ describe('subject-scoped WebSocket cell locks', () => {
     vi.mocked(getPersistedUserSessionState).mockImplementation(async (userId) => ({
       sessionVersion: userId === staleUser.id ? 1 : 0,
       mustChangePassword: false,
+      teacherActive: true,
     }));
 
     await liveSyncModule.broadcastToClass(101, { type: 'RATING_UPDATED', pupilId: 501 });

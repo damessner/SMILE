@@ -390,7 +390,7 @@ beforeAll(async () => {
 
   const { buildServer } = await import('../index.js');
   try {
-    lockApp = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+    lockApp = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
     await lockApp.ready();
   } finally {
     for (const key of Object.keys(process.env)) {

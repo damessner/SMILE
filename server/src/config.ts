@@ -254,6 +254,15 @@ export const config = {
     max: readInt('GLOBAL_RATE_LIMIT_MAX', 600),
     windowSeconds: readInt('GLOBAL_RATE_LIMIT_WINDOW_SECONDS', 60),
   },
+  /**
+   * Inbound WebSocket message limit, per socket (token bucket). WebSocket frames are
+   * not HTTP requests, so the global HTTP limiter never saw them; a connected client
+   * could flood UPDATE_RATING without any throttle.
+   */
+  wsRateLimit: {
+    perSecond: readInt('WS_RATE_LIMIT_PER_SECOND', 10),
+    burst: readInt('WS_RATE_LIMIT_BURST', 40),
+  },
   /** Max JSON request body. Assessment payloads are small; this is a cheap DoS guard. */
   bodyLimitBytes: readInt('BODY_LIMIT_BYTES', 256 * 1024),
 
@@ -331,6 +340,8 @@ export function assertServerConfig(): void {
     ['LOGIN_RATE_LIMIT_WINDOW_SECONDS', config.loginRateLimit.windowSeconds],
     ['GLOBAL_RATE_LIMIT_MAX', config.globalRateLimit.max],
     ['GLOBAL_RATE_LIMIT_WINDOW_SECONDS', config.globalRateLimit.windowSeconds],
+    ['WS_RATE_LIMIT_PER_SECOND', config.wsRateLimit.perSecond],
+    ['WS_RATE_LIMIT_BURST', config.wsRateLimit.burst],
     ['BODY_LIMIT_BYTES', config.bodyLimitBytes],
     ['WS_ROOM_MAX_CLIENTS', config.wsRoomMaxClients],
     ['WS_SOFT_LOCK_TTL_MS', config.wsSoftLockTtlMs],
@@ -357,4 +368,20 @@ export function assertServerConfig(): void {
         `RANK_THRESHOLD_GESELLE (${config.rankThresholds.geselle}).`,
     );
   }
+}
+
+/**
+ * Non-fatal deployment warnings, logged once at boot. These describe known-accepted
+ * states on the current LAN deployment (plain HTTP), so they must not fail startup —
+ * but an operator should see them in the journal rather than discover them later.
+ */
+export function insecureConfigWarnings(cfg: Pick<AppConfig, 'cookieSecure'> = config): string[] {
+  const warnings: string[] = [];
+  if (!cfg.cookieSecure) {
+    warnings.push(
+      'COOKIE_SECURE is disabled: the session cookie travels without the Secure flag. ' +
+        'Set COOKIE_SECURE=true once the app is served over HTTPS (for example behind a TLS reverse proxy).',
+    );
+  }
+  return warnings;
 }

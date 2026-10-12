@@ -500,6 +500,18 @@ export function buildSessionGuard(
     user.sessionVersion = state.sessionVersion;
     user.mustChangePassword = state.mustChangePassword;
 
+    // Deactivation is enforced here, not only at login. `teachers.active` used to be
+    // consulted once in the login handler, so an account disabled afterwards kept full
+    // access until its token expired (up to 8 h). Admins are exempt: their placeholder
+    // teacher rows are `active: false` by design (migration 0002).
+    if (state.teacherActive === false && user.role !== 'admin') {
+      clearSessionCookie(reply);
+      return reply.status(403).send({
+        error: 'Dieses Konto wurde deaktiviert. Bitte wenden Sie sich an die Schulleitung.',
+        code: 'ACCOUNT_DEACTIVATED',
+      });
+    }
+
     if (state.mustChangePassword) {
       const pathname = (request.url ?? '').split('?', 1)[0];
       const isPasswordChangeRoute =

@@ -221,6 +221,8 @@ describe('strict config parsing', () => {
     ['BODY_LIMIT_BYTES', '0'],
     ['WS_ROOM_MAX_CLIENTS', '0'],
     ['WS_SOFT_LOCK_TTL_MS', '0'],
+    ['WS_RATE_LIMIT_PER_SECOND', '0'],
+    ['WS_RATE_LIMIT_BURST', '0'],
     ['YELLOW_CARD_ALERT_THRESHOLD', '0'],
     ['YELLOW_CARD_ALERT_WINDOW_DAYS', '0'],
     ['ESCALATION_STEP', '0'],
@@ -233,5 +235,19 @@ describe('strict config parsing', () => {
     vi.resetModules();
     const { assertServerConfig, ConfigError } = await import('./config.js');
     expect(() => assertServerConfig()).toThrow(ConfigError);
+  });
+});
+
+describe('insecureConfigWarnings', () => {
+  it('warns when the session cookie travels without the Secure flag', async () => {
+    const { insecureConfigWarnings } = await import('./config.js');
+    const warnings = insecureConfigWarnings({ cookieSecure: false });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('COOKIE_SECURE');
+  });
+
+  it('returns no warnings when the cookie is secure', async () => {
+    const { insecureConfigWarnings } = await import('./config.js');
+    expect(insecureConfigWarnings({ cookieSecure: true })).toEqual([]);
   });
 });

@@ -6,7 +6,8 @@ import {
   teachingAssignments,
 } from '../db/schema.js';
 import { config } from '../config.js';
-import { getPersistedUserSessionState } from '../lib/session.js';
+import { getPersistedUserSessionState, type PersistedUserSessionState } from '../lib/session.js';
+import { TokenBucket } from '../lib/ws-rate-limit.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
 import { getClassAccess, findPupilInClass, canRateSubject, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parsePositiveInt, LW_CLASS_ID, type AuthUser } from '../lib/guards.js';
 import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterionId } from '../lib/rubric.js';
@@ -33,6 +34,14 @@ const CLOSE_GOING_AWAY = 1001;
 const CLOSE_TOO_BIG = 1009;
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
+
+/**
+ * Inbound messages above the bucket burst are dropped; this many consecutive
+ * violations close the socket. One noisy client must not be able to hold a worker
+ * busy, but a transient burst (for example a reconnect replay) must not end the
+ * session.
+ */
+const MAX_RATE_LIMIT_VIOLATIONS = 20;
 const SUBSCRIBE_PAYLOAD_KEYS = ['classId'] as const;
 const FOCUS_PAYLOAD_KEYS = ['classId', 'pupilId', 'itemKey', 'subjectCode'] as const;
 const UPDATE_RATING_PAYLOAD_KEYS = [
@@ -125,24 +134,36 @@ export function broadcastToClass(
  * owned by other workers, both when they send and before they receive broadcasts.
  */
 async function ensureLiveSession(client: ClientConnection, clientMutationId?: string): Promise<boolean> {
-  let state: { sessionVersion: number; mustChangePassword: boolean } | null;
+  let state: PersistedUserSessionState | null;
   try {
     state = await getPersistedUserSessionState(client.user.id);
   } catch {
     state = null;
   }
 
+  // Priority: deactivated > password change required > revoked session.
+  const accountDeactivated = state?.teacherActive === false && client.user.role !== 'admin';
   const passwordChangeRequired = Boolean(client.user.mustChangePassword || state?.mustChangePassword);
   const sessionRevoked = !state || client.user.sessionVersion !== state.sessionVersion;
-  if (!passwordChangeRequired && !sessionRevoked) return true;
+  if (!accountDeactivated && !passwordChangeRequired && !sessionRevoked) return true;
 
-  const reason = passwordChangeRequired ? 'password change required' : 'session expired';
+  let message = 'Die Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.';
+  let code: string | undefined;
+  let reason = 'session expired';
+  if (accountDeactivated) {
+    message = 'Dieses Konto wurde deaktiviert. Bitte wenden Sie sich an die Schulleitung.';
+    code = 'ACCOUNT_DEACTIVATED';
+    reason = 'account deactivated';
+  } else if (passwordChangeRequired) {
+    message = 'Bitte setzen Sie zuerst ein neues Passwort.';
+    code = 'PASSWORD_CHANGE_REQUIRED';
+    reason = 'password change required';
+  }
+
   sendTo(client, {
     type: 'ERROR',
-    message: passwordChangeRequired
-      ? 'Bitte setzen Sie zuerst ein neues Passwort.'
-      : 'Die Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.',
-    ...(passwordChangeRequired ? { code: 'PASSWORD_CHANGE_REQUIRED' } : {}),
+    message,
+    ...(code ? { code } : {}),
     ...(clientMutationId ? { clientMutationId } : {}),
   });
   client.ws.close(CLOSE_POLICY_VIOLATION, reason);
@@ -211,6 +232,9 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
   };
   allClients.add(client);
 
+  const rateBucket = new TokenBucket(config.wsRateLimit.perSecond, config.wsRateLimit.burst);
+  let rateLimitViolations = 0;
+
   ws.on('message', async (raw: any) => {
     let responseMutationId: string | undefined;
     try {
@@ -218,6 +242,24 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
         ws.close(CLOSE_TOO_BIG, 'message too large');
         return;
       }
+
+      // WebSocket frames bypass the HTTP rate limiter, so throttle per socket here.
+      if (!rateBucket.tryConsume()) {
+        rateLimitViolations += 1;
+        if (rateLimitViolations === 1) {
+          sendTo(client, {
+            type: 'ERROR',
+            message: 'Zu viele Nachrichten in kurzer Zeit. Bitte warten Sie einen Moment.',
+            code: 'RATE_LIMITED',
+          });
+        }
+        if (rateLimitViolations >= MAX_RATE_LIMIT_VIOLATIONS) {
+          ws.close(CLOSE_POLICY_VIOLATION, 'rate limit exceeded');
+          removeClient(client);
+        }
+        return;
+      }
+      rateLimitViolations = 0;
 
       const data = JSON.parse(raw.toString());
       if (!data || typeof data.type !== 'string') return;
@@ -461,7 +503,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
   }
   const expectedVersion = rawVersion;
 
-  const rawSubject = payload.subjectCode === undefined ? 'D' : payload.subjectCode;
+  const rawSubject = payload.subjectCode;
   if (typeof rawSubject !== 'string' || rawSubject.length > 32) {
     sendRatingError(client, clientMutationId, 'Ungültiges Unterrichtsfach.');
     return;

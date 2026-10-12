@@ -339,7 +339,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const { pupilId, classId, subjectCode = 'D', proposedStatus, nextStep, comment } =
+    const { pupilId, classId, subjectCode, proposedStatus, nextStep, comment } =
       (request.body ?? {}) as {
         pupilId?: number;
         classId?: number;
@@ -456,7 +456,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       );
     }
 
-    const { pupilId, classId, subjectCode = 'D', proposedStatus, nextStep, comment } =
+    const { pupilId, classId, subjectCode, proposedStatus, nextStep, comment } =
       (request.body ?? {}) as {
         pupilId?: number;
         classId?: number;
@@ -578,7 +578,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, `Abgabefrist (${config.submissionDeadline.toISOString().slice(0, 10)}) ist abgelaufen.`);
     }
 
-    const { pupilId, classId, subjectCode = 'D' } = (request.body ?? {}) as {
+    const { pupilId, classId, subjectCode } = (request.body ?? {}) as {
       pupilId?: number;
       classId?: number;
       subjectCode?: string;
@@ -695,7 +695,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!assertPasswordCurrent(user, reply)) return;
     if (deadlinePassed()) return badRequest(reply, 'Abgabefrist ist abgelaufen.');
 
-    const { pupilId, classId, subjectCode = 'D', items } = (request.body ?? {}) as {
+    const { pupilId, classId, subjectCode, items } = (request.body ?? {}) as {
       pupilId?: number;
       classId?: number;
       subjectCode?: string;

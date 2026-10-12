@@ -9,8 +9,9 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-import { assertServerConfig, config, ConfigError, jwtSecret } from './config.js';
+import { assertServerConfig, config, ConfigError, insecureConfigWarnings, jwtSecret } from './config.js';
 import { buildAuthenticate, buildRequireRole, buildSessionGuard, getTeacher } from './lib/guards.js';
+import type { PersistedUserSessionState } from './lib/session.js';
 import { rateLimitKey } from './lib/rate-limit.js';
 import { safeErrorLogFields } from './lib/log-safety.js';
 import { securityPlugin } from './plugins/security.js';
@@ -41,7 +42,7 @@ const __dirname = path.dirname(__filename);
 export { safeErrorLogFields } from './lib/log-safety.js';
 
 export async function buildServer(
-  sessionStateReader?: (userId: string) => Promise<{ sessionVersion: number; mustChangePassword: boolean } | null>,
+  sessionStateReader?: (userId: string) => Promise<PersistedUserSessionState | null>,
 ) {
   // Fail fast on a misconfigured or compromised environment rather than silently
   // falling back to the hardcoded secrets that used to live in this file.
@@ -280,6 +281,10 @@ export async function start() {
 
   const tzWarning = bellScheduleTimezoneWarning();
   if (tzWarning) fastify.log.warn(tzWarning);
+
+  // Known-accepted deployment states (for example plain-HTTP LAN serving) are
+  // surfaced here rather than silently absorbed.
+  for (const warning of insecureConfigWarnings()) fastify.log.warn(warning);
 
   // Apply pending schema migrations before accepting traffic, so the app never
   // serves requests against a schema it does not expect.

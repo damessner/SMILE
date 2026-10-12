@@ -51,7 +51,7 @@ beforeAll(async () => {
 
   const { buildServer } = await import('../index.js');
   try {
-    app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+    app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
     await app.ready();
   } finally {
     for (const key of Object.keys(process.env)) {

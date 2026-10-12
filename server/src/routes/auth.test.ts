@@ -107,7 +107,7 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     };
     const buildSessionGuard = (guardModule as any).buildSessionGuard;
     expect(buildSessionGuard).toBeTypeOf('function');
-    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: false }));
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: false, teacherActive: true }));
     const req = {
       authUser: fakePayload,
       method: 'POST',
@@ -142,7 +142,7 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     clearUserMustChangePassword(userId);
     const buildSessionGuard = (guardModule as any).buildSessionGuard;
     expect(buildSessionGuard).toBeTypeOf('function');
-    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true, teacherActive: true }));
     const req = {
       authUser: fakePayload,
       method: 'POST',
@@ -161,7 +161,7 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
 
   it('blocks protected reads for a reset-pending stale token but permits the password endpoint', async () => {
     const buildSessionGuard = (guardModule as any).buildSessionGuard;
-    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true, teacherActive: true }));
     const req = {
       authUser: {
         id: userId,
@@ -196,7 +196,7 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
 
   it('permits /api/auth/me, /api/auth/session, and /api/auth/logout for mustChangePassword accounts with current sessionVersion', async () => {
     const buildSessionGuard = (guardModule as any).buildSessionGuard;
-    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true, teacherActive: true }));
 
     for (const [method, url] of [
       ['GET', '/api/auth/me'],
@@ -231,7 +231,7 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
 
   it('rejects /api/auth/me with 401 when mustChangePassword is true but token has stale sessionVersion', async () => {
     const buildSessionGuard = (guardModule as any).buildSessionGuard;
-    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true }));
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: true, teacherActive: true }));
     const req = {
       authUser: {
         id: userId,
@@ -259,10 +259,84 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect(clearCookie).toHaveBeenCalled();
   });
 
+  it('blocks a deactivated teacher with 403 ACCOUNT_DEACTIVATED and clears the session cookie', async () => {
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({
+      sessionVersion: 4,
+      mustChangePassword: false,
+      teacherActive: false,
+    }));
+    const req = {
+      authUser: {
+        id: userId,
+        username: 'testteacher',
+        role: 'teacher',
+        teacherId: 42,
+        mustChangePassword: false,
+        sessionVersion: 4,
+      },
+      method: 'GET',
+      url: '/api/classes/501/pupils',
+    } as unknown as FastifyRequest;
+    let statusCode = 0;
+    let responseBody: unknown;
+    const clearCookie = vi.fn();
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return reply;
+      },
+      send: (body: unknown) => {
+        responseBody = body;
+        return reply;
+      },
+      clearCookie,
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(statusCode).toBe(403);
+    expect(responseBody).toMatchObject({ code: 'ACCOUNT_DEACTIVATED' });
+    expect(clearCookie).toHaveBeenCalled();
+  });
+
+  it('does not lock out the admin actor row, whose placeholder teacher row is inactive by design', async () => {
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({
+      sessionVersion: 4,
+      mustChangePassword: false,
+      teacherActive: false,
+    }));
+    const req = {
+      authUser: {
+        id: 'admin-1',
+        username: 'admin',
+        role: 'admin',
+        mustChangePassword: false,
+        sessionVersion: 4,
+      },
+      method: 'GET',
+      url: '/api/backup/export-json',
+    } as unknown as FastifyRequest;
+    let statusCode = 0;
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return reply;
+      },
+      send: () => reply,
+      clearCookie: vi.fn(),
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(statusCode).toBe(0);
+  });
+
   it('uses persisted account state instead of a stale worker-local reset flag', async () => {
     markUserMustChangePassword(userId);
     const buildSessionGuard = (guardModule as any).buildSessionGuard;
-    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: false }));
+    const guard = buildSessionGuard(async () => ({ sessionVersion: 4, mustChangePassword: false, teacherActive: true }));
     const req = {
       authUser: {
         id: userId,

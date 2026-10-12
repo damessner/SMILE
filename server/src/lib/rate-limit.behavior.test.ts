@@ -18,7 +18,7 @@ beforeAll(async () => {
   savedEnv = { ...process.env };
   Object.assign(process.env, TEST_ENV);
   const { buildServer } = await import('../index.js');
-  app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+  app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
 }, 30_000);
 
 afterAll(async () => {

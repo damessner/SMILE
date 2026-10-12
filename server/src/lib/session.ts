@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { teachers, users } from '../db/schema.js';
 import type { AuthUser } from './guards.js';
 
 export const SESSION_COOKIE = 'smile_session';
@@ -10,6 +10,13 @@ export const SESSION_COOKIE = 'smile_session';
 export interface PersistedUserSessionState {
   sessionVersion: number;
   mustChangePassword: boolean;
+  /**
+   * Whether the linked teacher row is still active. `null` when the account has no
+   * teacher link (for example the pupil role or the admin actor row). Enforced in
+   * `buildSessionGuard` so a deactivated account loses access on the next request
+   * instead of keeping it until the token expires.
+   */
+  teacherActive: boolean | null;
 }
 
 /**
@@ -47,8 +54,10 @@ export async function getPersistedUserSessionState(userId: string): Promise<Pers
     .select({
       sessionVersion: users.sessionVersion,
       mustChangePassword: users.mustChangePassword,
+      teacherActive: teachers.active,
     })
     .from(users)
+    .leftJoin(teachers, eq(users.teacherId, teachers.id))
     .where(eq(users.id, userId))
     .limit(1);
   const result = state ?? null;
@@ -62,7 +71,8 @@ export async function getPersistedUserSessionState(userId: string): Promise<Pers
  * - httpOnly: JavaScript cannot read it, so an XSS bug cannot exfiltrate the session.
  * - SameSite=Strict: the browser never attaches it to a cross-site request, which is
  *   the primary CSRF defence (backed by the Origin check in plugins/security.ts).
- * - path: the API only, so the token is not sent on static asset requests.
+ * - path: '/', deliberately. The WebSocket handshake at /ws authenticates from this
+ *   cookie, so it must cover every same-origin path, not just /api.
  */
 function cookieOptions(maxAgeSeconds: number) {
   return {

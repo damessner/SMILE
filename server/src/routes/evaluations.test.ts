@@ -68,7 +68,7 @@ beforeAll(async () => {
 
   const { buildServer } = await import('../index.js');
   try {
-    app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false }));
+    app = await buildServer(async () => ({ sessionVersion: 0, mustChangePassword: false, teacherActive: true }));
   } finally {
     // Restore immediately; the modules have already captured what they need.
     for (const key of Object.keys(process.env)) {

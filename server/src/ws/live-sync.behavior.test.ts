@@ -1,10 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '../lib/guards.js';
+import { getPersistedUserSessionState } from '../lib/session.js';
 
 vi.mock('../lib/session.js', () => ({
   getPersistedUserSessionState: vi.fn(async () => ({
     sessionVersion: 0,
     mustChangePassword: false,
+    teacherActive: true,
   })),
 }));
 
@@ -12,6 +14,8 @@ class TestSocket {
   readyState = 1;
   handlers = new Map<string, (...args: any[]) => unknown>();
   messages: unknown[] = [];
+  closeCode: number | undefined;
+  closeReason: string | undefined;
 
   on(event: string, handler: (...args: any[]) => unknown): void {
     this.handlers.set(event, handler);
@@ -21,7 +25,10 @@ class TestSocket {
     this.messages.push(JSON.parse(raw));
   }
 
-  close(): void {}
+  close(code?: number, reason?: string): void {
+    this.closeCode = code;
+    this.closeReason = reason;
+  }
 
   async receive(message: unknown): Promise<void> {
     const handler = this.handlers.get('message');
@@ -221,6 +228,30 @@ describe('live UPDATE_RATING subject validation', () => {
     expect(socket.messages).toContainEqual({ type: 'ERROR', message: 'Ungültiges Unterrichtsfach.' });
   });
 
+  it('rejects a live rating write with no subject instead of silently defaulting to Deutsch', async () => {
+    const socket = new TestSocket();
+    handleWebSocketConnection(socket, {
+      id: 'teacher-1',
+      username: 'teacher',
+      role: 'teacher',
+      teacherId: 1,
+      mustChangePassword: false,
+    }, 'Lehrkraft');
+
+    await socket.receive({
+      type: 'UPDATE_RATING',
+      payload: {
+        classId: 1,
+        pupilId: 2,
+        itemKey: 'org_1',
+        rating: '+',
+        expectedVersion: 0,
+      },
+    });
+
+    expect(socket.messages).toContainEqual({ type: 'ERROR', message: 'Ungültiges Unterrichtsfach.' });
+  });
+
   it('rejects unknown UPDATE_RATING fields before room authorization or database access', async () => {
     const socket = new TestSocket();
     const user: AuthUser = {
@@ -326,5 +357,58 @@ describe('live UPDATE_RATING subject validation', () => {
     await socket.receive({ type: 'SUBSCRIBE_CLASS', payload: { classId } });
 
     expect(socket.messages).toContainEqual({ type: 'ERROR', message: 'Ungültige Klassen-ID.' });
+  });
+
+  it('drops messages once the socket bucket is empty, reports RATE_LIMITED once, then closes after repeated violations', async () => {
+    const socket = new TestSocket();
+    handleWebSocketConnection(socket, {
+      id: 'teacher-1',
+      username: 'teacher',
+      role: 'teacher',
+      teacherId: 1,
+      mustChangePassword: false,
+    }, 'Lehrkraft');
+
+    // The default burst is 40; consume it with messages that have no side effects.
+    for (let i = 0; i < 40; i += 1) {
+      await socket.receive({ type: 'UNRECOGNIZED_EVENT', payload: {} });
+    }
+    expect(socket.messages).toEqual([]);
+
+    // The next message is dropped and the client is told once.
+    await socket.receive({ type: 'UNRECOGNIZED_EVENT', payload: {} });
+    expect(socket.messages).toContainEqual(
+      expect.objectContaining({ type: 'ERROR', code: 'RATE_LIMITED' }),
+    );
+
+    // Twenty consecutive violations close the socket with 1008.
+    for (let i = 0; i < 20; i += 1) {
+      await socket.receive({ type: 'UNRECOGNIZED_EVENT', payload: {} });
+    }
+    expect(socket.closeCode).toBe(1008);
+    expect(socket.closeReason).toBe('rate limit exceeded');
+  });
+
+  it('closes a deactivated teacher\u2019s socket with 1008 on the next message', async () => {
+    vi.mocked(getPersistedUserSessionState).mockResolvedValueOnce({
+      sessionVersion: 0,
+      mustChangePassword: false,
+      teacherActive: false,
+    });
+    const socket = new TestSocket();
+    handleWebSocketConnection(socket, {
+      id: 'teacher-1',
+      username: 'teacher',
+      role: 'teacher',
+      teacherId: 1,
+      mustChangePassword: false,
+    }, 'Lehrkraft');
+
+    await socket.receive({ type: 'UNRECOGNIZED_EVENT', payload: {} });
+
+    expect(socket.messages).toContainEqual(
+      expect.objectContaining({ type: 'ERROR', code: 'ACCOUNT_DEACTIVATED' }),
+    );
+    expect(socket.closeCode).toBe(1008);
   });
 });
