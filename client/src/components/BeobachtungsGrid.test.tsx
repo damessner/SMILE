@@ -1496,5 +1496,21 @@ describe('Quick-grade selection reflects the rank that will be submitted', () =>
     expect(quickGradeButton('Geselle').className).not.toContain('ring-blue-500/50');
     expect(quickGradeButton('Lehrling').className).not.toContain('ring-rose-500/50');
   });
+
+  it('keeps Gesamtbewertung when a detour through a single-subject class happens', async () => {
+    const anna = pupil(1, 'Anna Muster');
+    const { rerenderWith } = renderGrid({ pupils: [anna], mySubjects: [GERMAN, MATHS] });
+
+    // Gesamt is the default for a multi-subject class.
+    expect(screen.getByText('🌟 Gesamtbewertung')).toBeInTheDocument();
+
+    // Detour through a class where the teacher has only one subject.
+    rerenderWith({ mySubjects: [GERMAN] });
+    expect(screen.queryByText('🌟 Gesamtbewertung')).toBeNull();
+
+    // Back in the multi-subject class the Gesamtbewertung must be restored.
+    rerenderWith({ mySubjects: [GERMAN, MATHS] });
+    expect(screen.getByText('🌟 Gesamtbewertung')).toBeInTheDocument();
+  });
 });
 
