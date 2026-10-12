@@ -13,7 +13,8 @@
     "seed": "tsx src/db/seed.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "timetable:import": "tsx src/db/import-timetable.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

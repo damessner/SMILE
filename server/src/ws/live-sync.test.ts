@@ -205,4 +205,54 @@ describe('live-sync module source', () => {
     expect(focusBlock).toContain('client.teacherName');
     expect(focusBlock).not.toMatch(/teacherName\s*\|\|\s*client\.teacherName/);
   });
+
+  it('strictly validates WebSocket integer identifiers and contains no Number.parseInt', async () => {
+    const fs = await import('fs');
+    const src = fs.readFileSync(new URL('./live-sync.ts', import.meta.url), 'utf8');
+
+    // Number.parseInt is replaced with parsePositiveInt
+    expect(src).not.toMatch(/Number\.parseInt/);
+    expect(src).not.toMatch(/\bparseInt\(/);
+    expect(src).toContain('parsePositiveInt');
+  });
+
+  it('strictly validates subject codes and enforces canRateSubject on live ratings', async () => {
+    const fs = await import('fs');
+    const src = fs.readFileSync(new URL('./live-sync.ts', import.meta.url), 'utf8');
+
+    expect(src).toContain('normalizeKnownSubject');
+    expect(src).toContain('canRateSubject(access, subjectCode)');
+  });
+
+  it('keeps every server-emitted event in the client handler and omits obsolete aliases', async () => {
+    const fs = await import('fs');
+    const producerPaths = [
+      new URL('./live-sync.ts', import.meta.url),
+      new URL('../routes/cards.ts', import.meta.url),
+      new URL('../routes/evaluations.ts', import.meta.url),
+      new URL('../routes/conferences.ts', import.meta.url),
+      new URL('../routes/timeouts.ts', import.meta.url),
+    ];
+    const emitted = new Set<string>();
+    for (const path of producerPaths) {
+      const source = fs.readFileSync(path, 'utf8');
+      for (const match of source.matchAll(/\btype:\s*['"]([A-Z][A-Z0-9_]*)['"]/g)) {
+        emitted.add(match[1]);
+      }
+    }
+
+    const clientSource = fs.readFileSync(
+      new URL('../../../client/src/hooks/useLiveSync.ts', import.meta.url),
+      'utf8',
+    );
+    const handled = new Set(
+      [...clientSource.matchAll(/case\s+['"]([A-Z][A-Z0-9_]*)['"]/g)].map((match) => match[1]),
+    );
+
+    expect([...emitted].filter((type) => !handled.has(type)).sort()).toEqual([]);
+    expect(emitted.has('TIMEOUT_CREATED')).toBe(false);
+    expect(emitted.has('FINAL_RANK_LOCKED')).toBe(false);
+    expect(emitted.has('USER_JOINED')).toBe(false);
+    expect(emitted.has('USER_LEFT')).toBe(false);
+  });
 });

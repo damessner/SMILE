@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateRank,
   demote,
@@ -121,6 +121,78 @@ describe('summarizeRatings', () => {
     expect(result.evaluationCount).toBe(2);
     expect(result.positiveCount).toBe(1);
   });
+
+  // A rubric item is unique per evaluation. When the same key appears twice —
+  // a legacy double row, or a client that retried a write — counting both rows
+  // double-counts one criterion and pushes positiveCount past the 18-item
+  // raster. The client already resolves duplicates by newest `updatedAt`
+  // (see `scoreSubject`); the server must agree or the conference summary
+  // contradicts the grid a teacher is looking at.
+  it('counts a duplicated item key once, newest updatedAt winning', () => {
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '-', updatedAt: '2026-02-01T00:00:00.000Z' },
+        ],
+      },
+    ]);
+
+    expect(result.totalRated).toBe(1);
+    expect(result.positiveCount).toBe(0);
+  });
+
+  it('picks the newest duplicate whichever row comes first', () => {
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '-', updatedAt: '2026-02-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      },
+    ]);
+
+    expect(result.totalRated).toBe(1);
+    expect(result.positiveCount).toBe(0);
+  });
+
+  it('keeps the first row when duplicate keys carry equal timestamps', () => {
+    // Same rule as the client's tie-break: order, never rating value, so the
+    // resolution cannot be biased toward a positive outcome.
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '-', updatedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      },
+    ]);
+
+    expect(result.totalRated).toBe(1);
+    expect(result.positiveCount).toBe(1);
+  });
+
+  it('sums across evaluations unchanged, deduping only within one', () => {
+    // Cross-group semantics are historical and deliberate: two co-teachers each
+    // submit their own evaluation, and both count. This must survive the fix.
+    const result = summarizeRatings([
+      {
+        evaluationId: 'a',
+        items: [
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-01T00:00:00.000Z' },
+          { itemKey: 'org_1', rating: '+', updatedAt: '2026-01-02T00:00:00.000Z' },
+        ],
+      },
+      { evaluationId: 'b', items: [{ itemKey: 'org_1', rating: '+' }] },
+    ]);
+
+    expect(result.totalRated).toBe(2);
+    expect(result.positiveCount).toBe(2);
+    expect(result.evaluationCount).toBe(2);
+  });
 });
 
 describe('isRank', () => {
@@ -135,5 +207,86 @@ describe('isRank', () => {
     expect(isRank('')).toBe(false);
     expect(isRank(null)).toBe(false);
     expect(isRank("Meister'; DROP TABLE pupils; --")).toBe(false);
+  });
+});
+/**
+ * `RANK_AGGREGATION=normalized` had no test at all, which is how it survived as an
+ * arithmetic no-op: the "scaling" step was `(positive / 18) * 18`, which is `positive`.
+ * These tests pin what the mode actually does — the mean positive count per contributing
+ * evaluation — so it cannot be "fixed" into something else, or back into a no-op,
+ * without one of them failing. See roadmap D8.
+ */
+describe('rank aggregation modes', () => {
+  const pos = (n: number) => Array.from({ length: n }, () => ({ rating: '+' }));
+  const rated = (n: number) => Array.from({ length: n }, () => ({ rating: 'x' }));
+
+  it('total sums positives across every evaluation', () => {
+    const result = summarizeRatings([
+      { evaluationId: 'a', items: pos(6) },
+      { evaluationId: 'b', items: pos(6) },
+      { evaluationId: 'c', items: pos(5) },
+    ]);
+    // Default RANK_AGGREGATION is `total`, so the threshold sees 17 — the unbounded
+    // behaviour the config's own comment warns about.
+    expect(result.positiveCount).toBe(17);
+    expect(result.scoreForThreshold).toBe(17);
+  });
+
+  it('normalized reports the mean, not the sum', async () => {
+    vi.resetModules();
+    process.env.RANK_AGGREGATION = 'normalized';
+    process.env.SMILE_ENV_FILE = 'no-such-env-file-for-ranking-aggregation-tests';
+    vi.resetModules();
+    const { summarizeRatings: summarizeNormalized } = await import('./ranking.js');
+
+    const result = summarizeNormalized([
+      { evaluationId: 'a', items: pos(6) },
+      { evaluationId: 'b', items: pos(6) },
+      { evaluationId: 'c', items: pos(5) },
+    ]);
+
+    // 17 positives spread over 3 contributing evaluations.
+    expect(result.scoreForThreshold).toBeCloseTo(17 / 3, 6);
+    expect(result.positiveCount).toBe(17);
+    delete process.env.RANK_AGGREGATION;
+    vi.resetModules();
+  });
+
+  it('normalized does not rescale to an 18-item raster (the old no-op)', async () => {
+    process.env.RANK_AGGREGATION = 'normalized';
+    process.env.SMILE_ENV_FILE = 'no-such-env-file-for-ranking-aggregation-tests';
+    vi.resetModules();
+    const { summarizeRatings: summarizeNormalized } = await import('./ranking.js');
+
+    const result = summarizeNormalized([
+      { evaluationId: 'a', items: [...pos(5), ...rated(13)] },
+      { evaluationId: 'b', items: [...pos(5), ...rated(13)] },
+    ]);
+
+    // Both evaluations are full 18-item rasters with 5 positives each. The old code
+    // computed `(5/18)*18 + (5/18)*18` = 10, then divided by 2 = 5, which is the same
+    // number — the identity cancelled. The documented "14 of 18" behaviour would be 5,
+    // so this is unchanged, but it is now asserted rather than accidental.
+    expect(result.scoreForThreshold).toBeCloseTo(5, 6);
+    delete process.env.RANK_AGGREGATION;
+    vi.resetModules();
+  });
+
+  it('normalized ignores evaluations that contributed nothing', async () => {
+    process.env.RANK_AGGREGATION = 'normalized';
+    process.env.SMILE_ENV_FILE = 'no-such-env-file-for-ranking-aggregation-tests';
+    vi.resetModules();
+    const { summarizeRatings: summarizeNormalized } = await import('./ranking.js');
+
+    const result = summarizeNormalized([
+      { evaluationId: 'rated', items: pos(8) },
+      { evaluationId: 'blank', items: [] },
+    ]);
+
+    // Dividing by `groups.length` would halve the score; only contributing evaluations count.
+    expect(result.scoreForThreshold).toBeCloseTo(8, 6);
+    expect(result.evaluationCount).toBe(2);
+    delete process.env.RANK_AGGREGATION;
+    vi.resetModules();
   });
 });

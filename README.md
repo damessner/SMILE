@@ -84,48 +84,41 @@ Ein strukturierter Stufenplan für die Schulleitung zur frühen Elternarbeit:
 
 ---
 
-### 📋 4. Beobachtungsraster & Bewertung
-Das Herzstück für die formative Beurteilung der überfachlichen Kompetenzen:
+### 📋 4. Beobachtungsraster & Bewertung (Minimalistisches Bewertungs-UI)
+Das Herzstück für die formative Beurteilung der überfachlichen Kompetenzen — optimiert für schnelles, unterbrechungsfreies Arbeiten:
 
-- 🧩 **18 Beobachtungsmerkmale in 6 Schlüsselbereichen:**
-  1. 🗂️ **Arbeitsorganisation:** Arbeitsauftrag kennen, selbstständiger Start, Material- und Zeiteinteilung.
-  2. 💡 **Fragen & Problemlösen:** Gezieltes Nachfragen, präzise Problemformulierung, eigene Lösungsansätze.
-  3. 🎯 **Arbeitshaltung:** Konzentration, Ausdauer, Mitschüler nicht stören, Dranbleiben bei Hürden.
-  4. 🤝 **Verantwortung:** Regeln einhalten, zu Entscheidungen stehen, verantwortungsvoller Umgang mit Freiräumen.
-  5. 🪞 **Reflexion:** Realistische Selbsteinschätzung, Stärken/Schwächen erkennen, nächste Lernschritte benennen.
-  6. 🔍 **Verstehen statt Erledigen:** Echtes Verständnis prüfen, Fehler konstruktiv aufarbeiten, Qualität vor Quantität.
-
-- 😊 **5 Smiley-Bewertungsstufen:**
-  - 👑 **Krone:** Herausragend erfüllt
-  - 😊 **Lächeln:** Gut & verlässlich erfüllt
-  - 😖 **Angestrengt:** Teilweise / mit Unterstützung erfüllt
-  - 😢 **Traurig:** Noch nicht erfüllt
-  - 🔄 **Neustart:** Zurücksetzen / Neu ansetzen
-  - *(Leer):* Keine Beurteilung abgegeben
-
-- ⚡ **Schnellauswahl & Sofort-Rang:**
-  - Ganze Kategorien mit einem einzigen Smiley-Klick füllen.
-  - Schnellbuttons: *„Meister füllen“*, *„Geselle füllen“*, *„Reset“*.
-- 📂 **Zwei-Ordner-Workflow:**
-  - **Offen:** Noch zu bewertende Schülerinnen und Schüler.
-  - **Bewertet:** Bereits eingereichte Bewertungen mit Zeitstempel.
+- ⚡ **1-Klick Schnellbewertung & Auto-Save:**
+  - Für 90 % der Schüler*innen genügt ein einziger Klick auf die Stufe: `🔴 Lehrling`, `🔵 Geselle` oder `🟡 Meister`.
+  - Jeder Klick wird verzögerungsfrei per WebSocket und OCC atomic increment im Hintergrund gespeichert.
+- 💬 **Optionale Konferenznotiz:**
+  - Kurzes Notizfeld direkt unter der Stufenwahl für wichtige pädagogische Beobachtungen, die automatisch im Konferenzprotokoll erscheinen.
+- 🧩 **Beobachtungsbogen (18 Kriterien & Merkmale):**
+  - Auf Klick aufklappbares Akkordeon mit den 6 Kompetenzbereichen (Arbeitsorganisation, Problemlösen, Sozialkompetenz, Kommunikation, Regeln, Ausdauer).
+  - 4 Bewertungsstufen mit Smileys/Symbolen (`++`, `+`, `-`, `--`).
+  - Schnellauswahl über Zeilen-Buttons `[ALLE]` oder Sofort-Füllungen (`Meister füllen`, `Geselle füllen`, `Reset`).
+- 🌟 **Smarte Mehrfach-Fächer-Auswahl:**
+  - Unterrichtet eine Lehrkraft mehrere Fächer in einer Klasse (z. B. Deutsch + Förderunterricht + Biologie), schaltet der Header zwischen **🌟 Gesamt (alle Fächer)** und **Einzelfächern** um.
+  - Ermöglicht sowohl einheitliche Gesamtbewertungen mit einem Klick als auch differenzierte Einzelbewertungen pro Fach.
+- 📂 **Zwei-Ordner-Workflow & Auto-Advance:**
+  - **📁 Offen:** Noch zu bewertende Schülerinnen und Schüler.
+  - **📁 Bewertet:** Fertig eingereichte Bewertungen mit Zeitstempel.
   - Nach Klick auf *„Ranking einreichen“* springt die Ansicht automatisch zur nächsten Person.
 
 ---
 
-### ⚖️ 5. Konferenz-Modus (Klassenkonferenz & Abstimmung)
-Spezieller Vollbildmodus für die Beschlussfassung am Notenkonferenztag:
+### ⚖️ 5. Konferenz-Modus & Stundengewichtetes Voting
+Spezieller Präsentations- und Beschlussmodus für den Notenkonferenztag:
 
-- 🖥️ **Präsentationsansicht:** Für Beamer und Großbildschirme optimiert.
-- 📊 **Farbbalken pro Schüler:**
-  - 🟨 **Gelb:** Meister-Vorschlag
-  - 🟦 **Blau:** Gesellen-Vorschlag
-  - 🟥 **Rot:** Lehrlings-Vorschlag
-- 🗳️ **Demokratische Beschlussfassung:**
-  - Zeigt die Stimmen aller unterrichtenden Lehrpersonen einer Klasse.
-  - Button **`[ Angenommen ]`** mit Live-Anzeige der Gegenstimmen (basierend auf der Anzahl der unterrichtenden Lehrkräfte).
-  - Fehlklicks können jederzeit per Klick wieder rückgängig gemacht werden.
-  - Zum Stichtag werden alle Beschlüsse revisionssicher fixiert.
+- 🖥️ **Präsentationsansicht:** Für Beamer und Großbildschirme optimiert (`BeamerMode`).
+- ⚖️ **Stundengewichtung nach offiziellem Stundenplan (WebUntis):**
+  - Jede Fachbewertung wird mit den realen Wochenstunden gewichtet (z. B. 4h Deutsch = Gewicht 4, 2h Biologie = Gewicht 2).
+  - **Team-Teaching-Garantie (D, E, M):** Gibt in einem Team-Teaching-Hauptfach nur eine Lehrkraft ab, wird ihr Stimmgewicht automatisch verdoppelt (8h), damit das Fach kein Stimmgewicht verliert.
+- 🔒 **Klassenspezifische Konferenz-Sperren (`class_round_locks`):**
+  - Konferenzleitung sperrt Klassen einzeln nach Beschlussfassung. Andere Klassen bleiben für Fachlehrerinnen und Fachlehrer weiterhin editierbar.
+- 🚨 **Automatischer Rangabzug bei Roter Karte:**
+  - Liegt eine aktive Rote Karte vor, dekrementiert das System den Rang automatisch um eine Stufe (*Meister ➔ Geselle*, *Geselle ➔ Lehrling*), ausgewiesen als `(Rangabzug Karte)`.
+- 🖨️ **Klassen- & Mehrebenen-Export:**
+  - 1-Seiten-Kompaktexport pro Klasse sowie klassenübergreifender Gesamt-Export aller 15 Klassen der MS Weissenbach.
 
 ---
 
@@ -137,11 +130,24 @@ Transparente Kennzahlen für Lehrkräfte und Schulleitung:
 
 ---
 
-### 🖨️ 7. 1-Seiten Klassenexport (PDF / Druck)
-Kompakter Überblick für Konferenzen, Elterngespräche (KEL) und Notizen:
+### 📖 7. SMILE Bewertungs-Leitfaden (3-Seiten PDF)
+Für Lehrkräfte steht ein kompakter, visuell aufbereiteter Schnell-Leitfaden zur Verfügung:
 
-- 📄 **1 Seite pro Klasse:** Alle Notizen, Rangempfehlungen und Kriterienübersichten komprimiert auf einer DIN-A4-Druckseite.
-- 🖨️ **Druckoptimiert:** Klares Layout ohne störende Seitenelemente für den schnellen Ausdruck im Lehrerzimmer.
+- 📄 **[`docs/SMILE_Bewertungs_Guide.pdf`](docs/SMILE_Bewertungs_Guide.pdf):**
+  - **Seite 1:** Navigation, Klassen- & Fachauswahl, 1-Klick Schnellbewertung.
+  - **Seite 2:** Beobachtungsbogen mit 18 Kriterien, Gesamt- vs. Einzelfach-Differenzierung, Einreichungs-Workflow.
+  - **Seite 3:** Wie zählt meine Stimme? Stundengewichtung laut WebUntis, Team-Teaching-Regel und Konferenztopf-Akkumulation.
+
+---
+
+### ☁️ 8. Microsoft 365 Cloud-Backup & Desaster-Recovery
+Revisionssicheres, automatisiertes Backup direkt in den Cloud-Speicher der Schule:
+
+- ⏱️ **10-Minuten Taktung:** Systemd-Timer (`smile-m365-backup.timer`) sichert die Datenbank verschlüsselt auf OneDrive.
+- 🛡️ **Direkter Graph API Upload:** Automatisierte Übertragung via Microsoft Graph API mit Preflight-Prüfung (`backup_m365.py --check`).
+- 🔐 **Strenge Verschlüsselung:** Alle Dumps werden vor der Übertragung mit AES/GPG verschlüsselt.
+- 📅 **7-Tage Cloud-Retention & 19:00 Tagesschluss-Sicherung:** Automatische Bereinigung abgelaufener Snapshots.
+- 🔄 **Admin Restore Modal:** Grafische Wiederherstellungs- und Backup-Verwaltung direkt in der SMILE-Weboberfläche.
 
 ---
 
@@ -151,8 +157,8 @@ Kompakter Überblick für Konferenzen, Elterngespräche (KEL) und Notizen:
 | :--- | :--- |
 | 👑 **Schulleitung (`SLC`, `MED`)** | • Zugriff auf alle Klassen (`1B` bis `4G`)<br>• Konferenzmodus mit Beschlussrechten<br>• SLC: Time-Out Eskalations-Dashboard (Mahnstufen 3, 6, 9...)<br>• Vollständige Schulstatistiken |
 | 🧑‍🏫 **Klassenvorstände (KVs)** | • Vollzugriff auf die eigene Stammklasse<br>• Mahnstufen-Warnungen (Gelbe Karten ≥ 2) für eigene Schüler<br>• Konferenz-Modus für die eigene Klasse |
-| 📚 **Fachlehrpersonen (z. B. `ZIA`)** | • Zugriff auf die zugewiesenen Klassen laut Stundenplan<br>• Beobachtungsraster für Hauptfächer (D, M, E; z. B. SD+D als eine Einheit)<br>• Vergabe von Karten und Time-Outs im Schulalltag |
-| 🛡️ **Administrator (`admin`)** | • Vollzugriff auf alle Systembereiche, Benutzer und Backups |
+| 📚 **Fachlehrpersonen (z. B. `ZIA`)** | • Zugriff auf die zugewiesenen Klassen laut Stundenplan<br>• Beobachtungsraster für eigene Fächer laut WebUntis<br>• Vergabe von Karten und Time-Outs im Schulalltag |
+| 🛡️ **Administrator (`admin`)** | • Vollzugriff auf alle Systembereiche, Benutzerverwaltung und Backups/Restores |
 
 ---
 
@@ -160,4 +166,5 @@ Kompakter Überblick für Konferenzen, Elterngespräche (KEL) und Notizen:
 
 - 🔄 **Kein Neuladen erforderlich:** Bewertet Lehrkraft A einen Schüler oder vergibt eine Karte, erscheint die Änderung in Bruchteilen einer Sekunde bei allen angemeldeten Kolleginnen und Kollegen.
 - 🔒 **Smarte Zellensperren (Soft Locks):** Bearbeitet jemand gerade ein Kriterium, sehen andere ein dezentes Namens-Badge auf der Zelle, um Überschreiben zu verhindern.
-- 🛑 **Konferenz-Sperre:** Sobald die Konferenzleitung eine Klasse sperrt, wird das Raster für Fachlehrer in Echtzeit schreibgeschützt.
+- 🛑 **Klassen-Konferenzsperre:** Sobald die Konferenzleitung eine Klasse sperrt, wird das Raster für Fachlehrer in Echtzeit schreibgeschützt — unabhängig von anderen Klassen.
+- 🏫 **Lernwerkstatt-Raum 999:** Multi-Room-Unterstützung für Live-Meldungen zwischen Klassenzimmern und der Betreuung in der Lernwerkstatt.

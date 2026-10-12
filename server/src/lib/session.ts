@@ -1,8 +1,69 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { config } from '../config.js';
+import { db } from '../db/index.js';
+import { teachers, users } from '../db/schema.js';
 import type { AuthUser } from './guards.js';
 
 export const SESSION_COOKIE = 'smile_session';
+
+export interface PersistedUserSessionState {
+  sessionVersion: number;
+  mustChangePassword: boolean;
+  /**
+   * Whether the linked teacher row is still active. `null` when the account has no
+   * teacher link (for example the pupil role or the admin actor row). Enforced in
+   * `buildSessionGuard` so a deactivated account loses access on the next request
+   * instead of keeping it until the token expires.
+   */
+  teacherActive: boolean | null;
+}
+
+/**
+ * Read the revocation state from the database, the source of truth across workers.
+ *
+ * Short-lived cache. This is called from `ensureLiveSession` on *every* WebSocket
+ * broadcast, for *every* connected recipient, so an uncached read put one database
+ * round trip per recipient on the send path of the hottest surface in the app: rating a
+ * single cell with 20 teachers in the room cost 20 SELECTs and added the slowest of them
+ * to the broadcast latency. `getTeacher()` already used a 30 s TTL for the same reason;
+ * this brings the session read in line with it.
+ *
+ * The window is the deliberate trade: a password reset or session revocation takes up to
+ * SESSION_STATE_CACHE_TTL_MS to reach an idle socket. Invalidation is explicit for the
+ * cases this process controls (`invalidateSessionStateCache`), and the cross-worker case
+ * is still bounded rather than open-ended, which is the important property. It is called
+ * off the broadcast hot path only once per TTL window per user, so this bound holds.
+ */
+const SESSION_STATE_CACHE_TTL_MS = 30_000;
+
+const sessionStateCache = new Map<string, { state: PersistedUserSessionState | null; expiresAt: number }>();
+
+/** Drop cached state after this process itself revokes or rotates a session. */
+export function invalidateSessionStateCache(userId?: string): void {
+  if (userId === undefined) sessionStateCache.clear();
+  else sessionStateCache.delete(String(userId));
+}
+
+export async function getPersistedUserSessionState(userId: string): Promise<PersistedUserSessionState | null> {
+  const key = String(userId);
+  const cached = sessionStateCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.state;
+
+  const [state] = await db
+    .select({
+      sessionVersion: users.sessionVersion,
+      mustChangePassword: users.mustChangePassword,
+      teacherActive: teachers.active,
+    })
+    .from(users)
+    .leftJoin(teachers, eq(users.teacherId, teachers.id))
+    .where(eq(users.id, userId))
+    .limit(1);
+  const result = state ?? null;
+  sessionStateCache.set(key, { state: result, expiresAt: Date.now() + SESSION_STATE_CACHE_TTL_MS });
+  return result;
+}
 
 /**
  * Cookie attributes for the session token.
@@ -10,7 +71,8 @@ export const SESSION_COOKIE = 'smile_session';
  * - httpOnly: JavaScript cannot read it, so an XSS bug cannot exfiltrate the session.
  * - SameSite=Strict: the browser never attaches it to a cross-site request, which is
  *   the primary CSRF defence (backed by the Origin check in plugins/security.ts).
- * - path: the API only, so the token is not sent on static asset requests.
+ * - path: '/', deliberately. The WebSocket handshake at /ws authenticates from this
+ *   cookie, so it must cover every same-origin path, not just /api.
  */
 function cookieOptions(maxAgeSeconds: number) {
   return {
@@ -63,6 +125,7 @@ export function issueSessionToken(
     teacherId?: number | null;
     pupilId?: number | null;
     mustChangePassword?: boolean;
+    sessionVersion?: number;
   },
 ): string {
   return sign(
@@ -73,17 +136,32 @@ export function issueSessionToken(
       teacherId: user.teacherId ?? undefined,
       pupilId: user.pupilId ?? undefined,
       mustChangePassword: user.mustChangePassword ?? false,
+      sessionVersion: user.sessionVersion ?? 0,
     },
     { expiresIn: `${config.sessionTtlSeconds}s` },
   );
 }
 
+const forcedPasswordChangeUsers = new Set<string>();
+
+export function markUserMustChangePassword(userId: string): void {
+  forcedPasswordChangeUsers.add(String(userId));
+  // This process just changed the durable state the cache mirrors.
+  invalidateSessionStateCache(userId);
+}
+
+export function clearUserMustChangePassword(userId: string): void {
+  forcedPasswordChangeUsers.delete(String(userId));
+  invalidateSessionStateCache(userId);
+}
+
+export function isUserForcedToChangePassword(userId: string): boolean {
+  return forcedPasswordChangeUsers.has(String(userId));
+}
+
 /**
- * Reject state-changing requests from accounts still on their bootstrap password.
- *
- * This is what turns "every teacher shares `smile2026`" from a permanent condition
- * into a bounded one: the account can sign in and read, but cannot alter any pupil
- * record until the user picks their own password.
+ * Reject state-changing requests from accounts still on their bootstrap password
+ * or whose password reset was triggered by an administrator.
  */
 export function assertPasswordCurrent(
   user: AuthUser,

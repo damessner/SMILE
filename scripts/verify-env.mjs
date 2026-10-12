@@ -14,78 +14,139 @@
  * `npm install` and take the school system down. It is a developer-workstation guard
  * only; the production equivalent is the rotation procedure in docs/SECURITY.md.
  */
-import { readFileSync, existsSync, statSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, existsSync, statSync, readdirSync } from 'fs';
+import { join, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Production: never fail an install. Detected three ways because the LXC runs with
-// NODE_ENV=production, CI systems set CI, and the container path is unambiguous.
-if (
-  process.env.NODE_ENV === 'production' ||
-  process.env.CI === 'true' ||
-  existsSync('/opt/smile')
-) {
-  console.log('[verify-env] skipped (production environment)');
-  process.exit(0);
-}
-
-const problems = [];
-
-// 1. .env must not be readable by git.
-const gitignore = join(root, '.gitignore');
-if (!existsSync(gitignore)) {
-  problems.push('No .gitignore found — .env could be committed.');
-} else {
-  const gi = readFileSync(gitignore, 'utf8');
-  if (!/^\.env\s*$/m.test(gi)) {
-    problems.push('.gitignore does not ignore .env.');
-  }
-}
-
-// 2. A .env on disk must not contain the values that were previously leaked.
-const envPath = join(root, '.env');
-const LEAKED = [
-  'smile_super_secret_jwt_key_2026_telfs_weissenbach!',
-  'smile_secure_pass_2026!',
+const BACKUP_PATTERNS = [
+  /^backup.*\.zip$/i,
+  /\.dump$/i,
+  /\.sql\.gz$/i,
 ];
 
-if (existsSync(envPath)) {
-  const env = readFileSync(envPath, 'utf8');
-  for (const secret of LEAKED) {
-    if (env.includes(secret)) {
-      problems.push(
-        `.env still contains a previously leaked secret. Rotate it and update the file.`,
-      );
+/**
+ * Scan directory recursively for backup archives and database dumps while excluding
+ * build artifacts, version control dirs, and documented test fixtures.
+ * Never inspects or prints file contents.
+ */
+export function findStrayBackups(scanDir, fixturePaths = new Set()) {
+  const strayFiles = [];
+
+  function scan(dir) {
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      const relPath = relative(scanDir, fullPath).replace(/\\/g, '/');
+
+      if (entry.isDirectory()) {
+        if (
+          entry.name === 'node_modules' ||
+          entry.name === '.git' ||
+          entry.name === 'dist' ||
+          entry.name === '.vitest'
+        ) {
+          continue;
+        }
+        scan(fullPath);
+      } else if (entry.isFile()) {
+        if (fixturePaths.has(relPath) || fixturePaths.has(entry.name)) {
+          continue;
+        }
+        for (const pattern of BACKUP_PATTERNS) {
+          if (pattern.test(entry.name)) {
+            const kb = Math.round(statSync(fullPath).size / 1024);
+            strayFiles.push({ path: relPath, sizeKb: kb });
+            break;
+          }
+        }
+      }
     }
   }
-  if (!/^JWT_SECRET=.+/m.test(env)) {
-    problems.push('.env has no JWT_SECRET. The server will refuse to start without it.');
-  }
-  if (!/^DATABASE_URL=.+/m.test(env)) {
-    problems.push('.env has no DATABASE_URL.');
-  }
-} else {
-  console.log('info: no .env present. Copy .env.example and fill it in before starting the server.');
+
+  scan(scanDir);
+  return strayFiles;
 }
 
-// 3. Backup archives contain the full pupil database and must not live in the tree.
-for (const name of ['backup_date_time.zip', 'backup_2026-10-01_17-39-50.zip']) {
-  const p = join(root, name);
-  if (existsSync(p)) {
-    const kb = Math.round(statSync(p).size / 1024);
+export function checkEnvironment(rootDir = root, env = process.env) {
+  // Production / CI skip
+  if (
+    env.NODE_ENV === 'production' ||
+    env.CI === 'true' ||
+    existsSync('/opt/smile')
+  ) {
+    return { skipped: true, problems: [] };
+  }
+
+  const problems = [];
+
+  // 1. .env must not be readable by git.
+  const gitignore = join(rootDir, '.gitignore');
+  if (!existsSync(gitignore)) {
+    problems.push('No .gitignore found — .env could be committed.');
+  } else {
+    const gi = readFileSync(gitignore, 'utf8');
+    if (!/^\.env\s*$/m.test(gi)) {
+      problems.push('.gitignore does not ignore .env.');
+    }
+  }
+
+  // 2. A .env on disk must not contain the values that were previously leaked.
+  const envPath = join(rootDir, '.env');
+  const LEAKED = [
+    'smile_super_secret_jwt_key_2026_telfs_weissenbach!',
+    'smile_secure_pass_2026!',
+  ];
+
+  if (existsSync(envPath)) {
+    const envContent = readFileSync(envPath, 'utf8');
+    for (const secret of LEAKED) {
+      if (envContent.includes(secret)) {
+        problems.push(
+          `.env still contains a previously leaked secret. Rotate it and update the file.`,
+        );
+      }
+    }
+    if (!/^JWT_SECRET=.+/m.test(envContent)) {
+      problems.push('.env has no JWT_SECRET. The server will refuse to start without it.');
+    }
+    if (!/^DATABASE_URL=.+/m.test(envContent)) {
+      problems.push('.env has no DATABASE_URL.');
+    }
+  }
+
+  // 3. Backup archives contain the full pupil database and must not live in the tree.
+  const strayBackups = findStrayBackups(rootDir);
+  for (const b of strayBackups) {
     problems.push(
-      `${name} (${kb} KB) is in the working tree. It contains pupil data — move it to controlled storage.`,
+      `${b.path} (${b.sizeKb} KB) is in the working tree. It contains pupil data — move it to controlled storage.`,
     );
   }
+
+  return { skipped: false, problems };
 }
 
-if (problems.length > 0) {
-  console.error('\n[verify-env] Problems found:\n');
-  for (const p of problems) console.error(`  - ${p}`);
-  console.error('\nSee docs/SECURITY.md.\n');
-  process.exit(1);
-}
+// Direct execution guard
+if (process.argv[1] && process.argv[1].endsWith('verify-env.mjs')) {
+  const result = checkEnvironment(root);
+  if (result.skipped) {
+    console.log('[verify-env] skipped (production environment)');
+    process.exit(0);
+  }
 
-console.log('[verify-env] OK — no leaked secrets or stray backups detected.');
+  if (result.problems.length > 0) {
+    console.error('\n[verify-env] Problems found:\n');
+    for (const p of result.problems) console.error(`  - ${p}`);
+    console.error('\nSee docs/SECURITY.md.\n');
+    process.exit(1);
+  }
+
+  console.log('[verify-env] OK — no leaked secrets or stray backups detected.');
+}

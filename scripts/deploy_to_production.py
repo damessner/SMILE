@@ -16,7 +16,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-proxmox_host = os.environ.get('PROXMOX_HOST', '192.168.178.87')
+proxmox_host = os.environ.get('PROXMOX_HOST', '172.16.1.54')
 proxmox_user = os.environ.get('PROXMOX_USER', 'root')
 proxmox_pass = os.environ.get('PROXMOX_PASSWORD')
 container_id = os.environ.get('LXC_CONTAINER_ID', '115')
@@ -50,9 +50,11 @@ try:
             if os.path.exists(full_path):
                 tar.add(full_path, arcname=item)
 
+    sys.path.insert(0, os.path.dirname(__file__))
+    from ssh_utils import create_ssh_client
+
     print(f"Connecting to Proxmox host {proxmox_host}...")
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh = create_ssh_client()
     ssh.connect(proxmox_host, username=proxmox_user, password=proxmox_pass, timeout=15)
 
     print("Uploading bundle...")

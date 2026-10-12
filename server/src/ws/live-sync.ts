@@ -1,16 +1,19 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import {
-  assessmentRubrics,
   evaluationItems,
   evaluations,
-  observationRounds,
-  rubricCriteria,
   teachingAssignments,
 } from '../db/schema.js';
 import { config } from '../config.js';
-import { getClassAccess, findPupilInClass, type AuthUser } from '../lib/guards.js';
-import { normalizeSubject } from '../utils/subject.js';
+import { getPersistedUserSessionState, type PersistedUserSessionState } from '../lib/session.js';
+import { TokenBucket } from '../lib/ws-rate-limit.js';
+import { safeErrorLogFields } from '../lib/log-safety.js';
+import { getClassAccess, findPupilInClass, canRateSubject, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parsePositiveInt, LW_CLASS_ID, type AuthUser } from '../lib/guards.js';
+import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterionId } from '../lib/rubric.js';
+import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
+import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
+import { getLatestRound } from '../lib/rounds.js';
 
 /** Minimal shape we rely on; `ws` satisfies this. */
 interface WsLike {
@@ -32,6 +35,50 @@ const CLOSE_TOO_BIG = 1009;
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
 
+/**
+ * Inbound messages above the bucket burst are dropped; this many consecutive
+ * violations close the socket. One noisy client must not be able to hold a worker
+ * busy, but a transient burst (for example a reconnect replay) must not end the
+ * session.
+ */
+const MAX_RATE_LIMIT_VIOLATIONS = 20;
+const SUBSCRIBE_PAYLOAD_KEYS = ['classId'] as const;
+const FOCUS_PAYLOAD_KEYS = ['classId', 'pupilId', 'itemKey', 'subjectCode'] as const;
+const UPDATE_RATING_PAYLOAD_KEYS = [
+  'classId', 'pupilId', 'subjectCode', 'itemKey', 'rating', 'expectedVersion', 'criterionId', 'clientMutationId',
+] as const;
+
+function isClientMutationId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(value);
+}
+
+function sendRatingError(
+  client: ClientConnection,
+  clientMutationId: string | undefined,
+  message: string,
+  code?: string,
+): void {
+  sendTo(client, {
+    type: 'ERROR',
+    message,
+    ...(code ? { code } : {}),
+    ...(clientMutationId ? { clientMutationId } : {}),
+  });
+}
+
+function acknowledgeRatingWrite(client: ClientConnection, clientMutationId: string | undefined): void {
+  if (clientMutationId) sendTo(client, { type: 'RATING_ACK', clientMutationId });
+}
+
+function hasOnlyKeys(payload: unknown, allowedKeys: readonly string[]): payload is Record<string, unknown> {
+  return Boolean(
+    payload &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      Object.keys(payload).every((key) => allowedKeys.includes(key)),
+  );
+}
+
 interface ClientConnection {
   ws: WsLike;
   /** Verified identity. Never populated from client input. */
@@ -40,8 +87,23 @@ interface ClientConnection {
   roomIds: Set<number>;
 }
 
+interface ActiveSoftLock {
+  classId: number;
+  subjectCode: string;
+  pupilId: number;
+  itemKey: string;
+  owner: ClientConnection;
+  lockedAt: number;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 const classRooms = new Map<number, Set<ClientConnection>>();
 const allClients = new Set<ClientConnection>();
+const activeSoftLocks = new Map<string, ActiveSoftLock>();
+
+function softLockKey(classId: number, subjectCode: string, pupilId: number, itemKey: string): string {
+  return `${classId}|${subjectCode}|${pupilId}|${itemKey}`;
+}
 
 function sendTo(client: ClientConnection, message: unknown): void {
   if (client.ws.readyState !== WS_OPEN) return;
@@ -49,7 +111,7 @@ function sendTo(client: ClientConnection, message: unknown): void {
     client.ws.send(JSON.stringify(message));
   } catch (err) {
     // A dead socket must not take down the broadcast loop for the whole room.
-    console.error('WebSocket send failed:', err);
+    console.error('WebSocket send failed:', safeErrorLogFields(err));
   }
 }
 
@@ -57,96 +119,65 @@ export function broadcastToClass(
   classId: number,
   message: unknown,
   excludeClient?: WsLike,
-): void {
+): Promise<void> {
   const room = classRooms.get(classId);
-  if (!room) return;
-  for (const client of room) {
-    if (client.ws === excludeClient) continue;
+  if (!room) return Promise.resolve();
+  return Promise.all(Array.from(room).map(async (client) => {
+    if (client.ws === excludeClient || client.ws.readyState !== WS_OPEN || !(await ensureLiveSession(client))) return;
     sendTo(client, message);
-  }
+  })).then(() => undefined);
 }
 
-// ---------------------------------------------------------------------------
-// Rubric validation cache — keeps clients from writing arbitrary item keys.
-// ---------------------------------------------------------------------------
-
-interface RubricIndex {
-  /** itemKey -> criterionId */
-  keyToCriterion: Map<string, string>;
-  validRatings: Set<string>;
-  loadedAt: number;
-}
-
-const VALID_RATINGS = new Set([
-  'crown',
-  'smile',
-  'strain',
-  'struggle',
-  'sad',
-  'restart',
-  'newstart',
-  '+',
-  '++',
-  '-',
-  'o',
-  'n.b.',
-  '',
-]);
-
-let rubricCache: RubricIndex | null = null;
-const RUBRIC_CACHE_TTL_MS = 60_000;
-
-async function getRubricIndex(): Promise<RubricIndex> {
-  if (rubricCache && Date.now() - rubricCache.loadedAt < RUBRIC_CACHE_TTL_MS) return rubricCache;
-
-  const [rubric] = await db
-    .select()
-    .from(assessmentRubrics)
-    .where(eq(assessmentRubrics.isDefault, true))
-    .limit(1);
-
-  const keyToCriterion = new Map<string, string>();
-  if (rubric) {
-    const criteria = await db
-      .select()
-      .from(rubricCriteria)
-      .where(eq(rubricCriteria.rubricId, rubric.id));
-
-    for (const c of criteria) {
-      const items = Array.isArray(c.items) ? (c.items as Array<{ key?: string }>) : [];
-      for (const item of items) {
-        if (item?.key) keyToCriterion.set(item.key, c.id);
-      }
-    }
+/**
+ * Revalidate long-lived sockets against the durable account state. In-memory
+ * closeUserWebSockets handles resets on this worker; this check covers sockets
+ * owned by other workers, both when they send and before they receive broadcasts.
+ */
+async function ensureLiveSession(client: ClientConnection, clientMutationId?: string): Promise<boolean> {
+  let state: PersistedUserSessionState | null;
+  try {
+    state = await getPersistedUserSessionState(client.user.id);
+  } catch {
+    state = null;
   }
 
-  rubricCache = { keyToCriterion, validRatings: VALID_RATINGS, loadedAt: Date.now() };
-  return rubricCache;
+  // Priority: deactivated > password change required > revoked session.
+  const accountDeactivated = state?.teacherActive === false && client.user.role !== 'admin';
+  const passwordChangeRequired = Boolean(client.user.mustChangePassword || state?.mustChangePassword);
+  const sessionRevoked = !state || client.user.sessionVersion !== state.sessionVersion;
+  if (!accountDeactivated && !passwordChangeRequired && !sessionRevoked) return true;
+
+  let message = 'Die Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.';
+  let code: string | undefined;
+  let reason = 'session expired';
+  if (accountDeactivated) {
+    message = 'Dieses Konto wurde deaktiviert. Bitte wenden Sie sich an die Schulleitung.';
+    code = 'ACCOUNT_DEACTIVATED';
+    reason = 'account deactivated';
+  } else if (passwordChangeRequired) {
+    message = 'Bitte setzen Sie zuerst ein neues Passwort.';
+    code = 'PASSWORD_CHANGE_REQUIRED';
+    reason = 'password change required';
+  }
+
+  sendTo(client, {
+    type: 'ERROR',
+    message,
+    ...(code ? { code } : {}),
+    ...(clientMutationId ? { clientMutationId } : {}),
+  });
+  client.ws.close(CLOSE_POLICY_VIOLATION, reason);
+  removeClient(client);
+  return false;
 }
 
 // ---------------------------------------------------------------------------
 // Round resolution
 // ---------------------------------------------------------------------------
 
-async function getActiveRound() {
-  const [round] = await db
-    .select()
-    .from(observationRounds)
-    .orderBy(desc(observationRounds.createdAt))
-    .limit(1);
-  return round ?? null;
-}
-
-/** Pick the single unlocked round, deterministically. */
-async function getUnlockedRound() {
-  const [round] = await db
-    .select()
-    .from(observationRounds)
-    .where(eq(observationRounds.isLocked, false))
-    .orderBy(desc(observationRounds.createdAt))
-    .limit(1);
-  return round ?? null;
-}
+// Round resolution now lives in ../lib/rounds.js so the conference, evaluation
+// and live-sync paths agree on which round is "the latest one".
+const getActiveRound = getLatestRound;
 
 // ---------------------------------------------------------------------------
 // Connection handling
@@ -155,25 +186,87 @@ async function getUnlockedRound() {
 function leaveRoom(client: ClientConnection, classId: number): void {
   const room = classRooms.get(classId);
   if (!room) return;
+  releaseClientLocks(client, classId);
   room.delete(client);
   client.roomIds.delete(classId);
   if (room.size === 0) classRooms.delete(classId);
-  else broadcastToClass(classId, { type: 'USER_LEFT', teacherName: client.teacherName });
+}
+
+function releaseSoftLock(key: string, expected?: ActiveSoftLock): void {
+  const lock = activeSoftLocks.get(key);
+  if (!lock || (expected && lock !== expected)) return;
+  clearTimeout(lock.timeout);
+  activeSoftLocks.delete(key);
+  broadcastToClass(
+    lock.classId,
+    {
+      type: 'CELL_UNLOCKED',
+      classId: lock.classId,
+      pupilId: lock.pupilId,
+      itemKey: lock.itemKey,
+      subjectCode: lock.subjectCode,
+    },
+    lock.owner.ws,
+  );
+}
+
+function releaseClientLocks(client: ClientConnection, classId?: number): void {
+  for (const [key, lock] of activeSoftLocks) {
+    if (lock.owner === client && (classId === undefined || lock.classId === classId)) {
+      releaseSoftLock(key, lock);
+    }
+  }
+}
+
+function removeClient(client: ClientConnection): void {
+  for (const classId of Array.from(client.roomIds)) leaveRoom(client, classId);
+  allClients.delete(client);
 }
 
 export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherName: string): void {
-  const client: ClientConnection = { ws, user, teacherName, roomIds: new Set() };
+  const client: ClientConnection = {
+    ws,
+    user: { ...user, sessionVersion: user.sessionVersion ?? 0 },
+    teacherName,
+    roomIds: new Set(),
+  };
   allClients.add(client);
 
+  const rateBucket = new TokenBucket(config.wsRateLimit.perSecond, config.wsRateLimit.burst);
+  let rateLimitViolations = 0;
+
   ws.on('message', async (raw: any) => {
+    let responseMutationId: string | undefined;
     try {
       if (typeof raw?.length === 'number' && raw.length > MAX_MESSAGE_BYTES) {
         ws.close(CLOSE_TOO_BIG, 'message too large');
         return;
       }
 
+      // WebSocket frames bypass the HTTP rate limiter, so throttle per socket here.
+      if (!rateBucket.tryConsume()) {
+        rateLimitViolations += 1;
+        if (rateLimitViolations === 1) {
+          sendTo(client, {
+            type: 'ERROR',
+            message: 'Zu viele Nachrichten in kurzer Zeit. Bitte warten Sie einen Moment.',
+            code: 'RATE_LIMITED',
+          });
+        }
+        if (rateLimitViolations >= MAX_RATE_LIMIT_VIOLATIONS) {
+          ws.close(CLOSE_POLICY_VIOLATION, 'rate limit exceeded');
+          removeClient(client);
+        }
+        return;
+      }
+      rateLimitViolations = 0;
+
       const data = JSON.parse(raw.toString());
       if (!data || typeof data.type !== 'string') return;
+      if (data.type === 'UPDATE_RATING' && isClientMutationId(data.payload?.clientMutationId)) {
+        responseMutationId = data.payload.clientMutationId;
+      }
+      if (!(await ensureLiveSession(client, responseMutationId))) return;
 
       switch (data.type) {
         case 'SUBSCRIBE_CLASS':
@@ -183,10 +276,10 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
           await onUnsubscribe(client, data.payload ?? {});
           break;
         case 'CELL_FOCUS':
-          onCellFocus(client, data.payload ?? {});
+          await onCellFocus(client, data.payload ?? {});
           break;
         case 'CELL_BLUR':
-          onCellBlur(client, data.payload ?? {});
+          await onCellBlur(client, data.payload ?? {});
           break;
         case 'UPDATE_RATING':
           await onUpdateRating(client, data.payload ?? {});
@@ -195,25 +288,31 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
           break;
       }
     } catch (err) {
-      console.error('WebSocket message error:', err);
-      sendTo(client, { type: 'ERROR', message: 'Nachricht konnte nicht verarbeitet werden.' });
+      console.error('WebSocket message error:', safeErrorLogFields(err));
+      sendTo(client, {
+        type: 'ERROR',
+        message: 'Nachricht konnte nicht verarbeitet werden.',
+        ...(responseMutationId ? { clientMutationId: responseMutationId } : {}),
+      });
     }
   });
 
   ws.on('close', () => {
-    for (const classId of Array.from(client.roomIds)) leaveRoom(client, classId);
-    allClients.delete(client);
+    removeClient(client);
   });
 
   ws.on('error', () => {
-    for (const classId of Array.from(client.roomIds)) leaveRoom(client, classId);
-    allClients.delete(client);
+    removeClient(client);
   });
 }
 
 async function onSubscribe(client: ClientConnection, payload: any): Promise<void> {
-  const classId = Number.parseInt(payload?.classId, 10);
-  if (!Number.isFinite(classId) || classId <= 0) {
+  if (!hasOnlyKeys(payload, SUBSCRIBE_PAYLOAD_KEYS)) {
+    sendTo(client, { type: 'ERROR', message: 'Ungültige Klassenanmeldung.' });
+    return;
+  }
+  const classId = parsePositiveInt(payload?.classId);
+  if (!classId) {
     sendTo(client, { type: 'ERROR', message: 'Ungültige Klassen-ID.' });
     return;
   }
@@ -225,11 +324,13 @@ async function onSubscribe(client: ClientConnection, payload: any): Promise<void
     return;
   }
   if (!access.canRead) {
-    sendTo(client, {
+    if (classId !== LW_CLASS_ID) {
+      sendTo(client, {
       type: 'ERROR',
       message: 'Zugriff verweigert: Sie sind in dieser Klasse nicht eingeteilt.',
     });
-    ws_disconnect(client);
+      ws_disconnect(client);
+    }
     return;
   }
 
@@ -252,54 +353,102 @@ async function onSubscribe(client: ClientConnection, payload: any): Promise<void
   room.add(client);
   client.roomIds.add(classId);
 
-  broadcastToClass(classId, { type: 'USER_JOINED', teacherName: client.teacherName, classId });
-
   // Send the authoritative round so the client can show lock state immediately.
   const round = await getActiveRound();
+  let isLockedByConference = false;
+  if (round) {
+    const isClassLocked = await getClassRoundLockState(round.id, classId);
+    isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
+  }
   sendTo(client, {
     type: 'SYNCED',
     classId,
-    isLockedByConference: !!round?.isLocked,
+    roundId: round?.id ?? null,
+    isLockedByConference,
     canRate: access.canRate,
   });
+  for (const lock of activeSoftLocks.values()) {
+    if (lock.classId !== classId || lock.owner === client) continue;
+    sendTo(client, {
+      type: 'CELL_LOCKED',
+      classId: lock.classId,
+      subjectCode: lock.subjectCode,
+      pupilId: lock.pupilId,
+      itemKey: lock.itemKey,
+      teacherName: lock.owner.teacherName,
+      lockedAt: lock.lockedAt,
+    });
+  }
 }
 
 async function onUnsubscribe(client: ClientConnection, payload: any): Promise<void> {
-  const classId = Number.parseInt(payload?.classId, 10);
-  if (Number.isFinite(classId) && client.roomIds.has(classId)) leaveRoom(client, classId);
+  if (!hasOnlyKeys(payload, SUBSCRIBE_PAYLOAD_KEYS)) {
+    sendTo(client, { type: 'ERROR', message: 'Ungültige Klassenabmeldung.' });
+    return;
+  }
+  const classId = parsePositiveInt(payload?.classId);
+  if (classId && client.roomIds.has(classId)) leaveRoom(client, classId);
 }
 
 function ws_disconnect(client: ClientConnection): void {
   client.ws.close(CLOSE_POLICY_VIOLATION, 'not authorised');
 }
 
-function onCellFocus(client: ClientConnection, payload: any): void {
-  const classId = Number.parseInt(payload?.classId, 10);
-  const pupilId = Number.parseInt(payload?.pupilId, 10);
-  const itemKey = typeof payload?.itemKey === 'string' ? payload.itemKey : null;
-  if (!client.roomIds.has(classId) || !Number.isFinite(pupilId) || !itemKey) return;
+async function onCellFocus(client: ClientConnection, payload: any): Promise<void> {
+  if (!hasOnlyKeys(payload, FOCUS_PAYLOAD_KEYS)) return;
+  const classId = parsePositiveInt(payload?.classId);
+  const pupilId = parsePositiveInt(payload?.pupilId);
+  const itemKey = typeof payload?.itemKey === 'string' && payload.itemKey.length <= 64 ? payload.itemKey.trim() : null;
+  const knownSubject = normalizeKnownSubject(payload?.subjectCode);
+  if (!classId || !client.roomIds.has(classId) || !pupilId || !itemKey || !knownSubject) return;
 
-  broadcastToClass(
+  const access = await getClassAccess(client.user, classId);
+  if (!canRateSubject(access, knownSubject.code)) return;
+
+  const key = softLockKey(classId, knownSubject.code, pupilId, itemKey);
+  const existing = activeSoftLocks.get(key);
+  if (existing) clearTimeout(existing.timeout);
+  let lock!: ActiveSoftLock;
+  const timeout = setTimeout(() => releaseSoftLock(key, lock), config.wsSoftLockTtlMs);
+  lock = {
+    classId,
+    subjectCode: knownSubject.code,
+    pupilId,
+    itemKey,
+    owner: client,
+    lockedAt: Date.now(),
+    timeout,
+  };
+  lock.timeout.unref?.();
+  activeSoftLocks.set(key, lock);
+
+  await broadcastToClass(
     classId,
     {
       type: 'CELL_LOCKED',
+      classId,
       pupilId,
       itemKey,
+      subjectCode: knownSubject.code,
       // Identity comes from the token-derived name, never from the message.
       teacherName: client.teacherName,
-      lockedAt: Date.now(),
+      lockedAt: lock.lockedAt,
     },
     client.ws,
   );
 }
 
-function onCellBlur(client: ClientConnection, payload: any): void {
-  const classId = Number.parseInt(payload?.classId, 10);
-  const pupilId = Number.parseInt(payload?.pupilId, 10);
-  const itemKey = typeof payload?.itemKey === 'string' ? payload.itemKey : null;
-  if (!client.roomIds.has(classId) || !Number.isFinite(pupilId) || !itemKey) return;
+async function onCellBlur(client: ClientConnection, payload: any): Promise<void> {
+  if (!hasOnlyKeys(payload, FOCUS_PAYLOAD_KEYS)) return;
+  const classId = parsePositiveInt(payload?.classId);
+  const pupilId = parsePositiveInt(payload?.pupilId);
+  const itemKey = typeof payload?.itemKey === 'string' && payload.itemKey.length <= 64 ? payload.itemKey.trim() : null;
+  const knownSubject = normalizeKnownSubject(payload?.subjectCode);
+  if (!classId || !client.roomIds.has(classId) || !pupilId || !itemKey || !knownSubject) return;
 
-  broadcastToClass(classId, { type: 'CELL_UNLOCKED', pupilId, itemKey }, client.ws);
+  const key = softLockKey(classId, knownSubject.code, pupilId, itemKey);
+  const lock = activeSoftLocks.get(key);
+  if (lock?.owner === client) releaseSoftLock(key, lock);
 }
 
 /**
@@ -313,79 +462,124 @@ function onCellBlur(client: ClientConnection, payload: any): void {
  *   - the item key must exist in the active rubric, and the rating must be a known value
  */
 async function onUpdateRating(client: ClientConnection, payload: any): Promise<void> {
-  const classId = Number.parseInt(payload?.classId, 10);
-  const pupilId = Number.parseInt(payload?.pupilId, 10);
-  const itemKey = typeof payload?.itemKey === 'string' ? payload.itemKey : null;
-  const rating = typeof payload?.rating === 'string' ? payload.rating : null;
-  const expectedVersion = Number.isFinite(Number(payload?.expectedVersion))
-    ? Number(payload.expectedVersion)
-    : 1;
-  const subjectCode = typeof payload?.subjectCode === 'string' && payload.subjectCode
-    ? payload.subjectCode
-    : 'SD';
-
-  if (!Number.isFinite(classId) || !Number.isFinite(pupilId) || !itemKey || rating === null) {
-    sendTo(client, { type: 'ERROR', message: 'Unvollständige Bewertung.' });
+  const clientMutationId = isClientMutationId(payload?.clientMutationId)
+    ? payload.clientMutationId
+    : undefined;
+  if (payload?.clientMutationId !== undefined && !clientMutationId) {
+    sendRatingError(client, undefined, 'Ungültige Bewertungsnachricht.');
     return;
   }
+  if (!hasOnlyKeys(payload, UPDATE_RATING_PAYLOAD_KEYS)) {
+    sendRatingError(client, clientMutationId, 'Unbekanntes Feld in Bewertung.');
+    return;
+  }
+  if (
+    payload.criterionId !== undefined &&
+    (typeof payload.criterionId !== 'string' || payload.criterionId.length > 36)
+  ) {
+    sendRatingError(client, clientMutationId, 'Ungültige Bewertungsnachricht.');
+    return;
+  }
+
+  const classId = parsePositiveInt(payload?.classId);
+  const pupilId = parsePositiveInt(payload?.pupilId);
+  const itemKey = typeof payload?.itemKey === 'string' && payload.itemKey.length <= 64 ? payload.itemKey.trim() : null;
+  const rating = typeof payload?.rating === 'string' && payload.rating.length <= 16 ? payload.rating.trim() : null;
+
+  if (!classId || !pupilId || !itemKey || rating === null) {
+    sendRatingError(client, clientMutationId, 'Unvollständige Bewertung.');
+    return;
+  }
+
+  const rawVersion = payload.expectedVersion;
+  if (
+    typeof rawVersion !== 'number' ||
+    !Number.isSafeInteger(rawVersion) ||
+    rawVersion < 0 ||
+    rawVersion > MAX_POSTGRES_INTEGER
+  ) {
+    sendRatingError(client, clientMutationId, 'Ungültige Bewertungsversion.');
+    return;
+  }
+  const expectedVersion = rawVersion;
+
+  const rawSubject = payload.subjectCode;
+  if (typeof rawSubject !== 'string' || rawSubject.length > 32) {
+    sendRatingError(client, clientMutationId, 'Ungültiges Unterrichtsfach.');
+    return;
+  }
+  const knownSubject = normalizeKnownSubject(rawSubject);
+  if (!knownSubject) {
+    sendRatingError(client, clientMutationId, 'Ungültiges Unterrichtsfach.');
+    return;
+  }
+  const subjectCode = knownSubject.code;
 
   if (!client.roomIds.has(classId)) {
-    sendTo(client, { type: 'ERROR', message: 'Sie haben diese Klasse nicht geöffnet.' });
-    return;
-  }
-
-  if (client.user.mustChangePassword) {
-    sendTo(client, {
-      type: 'ERROR',
-      message: 'Bitte setzen Sie zuerst ein neues Passwort.',
-      code: 'PASSWORD_CHANGE_REQUIRED',
-    });
+    sendRatingError(client, clientMutationId, 'Sie haben diese Klasse nicht geöffnet.');
     return;
   }
 
   const access = await getClassAccess(client.user, classId);
   if (!access.canRate) {
-    sendTo(client, {
-      type: 'ERROR',
-      message: 'Zugriff verweigert: Sie sind für diese Klasse nicht als Lehrkraft eingeteilt.',
-    });
+    sendRatingError(client, clientMutationId, 'Zugriff verweigert: Sie sind für diese Klasse nicht als Lehrkraft eingeteilt.');
     return;
   }
 
-  const round = await getUnlockedRound();
-  if (!round) {
-    sendTo(client, { type: 'ERROR', message: 'Es ist kein offener Bewertungszeitraum.' });
+  if (!canRateSubject(access, subjectCode)) {
+    sendRatingError(client, clientMutationId, 'Zugriff verweigert: Sie sind für dieses Fach in dieser Klasse nicht eingeteilt.');
+    return;
+  }
+
+  const teacherId = client.user.teacherId;
+  if (!hasPersistedTeacherActor(teacherId)) {
+    sendRatingError(
+      client,
+      clientMutationId,
+      'Bewertungen sind nicht verfügbar, weil kein Lehrkraftkonto zur Erfassung zugeordnet ist.',
+      'SYSTEM_ACTOR_NOT_CONFIGURED',
+    );
+    return;
+  }
+
+  const round = await getActiveRound();
+  if (!round || round.isLocked) {
+    sendRatingError(client, clientMutationId, 'Es ist kein offener Bewertungszeitraum.');
+    return;
+  }
+
+  const isClassLocked = await getClassRoundLockState(round.id, classId);
+  if (isClassLocked) {
+    sendRatingError(
+      client,
+      clientMutationId,
+      'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+      'CLASS_CONFERENCE_LOCKED',
+    );
     return;
   }
 
   if (new Date() > config.submissionDeadline) {
-    sendTo(client, { type: 'ERROR', message: 'Die Abgabefrist ist abgelaufen.' });
+    sendRatingError(client, clientMutationId, 'Die Abgabefrist ist abgelaufen.');
     return;
   }
 
   const pupil = await findPupilInClass(pupilId, classId);
   if (!pupil) {
-    sendTo(client, {
-      type: 'ERROR',
-      message: 'Dieser Schüler gehört nicht zu dieser Klasse.',
-    });
+    sendRatingError(client, clientMutationId, 'Dieser Schüler gehört nicht zu dieser Klasse.');
     return;
   }
 
-  const rubric = await getRubricIndex();
-  const criterionId = rubric.keyToCriterion.get(itemKey);
+  const rubric = await loadRubricIndex();
+  const criterionId = resolveCriterionId(rubric, itemKey);
   if (!criterionId) {
-    sendTo(client, { type: 'ERROR', message: 'Unbekanntes Beobachtungsmerkmal.' });
+    sendRatingError(client, clientMutationId, 'Unbekanntes Beobachtungsmerkmal.');
     return;
   }
-  if (!rubric.validRatings.has(rating)) {
-    sendTo(client, { type: 'ERROR', message: 'Unbekannter Bewertungswert.' });
+  if (!isValidRating(rubric, rating)) {
+    sendRatingError(client, clientMutationId, 'Unbekannter Bewertungswert.');
     return;
   }
-
-  // Teacher attribution comes from the token. A pupil-login or admin account has no
-  // teacherId; those writes are attributed to 0 and surfaced as "System" in the UI.
-  const teacherId = client.user.teacherId ?? null;
 
   // One evaluation per (round, pupil, class, subject). A concurrent insert can hit the
   // unique index, so fall back to re-reading rather than failing the write.
@@ -402,6 +596,22 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     )
     .limit(1);
 
+  if (!evalRecord && payload.expectedVersion !== undefined && expectedVersion > 0) {
+    sendTo(client, {
+      type: 'CONFLICT',
+      message: 'Konflikt: Die Bewertung wurde seit dem letzten Laden geändert.',
+      classId,
+      pupilId,
+      itemKey,
+      subjectCode,
+      currentRating: '',
+      currentVersion: 0,
+      updatedBy: '',
+      ...(clientMutationId ? { clientMutationId } : {}),
+    });
+    return;
+  }
+
   if (!evalRecord) {
     try {
       [evalRecord] = await db
@@ -411,7 +621,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
           pupilId,
           classId,
           subjectCode,
-          teacherId: teacherId ?? 0,
+          teacherId,
         })
         .returning();
     } catch {
@@ -428,7 +638,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
         )
         .limit(1);
       if (!evalRecord) {
-        sendTo(client, { type: 'ERROR', message: 'Bewertung konnte nicht angelegt werden.' });
+        sendRatingError(client, clientMutationId, 'Bewertung konnte nicht angelegt werden.');
         return;
       }
     }
@@ -444,6 +654,23 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
       ),
     )
     .limit(1);
+
+  if (!existingItem && payload.expectedVersion !== undefined && expectedVersion > 0) {
+    sendTo(client, {
+      type: 'CONFLICT',
+      message: 'Konflikt: Die Bewertung wurde seit dem letzten Laden geändert.',
+      evaluationId: evalRecord.id,
+      classId,
+      pupilId,
+      itemKey,
+      subjectCode,
+      currentRating: '',
+      currentVersion: 0,
+      updatedBy: '',
+      ...(clientMutationId ? { clientMutationId } : {}),
+    });
+    return;
+  }
 
   if (!existingItem) {
     let newItem;
@@ -461,11 +688,45 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
         })
         .returning();
     } catch {
-      sendTo(client, { type: 'ERROR', message: 'Diese Bewertung wurde gerade von einer Kollegin gesetzt.' });
+      // Both clients read this empty cell as "no row" and both inserted; one lost the race
+      // on the unique index. An error message would be a dead end - the winning value is
+      // not on the loser's screen anywhere - so answer with the same reconcilable CONFLICT
+      // the version race uses and let the client apply the value that actually landed.
+      const [winner] = await db
+        .select()
+        .from(evaluationItems)
+        .where(
+          and(
+            eq(evaluationItems.evaluationId, evalRecord.id),
+            eq(evaluationItems.itemKey, itemKey),
+          ),
+        )
+        .limit(1);
+
+      if (winner) {
+        sendTo(client, {
+          type: 'CONFLICT',
+          message: 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade gesetzt.',
+          evaluationId: evalRecord.id,
+          classId,
+          pupilId,
+          itemKey,
+          subjectCode,
+          currentRating: winner.rating,
+          currentVersion: winner.version,
+          updatedAt: winner.updatedAt,
+          ...(clientMutationId ? { clientMutationId } : {}),
+        });
+        return;
+      }
+
+      sendRatingError(client, clientMutationId, 'Diese Bewertung wurde gerade von einer Kollegin gesetzt.');
       return;
     }
 
-    broadcastToClass(classId, {
+    releaseSoftLock(softLockKey(classId, subjectCode, pupilId, itemKey));
+    acknowledgeRatingWrite(client, clientMutationId);
+    await broadcastToClass(classId, {
       type: 'RATING_UPDATED',
       evaluationId: evalRecord.id,
       pupilId,
@@ -474,6 +735,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
       version: newItem.version,
       updatedBy: client.teacherName,
       updatedAt: newItem.updatedAt,
+      subjectCode: evalRecord.subjectCode,
     });
     return;
   }
@@ -501,17 +763,23 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     sendTo(client, {
       type: 'CONFLICT',
       message: 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade geändert.',
+      evaluationId: evalRecord.id,
+      classId,
       pupilId,
       itemKey,
-      currentRating: latest?.rating,
-      currentVersion: latest?.version,
-      updatedBy: client.teacherName,
+      subjectCode,
+      currentRating: latest?.rating ?? '',
+      currentVersion: latest?.version ?? 0,
+      updatedAt: latest?.updatedAt ?? null,
+      ...(clientMutationId ? { clientMutationId } : {}),
     });
     return;
   }
 
   const updated = updateResult.rows[0];
-  broadcastToClass(classId, {
+  releaseSoftLock(softLockKey(classId, subjectCode, pupilId, itemKey));
+  acknowledgeRatingWrite(client, clientMutationId);
+  await broadcastToClass(classId, {
     type: 'RATING_UPDATED',
     evaluationId: evalRecord.id,
     pupilId,
@@ -520,6 +788,7 @@ async function onUpdateRating(client: ClientConnection, payload: any): Promise<v
     version: updated.version,
     updatedBy: client.teacherName,
     updatedAt: updated.updated_at,
+    subjectCode: evalRecord.subjectCode,
   });
 }
 
@@ -532,14 +801,14 @@ export function startWebSocketHeartbeat(intervalMs = 30_000): NodeJS.Timeout {
     for (const client of allClients) {
       if (client.ws.readyState !== WS_OPEN) {
         client.ws.terminate?.();
-        allClients.delete(client);
+        removeClient(client);
         continue;
       }
       try {
         client.ws.ping?.();
       } catch {
         client.ws.terminate?.();
-        allClients.delete(client);
+        removeClient(client);
       }
     }
   }, intervalMs);
@@ -553,6 +822,8 @@ export function stopWebSocketHeartbeat(timer: NodeJS.Timeout): void {
 }
 
 export function closeAllWebSockets(code = CLOSE_GOING_AWAY, reason = 'server shutting down'): void {
+  for (const lock of activeSoftLocks.values()) clearTimeout(lock.timeout);
+  activeSoftLocks.clear();
   for (const client of allClients) {
     try {
       client.ws.close(code, reason);
@@ -564,6 +835,20 @@ export function closeAllWebSockets(code = CLOSE_GOING_AWAY, reason = 'server shu
   classRooms.clear();
 }
 
+/** Immediately terminate this worker's sockets after an administrator password reset. */
+export function closeUserWebSockets(userId: string): void {
+  for (const client of Array.from(allClients)) {
+    if (client.user.id !== userId) continue;
+    sendTo(client, {
+      type: 'ERROR',
+      message: 'Bitte setzen Sie zuerst ein neues Passwort.',
+      code: 'PASSWORD_CHANGE_REQUIRED',
+    });
+    client.ws.close(CLOSE_POLICY_VIOLATION, 'password change required');
+    removeClient(client);
+  }
+}
+
 /** Test seam: current room occupancy per class. */
 export function getRoomSizes(): Record<number, number> {
   const out: Record<number, number> = {};
@@ -572,7 +857,9 @@ export function getRoomSizes(): Record<number, number> {
 }
 
 export function resetLiveSyncForTests(): void {
+  for (const lock of activeSoftLocks.values()) clearTimeout(lock.timeout);
+  activeSoftLocks.clear();
   classRooms.clear();
   allClients.clear();
-  rubricCache = null;
+  invalidateRubricCache();
 }

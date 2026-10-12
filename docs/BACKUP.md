@@ -236,13 +236,36 @@ failure).
 
 ---
 
-## Known gaps
+---
 
-- **No TLS on the app itself.** Unrelated to Drive, but the Drive token and the
-  database password both cross the LAN in clear text during setup. Fix TLS first for
-  multi-school deployments.
-- **Single destination.** One Drive folder, one copy. For 3-2-1 you would want a
-  second, independently-encrypted target.
-- **No `pg_dump` version pinning across upgrades.** A dump taken by a newer
-  PostgreSQL cannot be restored by an older `pg_restore`. Upgrade the client and
-  server together, or keep an older client installed for restores.
+## 3-2-1 Architecture & Independent Copies
+
+SMILE implements a complete 3-2-1 backup strategy:
+
+1. **3 copies of the data**:
+   - Live PostgreSQL database (`smile_db`)
+   - Cloud backup on Microsoft 365 OneDrive (`SMILE-Backups/`)
+   - Independent off-host copy on the Proxmox virtualization host (`/var/backups/smile-independent/`)
+2. **2 different storage media / environments**:
+   - Local disk storage (container filesystem + Proxmox host storage)
+   - Cloud object storage (Microsoft 365 Graph / OneDrive)
+3. **1 copy offsite & isolated with asymmetric encryption**:
+   - Encrypted with a 4096-bit RSA certificate (`independent_backup.cert.pem`).
+   - The private decryption key (`independent_backup_private.key`) is stored **exclusively on the Proxmox host** (outside LXC 115) and never touches the container.
+   - An attacker who fully compromises container 115 **cannot decrypt** the independent backups.
+
+---
+
+## Automated Restore Drill (`restore_drill.py`)
+
+A backup that has never been restored is an unproven assumption.
+`smile-restore-drill.timer` fires weekly (Sunday mornings 05:30) and runs `scripts/restore_drill.py`:
+
+- Locates the most recent local or cloud backup.
+- Decrypts it to verify that the encryption passphrase is valid.
+- Recreates a disposable, isolated scratch database (`smile_restore_drill`).
+- Restores the archive with `pg_restore`.
+- Verifies that all tables match the live database row-for-row and that pupil count exceeds the sanity threshold (>= 100).
+- Writes a status receipt to `/var/backups/smile/restore_drill_status.json`.
+- Drops `smile_restore_drill` upon completion.
+- Exits 0 on success, 1 on failure (triggering systemd failure alerts).

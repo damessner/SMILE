@@ -1,6 +1,7 @@
 import type { PupilBehaviorProfile, PupilBehaviorAction } from '../types';
 
 const API_BASE = '/api';
+export const SESSION_EXPIRED_EVENT = 'smile-session-expired';
 
 
 /**
@@ -15,7 +16,7 @@ const API_BASE = '/api';
  * access logs and browser history.
  */
 async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
@@ -23,18 +24,32 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
       ...(options.headers ?? {}),
     },
   });
+  if (
+    typeof window !== 'undefined' &&
+    ((response.status === 401 && path !== '/auth/login') || response.status === 403)
+  ) {
+    const errorBody = await response.clone().json().catch(() => null) as { code?: unknown } | null;
+    const invalidPassword = response.status === 401 && errorBody?.code === 'INVALID_CURRENT_PASSWORD';
+    const resetRequired = response.status === 403 && errorBody?.code === 'PASSWORD_CHANGE_REQUIRED';
+    if (!invalidPassword && (response.status === 401 || resetRequired)) {
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
+  }
+  return response;
 }
 
 /** Thrown for any non-2xx response so callers get the server's German error message. */
 export class ApiError extends Error {
   status: number;
   code?: string;
+  details: Record<string, unknown>;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -49,8 +64,9 @@ async function unwrap<T = any>(res: Response): Promise<T> {
   }
 
   const err = await res.json().catch(() => ({}));
-  const message = (err as { error?: string }).error || `Anfrage fehlgeschlagen (${res.status})`;
-  throw new ApiError(message, res.status, (err as { code?: string }).code);
+  const { error, code, ...details } = err as { error?: string; code?: string; [key: string]: unknown };
+  const message = error || `Anfrage fehlgeschlagen (${res.status})`;
+  throw new ApiError(message, res.status, code, details);
 }
 
 
@@ -91,10 +107,51 @@ export async function requestPasswordReset(username: string, note?: string) {
   return unwrap(res);
 }
 
+export interface AdminUserAccount {
+  id: string;
+  username: string;
+  role: 'admin' | 'head_teacher' | 'teacher' | 'pupil';
+  teacherId: number | null;
+  teacherShort: string | null;
+  teacherName: string | null;
+  mustChangePassword: boolean;
+}
+
+/** Account list for the administrator's credential handover. Never carries a hash. */
+export async function getAdminUsers(): Promise<{ users: AdminUserAccount[] }> {
+  const res = await apiFetch('/auth/users');
+  return unwrap(res);
+}
+
+export interface ResetStartPassword {
+  success: boolean;
+  username: string;
+  /** Shown exactly once by the server; the value is never stored or retrievable again. */
+  temporaryPassword: string;
+  mustChangePassword: boolean;
+  notice: string;
+}
+
+export async function resetStartPassword(
+  username: string,
+  note?: string
+): Promise<ResetStartPassword> {
+  const res = await apiFetch('/auth/admin/temporary-password', {
+    method: 'POST',
+    body: JSON.stringify({ username, note }),
+  });
+  return unwrap(res);
+}
+
 // --- Classes ----------------------------------------------------------------
 
 export async function getClasses() {
   const res = await apiFetch('/classes');
+  return unwrap(res);
+}
+
+export async function getAllClasses() {
+  const res = await apiFetch('/classes/all');
   return unwrap(res);
 }
 
@@ -153,8 +210,7 @@ export async function revokeCard(cardId: string) {
 
 export async function getYellowCardAlerts() {
   const res = await apiFetch('/cards/alerts');
-  if (!res.ok) return [];
-  return (await res.json()) as any[];
+  return unwrap<any[]>(res);
 }
 
 export async function getClassCards(classId: number) {
@@ -182,24 +238,32 @@ export async function getConferenceSummary(classId: number) {
   return unwrap(res);
 }
 
+/**
+ * Records a conference decision for one pupil.
+ *
+ * There is deliberately no `votesNo` parameter. It used to be a number the administrator
+ * typed into a stepper, and the server turned it into "yes = everyone else in the class",
+ * which counted teachers who never voted as agreeing. The tally is now derived from the
+ * evaluations that were actually submitted; a confirmation records only the rank, who
+ * confirmed it, and when.
+ */
 export async function voteConference(
   classId: number,
   pupilId: number,
   rank: string,
-  votesNo: number = 0,
   overrideReason?: string,
   action: 'confirm' | 'unconfirm' = 'confirm'
 ) {
   const res = await apiFetch(`/conferences/${classId}/vote`, {
     method: 'POST',
-    body: JSON.stringify({ pupilId, rank, votesNo, overrideReason, action }),
+    body: JSON.stringify({ pupilId, rank, overrideReason, action }),
   });
   return unwrap(res);
 }
 
 export async function voteAllConference(
   classId: number,
-  items: Array<{ pupilId: number; rank: string; votesNo?: number }>
+  items: Array<{ pupilId: number; rank: string }>
 ) {
   const res = await apiFetch(`/conferences/${classId}/vote-all`, {
     method: 'POST',
@@ -225,6 +289,36 @@ export async function saveStatus(
   return unwrap(res);
 }
 
+/**
+ * Autosave for the conference comment alone - no rank, no next step.
+ *
+ * `/evaluations/status` is the one write route that does not enforce
+ * `config.submissionDeadline`, and that asymmetry is deliberate: a teacher may
+ * still annotate a justification for the Notenkonferenz after the ratings are
+ * closed. Every field beyond `comment` must gain a deadline check (roadmap
+ * Phase D) - do not widen this payload.
+ *
+ * `keepalive` because this write can be the last thing a closing tab does: the
+ * grid flushes the pending comment on unmount, and without it the browser may
+ * abort the in-flight request together with the document. The body is a few
+ * hundred bytes, well under keepalive's 64 KiB cap. Residual: a comment typed
+ * inside the debounce window is still best-effort if the tab is closed outright,
+ * because closing the page never runs a React cleanup.
+ */
+export async function saveEvaluationComment(
+  pupilId: number, classId: number, subjectCode: string, comment: string,
+): Promise<void> {
+  const res = await apiFetch('/evaluations/status', {
+    method: 'POST',
+    body: JSON.stringify({ pupilId, classId, subjectCode, comment }),
+    keepalive: true,
+  });
+  // unwrap, not a bare throw: the server's structured rejection (German
+  // message + `code`, e.g. CLASS_CONFERENCE_LOCKED) must reach callers so the
+  // teacher is told the class is locked instead of being asked to retry.
+  return unwrap<void>(res);
+}
+
 export async function submitEvaluation(
   pupilId: number,
   classId: number,
@@ -240,7 +334,7 @@ export async function submitEvaluation(
   return unwrap(res);
 }
 
-export async function reopenEvaluation(pupilId: number, classId: number, subjectCode: string = 'SD') {
+export async function reopenEvaluation(pupilId: number, classId: number, subjectCode: string) {
   const res = await apiFetch('/evaluations/reopen', {
     method: 'POST',
     body: JSON.stringify({ pupilId, classId, subjectCode }),
@@ -248,11 +342,16 @@ export async function reopenEvaluation(pupilId: number, classId: number, subject
   return unwrap(res);
 }
 
+/**
+ * `criterionId` is still sent so an older server understands the payload, but the
+ * server ignores it and derives the criterion from `itemKey` — accepting the
+ * client-supplied value is what made ranks forgeable.
+ */
 export async function batchUpdateItems(
   pupilId: number,
   classId: number,
   subjectCode: string,
-  items: Array<{ criterionId: string; itemKey: string; rating: string }>
+  items: Array<{ criterionId: string; itemKey: string; rating: string; version: number }>
 ) {
   const res = await apiFetch('/evaluations/batch-items', {
     method: 'POST',
@@ -286,7 +385,7 @@ export async function conferenceOverride(
 export async function applyClassDefault(classId: number, subjectCode: string, defaultRating = '+') {
   const res = await apiFetch('/evaluations/batch-default', {
     method: 'POST',
-    body: JSON.stringify({ classId, subjectCode, defaultRating }),
+    body: JSON.stringify({ classId, subjectCode, defaultRating, forceOverwrite: true }),
   });
   return unwrap(res);
 }
@@ -354,6 +453,34 @@ export async function acknowledgeTimeoutEscalation(
 }
 
 // --- Backup -----------------------------------------------------------------
+
+export interface BackupFileItem {
+  id: string;
+  filename: string;
+  timestamp: string;
+  sizeBytes: number;
+  sizeFormatted: string;
+  isSafetySnapshot?: boolean;
+  isEncrypted?: boolean;
+}
+
+export async function listBackups(): Promise<{ backups: BackupFileItem[] }> {
+  const res = await apiFetch('/backup/list');
+  return unwrap(res);
+}
+
+export async function restoreBackup(backupId: string): Promise<{
+  success: boolean;
+  message: string;
+  preRestoreBackup?: string;
+  restoredAt?: string;
+}> {
+  const res = await apiFetch('/backup/restore', {
+    method: 'POST',
+    body: JSON.stringify({ backupId }),
+  });
+  return unwrap(res);
+}
 
 /** Administrator only. Returns the complete data bundle including the full audit log. */
 export async function exportBackup() {

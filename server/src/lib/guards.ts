@@ -1,8 +1,10 @@
-import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
+import type { FastifyReply, FastifyRequest, preHandlerHookHandler, preValidationHookHandler } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { pupils, schoolClasses, teachingAssignments, teachers } from '../db/schema.js';
-import { normalizeSubject, type NormalizedSubject } from '../utils/subject.js';
+import { pupils, schoolClasses, teachingAssignments, teachers, timetableLessons } from '../db/schema.js';
+import { normalizeKnownSubject, normalizeSubject, type NormalizedSubject } from '../utils/subject.js';
+import { currentPeriod } from './period-times.js';
+import { clearSessionCookie, getPersistedUserSessionState, isUserForcedToChangePassword } from './session.js';
 
 export type Role = 'admin' | 'head_teacher' | 'teacher' | 'pupil';
 
@@ -14,6 +16,7 @@ export interface AuthUser {
   teacherId?: number;
   pupilId?: number;
   mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 /** The minimal identity projection that authorization helpers need. */
@@ -24,8 +27,8 @@ declare module 'fastify' {
     authUser?: AuthUser;
   }
   interface FastifyInstance {
-    authenticate: preHandlerHookHandler;
-    requireRole: (...roles: Role[]) => preHandlerHookHandler;
+    authenticate: preValidationHookHandler;
+    requireRole: (...roles: Role[]) => preValidationHookHandler;
     rateLimitLoginMax: number;
     rateLimitLoginWindowSeconds: number;
   }
@@ -155,7 +158,48 @@ export interface GlobalAccess {
   isHeadmaster: boolean;
   teacherId?: number;
   /** null = unrestricted (admin/headmaster); otherwise the explicit allowlist. */
-  classIds: number[] | null;
+classIds: number[] | null;
+}
+
+/**
+* The Lernwerkstatt "class" — a real `school_classes` row (name `LW`, `grade` 0) that is
+* filtered out of the normal class lists in `routes/classes.ts` and used instead as the
+* WebSocket room of the Lernwerkstatt. Pupils are never members of it; it exists so the
+* duty teacher has one place to be sent live updates.
+*/
+export const LW_CLASS_ID = 999;
+
+/** True for the administrator and the headmasters (SLC, MED). */
+export async function isSchoolLeader(user: Identity): Promise<boolean> {
+if (user.role === 'admin') return true;
+if (!user.teacherId) return false;
+return isHeadmasterUser(user, await getTeacher(user.teacherId));
+}
+
+
+/**
+* Does this teacher hold the Lernwerkstatt slot in the period that is running right now?
+*
+* The duty roster is the timetable itself: `timetable_lessons` carries one LW lesson per
+* period (class 999), so "who is in the room" is a lookup rather than a separate table that
+* could fall out of step with the plan. Outside the bell schedule this is always false —
+* reading a roster at 22:00 must not match Monday's period 10.
+*/
+export async function hasLwDutySlot(teacherId: number, now: Date = new Date()): Promise<boolean> {
+const { dayOfWeek, period, isSchoolHours } = currentPeriod(now);
+if (!isSchoolHours) return false;
+const rows = await db
+.select({ teacherId: timetableLessons.teacherId })
+.from(timetableLessons)
+.where(
+and(
+eq(timetableLessons.classId, LW_CLASS_ID),
+eq(timetableLessons.dayOfWeek, dayOfWeek),
+eq(timetableLessons.period, period),
+),
+)
+.limit(1);
+return rows[0]?.teacherId === teacherId;
 }
 
 export async function getGlobalAccess(user: Identity): Promise<GlobalAccess> {
@@ -163,8 +207,13 @@ export async function getGlobalAccess(user: Identity): Promise<GlobalAccess> {
   const isAdmin = user.role === 'admin';
   const isHeadmaster = isHeadmasterUser(user, teacher);
 
-  if (isAdmin || isHeadmaster || !user.teacherId) {
+  if (isAdmin || isHeadmaster) {
     return { isAdmin, isHeadmaster, teacherId: user.teacherId, classIds: null };
+  }
+
+  // Non-admin accounts without a linked teacher row and pupils receive an empty scope
+  if (!user.teacherId || (user as any).role === 'pupil') {
+    return { isAdmin: false, isHeadmaster: false, teacherId: user.teacherId, classIds: [] };
   }
 
   const assignments = await db
@@ -193,7 +242,6 @@ export async function getGlobalAccess(user: Identity): Promise<GlobalAccess> {
   };
 }
 
-/** May this user act on data belonging to `classId`? Used to scope cross-class endpoints. */
 export async function canAccessClass(user: Identity, classId: number): Promise<boolean> {
   const access = await getGlobalAccess(user);
   if (access.classIds === null) return true;
@@ -204,7 +252,7 @@ export async function canAccessClass(user: Identity, classId: number): Promise<b
  * Resolve everything a handler needs to make an authorization decision for one class,
  * in a fixed number of queries. Prefer this over ad-hoc checks so the rules stay in one place.
  */
-export async function getClassAccess(user: AuthUser, classId: number): Promise<ClassAccess> {
+export async function getClassAccess(user: Identity, classId: number): Promise<ClassAccess> {
   const base: ClassAccess = {
     classId,
     exists: false,
@@ -239,7 +287,10 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
 
   if (user.teacherId) {
     const assignments = await db
-      .select({ subjectName: teachingAssignments.subjectName })
+      .select({
+        subjectName: teachingAssignments.subjectName,
+        subjectCode: teachingAssignments.subjectCode,
+      })
       .from(teachingAssignments)
       .where(
         and(
@@ -250,7 +301,7 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
     base.teaches = assignments.length > 0;
     base.subjects = Array.from(
       new Map(assignments.map((a) => {
-        const n = normalizeSubject(a.subjectName);
+        const n = normalizeSubject(a.subjectCode || a.subjectName);
         return [n.code, n];
       })).values(),
     );
@@ -265,9 +316,11 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
   if (user.role === 'pupil') return base; // pupil logins are not wired up yet
 
   const isResponsible = base.teaches || base.isKv;
+  const isLwDuty =
+    classId === LW_CLASS_ID && user.teacherId ? await hasLwDutySlot(user.teacherId) : false;
   return {
     ...base,
-    canRead: isResponsible,
+    canRead: isResponsible || isLwDuty,
     canRecord: isResponsible,
     canRate: isResponsible,
     canManagePupils: base.isKv,
@@ -281,6 +334,21 @@ export async function getClassAccess(user: AuthUser, classId: number): Promise<C
     */
     canRunConference: false,
   };
+}
+
+/**
+ * Decides whether a caller may submit ratings for a specific subject in a class.
+ *
+ * Class-level `access.canRate` must be true first.
+ * Administrative users and school leadership (headmasters) may rate any subject.
+ * Ordinary teachers may only rate subjects assigned to them in that class.
+ */
+export function canRateSubject(access: ClassAccess, subjectCode: string): boolean {
+  if (!access.canRate) return false;
+  const knownSubject = normalizeKnownSubject(subjectCode);
+  if (!knownSubject) return false;
+  if (access.isAdmin || access.isHeadmaster) return true;
+  return access.subjects.some((s) => s.code === knownSubject.code);
 }
 
 // ---------------------------------------------------------------------------
@@ -342,18 +410,22 @@ export async function visibleClassIds(user: Identity): Promise<number[] | null> 
 // Route-level guard factories
 // ---------------------------------------------------------------------------
 
-/** The canonical `authenticate` preHandler. Populates `request.authUser`. */
-export function buildAuthenticate(jwtVerify: (request: FastifyRequest) => Promise<unknown>): preHandlerHookHandler {
-  const handler: preHandlerHookHandler = async function authenticate(request, reply) {
+/** The canonical `authenticate` preValidation hook. Populates `request.authUser`. */
+export function buildAuthenticate(jwtVerify: (request: FastifyRequest) => Promise<unknown>): preValidationHookHandler {
+  const handler: preValidationHookHandler = async function authenticate(request, reply) {
     try {
       const payload = (await jwtVerify(request)) as AuthUser;
+      const mustChange = Boolean(payload.mustChangePassword || isUserForcedToChangePassword(String(payload.id)));
       request.authUser = {
         id: String(payload.id),
         username: payload.username,
         role: payload.role,
         teacherId: payload.teacherId,
         pupilId: payload.pupilId,
-        mustChangePassword: payload.mustChangePassword,
+        mustChangePassword: mustChange,
+        sessionVersion: Number.isSafeInteger(payload.sessionVersion) && (payload.sessionVersion ?? 0) >= 0
+          ? payload.sessionVersion
+          : 0,
       };
     } catch {
       await reply.status(401).send({ error: 'Nicht authentifiziert' });
@@ -368,20 +440,24 @@ export function buildAuthenticate(jwtVerify: (request: FastifyRequest) => Promis
  */
 export function buildRequireRole(
   jwtVerify: (request: FastifyRequest) => Promise<unknown>,
-): (...roles: Role[]) => preHandlerHookHandler {
+): (...roles: Role[]) => preValidationHookHandler {
   return (...roles: Role[]) => {
-    const handler: preHandlerHookHandler = async function requireRole(request, reply) {
+    const handler: preValidationHookHandler = async function requireRole(request, reply) {
       // Authenticate inline rather than composing handlers, so there is one code path
       // that can populate `request.authUser`.
       try {
         const payload = (await jwtVerify(request)) as AuthUser;
+        const mustChange = Boolean(payload.mustChangePassword || isUserForcedToChangePassword(String(payload.id)));
         request.authUser = {
           id: String(payload.id),
           username: payload.username,
           role: payload.role,
-          teacherId: payload.teacherId,
-          pupilId: payload.pupilId,
-          mustChangePassword: payload.mustChangePassword,
+        teacherId: payload.teacherId,
+        pupilId: payload.pupilId,
+        mustChangePassword: mustChange,
+        sessionVersion: Number.isSafeInteger(payload.sessionVersion) && (payload.sessionVersion ?? 0) >= 0
+          ? payload.sessionVersion
+          : 0,
         };
       } catch {
         await reply.status(401).send({ error: 'Nicht authentifiziert' });
@@ -397,6 +473,78 @@ export function buildRequireRole(
   };
 }
 
+/**
+ * Compare the verified JWT against durable account state after schema validation
+ * and before every authenticated handler. A reset-pending account may reach only
+ * the password-change endpoint; it must not keep reading pupil data on an old cookie.
+ */
+export function buildSessionGuard(
+  readSessionState: typeof getPersistedUserSessionState = getPersistedUserSessionState,
+): preHandlerHookHandler {
+  return async function validateSessionVersion(request, reply) {
+    const user = request.authUser;
+    if (!user) return;
+
+    const state = await readSessionState(user.id);
+    if (!state) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+
+    const tokenVersion = user.sessionVersion;
+    if (!Number.isSafeInteger(tokenVersion) || (tokenVersion as number) < 0) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+
+    user.sessionVersion = state.sessionVersion;
+    user.mustChangePassword = state.mustChangePassword;
+
+    // Deactivation is enforced here, not only at login. `teachers.active` used to be
+    // consulted once in the login handler, so an account disabled afterwards kept full
+    // access until its token expired (up to 8 h). Admins are exempt: their placeholder
+    // teacher rows are `active: false` by design (migration 0002).
+    if (state.teacherActive === false && user.role !== 'admin') {
+      clearSessionCookie(reply);
+      return reply.status(403).send({
+        error: 'Dieses Konto wurde deaktiviert. Bitte wenden Sie sich an die Schulleitung.',
+        code: 'ACCOUNT_DEACTIVATED',
+      });
+    }
+
+    if (state.mustChangePassword) {
+      const pathname = (request.url ?? '').split('?', 1)[0];
+      const isPasswordChangeRoute =
+        request.method === 'POST' && pathname === '/api/auth/password';
+      const isAuthStatusRoute =
+        (request.method === 'GET' && (pathname === '/api/auth/me' || pathname === '/api/auth/session')) ||
+        (request.method === 'POST' && pathname === '/api/auth/logout');
+
+      if (isPasswordChangeRoute) {
+        return;
+      }
+
+      if (isAuthStatusRoute) {
+        if (tokenVersion !== state.sessionVersion) {
+          clearSessionCookie(reply);
+          return reply.status(401).send({ error: 'Nicht authentifiziert' });
+        }
+        return;
+      }
+
+      return reply.status(403).send({
+        error: 'Bitte setzen Sie zuerst ein neues Passwort.',
+        code: 'PASSWORD_CHANGE_REQUIRED',
+      });
+    }
+
+    if (tokenVersion !== state.sessionVersion) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Reply helpers — consistent status codes and German messages
 // ---------------------------------------------------------------------------
@@ -405,7 +553,12 @@ export function buildRequireRole(
  * Re-exported from session.ts so route modules have a single import for the
  * authorization surface.
  */
-export { assertPasswordCurrent } from './session.js';
+export {
+  assertPasswordCurrent,
+  markUserMustChangePassword,
+  clearUserMustChangePassword,
+  isUserForcedToChangePassword,
+} from './session.js';
 
 /** True when the rank string is one of the three valid ranks. */
 export { isRank } from './ranking.js';
@@ -424,6 +577,7 @@ export async function badRequest(reply: FastifyReply, message: string): Promise<
 
 /** Strict positive-integer route param: digits only, no sign, whitespace or trailing text. */
 const POSITIVE_INT = /^[1-9][0-9]{0,14}$/;
+export const MAX_POSTGRES_INTEGER = 2_147_483_647;
 
 /**
  * Parse a positive integer route param.
@@ -436,6 +590,44 @@ const POSITIVE_INT = /^[1-9][0-9]{0,14}$/;
 export function parseIdParam(value: string, _fieldName?: string): number | null {
   if (typeof value !== 'string' || !POSITIVE_INT.test(value)) return null;
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) return null;
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_POSTGRES_INTEGER) return null;
   return parsed;
+}
+
+/**
+ * Is this a usable `teacher_id` foreign key?
+ *
+ * `teacherId` reaches the write paths from the session, and older code substituted
+ * `0` for "unknown teacher". Zero is a perfectly valid primary key, so writing it
+ * would attach ratings/ownership to a phantom teacher row instead of failing. Every
+ * actor check funnels through here so the HTTP route and the WebSocket path agree.
+ */
+export function hasPersistedTeacherActor(teacherId: number | null | undefined): teacherId is number {
+  return typeof teacherId === 'number' && Number.isSafeInteger(teacherId) && teacherId > 0;
+}
+
+/**
+ * Persistable teacher foreign key.
+ *
+ * Same rule as `hasPersistedTeacherActor`, but for the nullable columns (audit log
+ * `actor_id`, conference `confirmed_by`/`changed_by`) where "no actor" is a legitimate
+ * state. A missing, non-integer or non-positive id collapses to `null` instead of
+ * persisting a sentinel that points at a phantom teacher row.
+ */
+export function safeTeacherId(teacherId: number | null | undefined): number | null {
+  return hasPersistedTeacherActor(teacherId) ? teacherId : null;
+}
+
+/**
+ * Strict positive integer parser for numbers or strings.
+ * Rejects non-integers, numbers <= 0, and strings with non-digit characters.
+ */
+export function parsePositiveInt(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 && value <= MAX_POSTGRES_INTEGER ? value : null;
+  }
+  if (typeof value === 'string') {
+    return parseIdParam(value);
+  }
+  return null;
 }

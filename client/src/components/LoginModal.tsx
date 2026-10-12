@@ -45,7 +45,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
             SMILE <span className="text-amber-400">Plattform</span>
           </h1>
           <p className="text-sm text-slate-400">
-            MS Telfs Dr. Aloys Weissenbach · Beobachtung &amp; Konferenz
+            MS Weissenbach · Beobachtung &amp; Konferenz
           </p>
         </div>
 

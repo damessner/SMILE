@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import { auditLogs, pupils, pupilBehaviorActions, schoolClasses } from '../db/schema.js';
-import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, parseIdParam, requireAuth } from '../lib/guards.js';
+import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parseIdParam, requireAuth, safeTeacherId } from '../lib/guards.js';
 import { BEHAVIOR_STAGES, computePupilBehaviorStage } from '../lib/behavior-stages.js';
 
 
@@ -15,7 +15,23 @@ import { BEHAVIOR_STAGES, computePupilBehaviorStage } from '../lib/behavior-stag
  */
 export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
   /** POST /api/pupils — add a pupil to a class. */
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['classId', 'fullName'],
+          additionalProperties: false,
+          properties: {
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            fullName: { type: 'string', minLength: 1, maxLength: 200 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -47,7 +63,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       .returning();
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'ADD_PUPIL',
       entity: 'pupil',
       entityId: String(newPupil.id),
@@ -58,7 +74,22 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** PUT /api/pupils/:id — edit name and/or move to another class. */
-  fastify.put('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.put(
+    '/:id',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            fullName: { type: 'string', minLength: 1, maxLength: 200 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -107,7 +138,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       .returning();
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'UPDATE_PUPIL',
       entity: 'pupil',
       entityId: String(pid),
@@ -121,7 +152,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** DELETE /api/pupils/:id — soft-delete (archive). History is preserved. */
-  fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.delete('/:id', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -147,7 +178,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       .returning();
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'ARCHIVE_PUPIL',
       entity: 'pupil',
       entityId: String(pid),
@@ -160,7 +191,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * GET /api/pupils/:id/behavior-profile — get behavioral staging, cards, timeouts, and actions.
    */
-  fastify.get('/:id/behavior-profile', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/:id/behavior-profile', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { id } = request.params as { id: string };
     const pid = parseIdParam(id, 'id');
@@ -247,7 +278,25 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * POST /api/pupils/:id/behavior-actions — record an action taken for a behavior stage.
    */
-  fastify.post('/:id/behavior-actions', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/:id/behavior-actions',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['stageLevel', 'stageTitle'],
+          additionalProperties: false,
+          properties: {
+            stageLevel: { type: 'integer', minimum: -10, maximum: 10 },
+            stageTitle: { type: 'string', minLength: 1, maxLength: 100 },
+            notes: { type: 'string', nullable: true, maxLength: 1000 },
+            status: { enum: ['pending', 'completed', 'acknowledged'] },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -270,33 +319,55 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       status?: 'pending' | 'completed' | 'acknowledged';
     };
 
-    if (stageLevel === undefined || !stageTitle?.trim()) {
-      return badRequest(reply, 'Stufe und Titel der Maßnahme sind erforderlich.');
+    if (
+      typeof stageLevel !== 'number' ||
+      !Number.isSafeInteger(stageLevel) ||
+      stageLevel < -10 ||
+      stageLevel > 10 ||
+      !stageTitle?.trim()
+    ) {
+      return badRequest(reply, 'Gültige Stufe (-10 bis +10) und Titel der Maßnahme sind erforderlich.');
     }
 
-    const [action] = await db
-      .insert(pupilBehaviorActions)
-      .values({
-        pupilId: pid,
-        stageLevel,
-        stageTitle: stageTitle.trim(),
-        status: status || 'completed',
-        teacherId: user.teacherId ?? 0,
-        notes: notes?.trim() || null,
-      })
-      .returning();
+    // Bound to a const so the `is number` narrowing survives into the transaction
+    // callback. `pupil_behavior_actions.teacher_id` is a NOT NULL foreign key; the
+    // former `?? 0` attributed the record to a phantom teacher row instead of failing.
+    const actorId = user.teacherId;
+    if (!hasPersistedTeacherActor(actorId)) {
+      return reply.status(503).send({
+        error:
+          'Das Dokumentieren einer Verhaltensmaßnahme ist nicht verfügbar, weil Ihrem Konto kein Lehrkraftdatensatz zugeordnet ist.',
+        code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
+      });
+    }
 
-    await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
-      action: 'BEHAVIOR_STAGE_ACTION_RECORDED',
-      entity: 'pupil',
-      entityId: String(pid),
-      payload: {
-        actionId: action.id,
-        stageLevel,
-        stageTitle,
-        notes: notes?.trim(),
-      },
+    const action = await db.transaction(async (tx) => {
+      const [recorded] = await tx
+        .insert(pupilBehaviorActions)
+        .values({
+          pupilId: pid,
+          stageLevel,
+          stageTitle: stageTitle.trim(),
+          status: status || 'completed',
+          teacherId: actorId,
+          notes: notes?.trim() || null,
+        })
+        .returning();
+
+      await tx.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'BEHAVIOR_STAGE_ACTION_RECORDED',
+        entity: 'pupil',
+        entityId: String(pid),
+        payload: {
+          actionId: recorded.id,
+          stageLevel,
+          stageTitle,
+          notes: notes?.trim(),
+        },
+      });
+
+      return recorded;
     });
 
     return reply.status(201).send(action);
@@ -305,7 +376,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * DELETE /api/pupils/:id/behavior-actions/:actionId — revoke/delete an action record.
    */
-  fastify.delete('/:id/behavior-actions/:actionId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.delete('/:id/behavior-actions/:actionId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -319,10 +390,11 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
     const pupil = await getPupil(pid);
     if (!pupil) return reply.status(404).send({ error: 'Schüler nicht gefunden' });
 
+    // Select the action by BOTH id AND pupilId to prevent cross-pupil IDOR
     const [existing] = await db
       .select()
       .from(pupilBehaviorActions)
-      .where(eq(pupilBehaviorActions.id, actionId))
+      .where(and(eq(pupilBehaviorActions.id, actionId), eq(pupilBehaviorActions.pupilId, pid)))
       .limit(1);
 
     if (!existing) return reply.status(404).send({ error: 'Maßnahme nicht gefunden' });
@@ -333,14 +405,15 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       return forbid(reply, 'Nur der Ersteller, KV oder Schulleitung darf diese Maßnahme löschen.');
     }
 
-    await db.delete(pupilBehaviorActions).where(eq(pupilBehaviorActions.id, actionId));
-
-    await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
-      action: 'BEHAVIOR_STAGE_ACTION_DELETED',
-      entity: 'pupil',
-      entityId: String(pid),
-      payload: { actionId, stageLevel: existing.stageLevel, stageTitle: existing.stageTitle },
+    await db.transaction(async (tx) => {
+      await tx.delete(pupilBehaviorActions).where(eq(pupilBehaviorActions.id, actionId));
+      await tx.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'BEHAVIOR_STAGE_ACTION_DELETED',
+        entity: 'pupil',
+        entityId: String(pid),
+        payload: { actionId, stageLevel: existing.stageLevel, stageTitle: existing.stageTitle },
+      });
     });
 
     return reply.send({ success: true });

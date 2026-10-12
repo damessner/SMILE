@@ -11,6 +11,7 @@ import {
   rubricCriteria,
   schoolClasses,
   teachers,
+  teachingAssignments,
 } from '../db/schema.js';
 import {
   forbid,
@@ -20,8 +21,10 @@ import {
   type AuthUser,
 } from '../lib/guards.js';
 import { config } from '../config.js';
-import { calculateRank, summarizeRatings } from '../lib/ranking.js';
-import { normalizeSubject } from '../utils/subject.js';
+import {
+  buildSubjectStatistics,
+  calculateSubjectDistribution,
+} from '../lib/subject-statistics.js';
 
 export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -42,7 +45,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
    *
    * Pupil logins are excluded outright: this view is for staff.
    */
-  fastify.get('/overview', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/overview', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user: AuthUser = requireAuth(request);
     const { classId } = request.query as { classId?: string };
 
@@ -53,13 +56,29 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     const schoolWide = config.statisticsSchoolWide;
     const global = schoolWide ? { classIds: null } : await getGlobalAccess(user);
 
+    /**
+     * One shape for `scope`, built in one place.
+     *
+     * The early returns below used to hand-write this object each time, and two of the
+     * five omitted `schoolWide` — including the success path. A client reading
+     * `scope.schoolWide` therefore got a correct answer on every *empty* response and
+     * `undefined` precisely when there was data to describe. Deriving it here means a
+     * future branch cannot silently drop a field again.
+     */
+    const buildScope = () => ({
+      restricted: global.classIds !== null,
+      schoolWide,
+      classIds: global.classIds,
+    });
+
     if (global.classIds !== null && global.classIds.length === 0) {
       return reply.send({
         classes: [],
         round: null,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: true, schoolWide: false, classIds: [] },
+        scope: buildScope(),
       });
     }
 
@@ -83,9 +102,10 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: visibleClasses,
         round: null,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, schoolWide, classIds: global.classIds },
+        scope: buildScope(),
       });
     }
 
@@ -109,9 +129,10 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: visibleClasses,
         round,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, classIds: global.classIds },
+        scope: buildScope(),
       });
     }
 
@@ -132,9 +153,10 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         classes: visibleClasses,
         round,
+        rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
-        scope: { restricted: global.classIds !== null, schoolWide, classIds: global.classIds },
+        scope: buildScope(),
       });
     }
 
@@ -190,104 +212,54 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       itemsByEvalId.set(it.evaluationId, list);
     }
 
-    let countLehrling = 0;
-    let countGeselle = 0;
-    let countMeister = 0;
+    const classAssignments = await db
+      .select({
+        classId: teachingAssignments.classId,
+        subjectCode: teachingAssignments.subjectCode,
+        subjectName: teachingAssignments.subjectName,
+      })
+      .from(teachingAssignments)
+      .where(inArray(teachingAssignments.classId, targetClassIds));
 
-    const pupilsSummary = classPupils.map((pupil) => {
-      const pupilEvals = allEvals.filter((e) => e.pupilId === pupil.id);
-      const coreEvals = pupilEvals.filter((e) => normalizeSubject(e.subjectCode).isCoreSmile);
-      const evalsForCalc = coreEvals.length > 0 ? coreEvals : pupilEvals;
-      const counts = summarizeRatings(
-        evalsForCalc.map((e) => ({
-          evaluationId: e.id,
-          items: itemsByEvalId.get(e.id) ?? [],
+    const assignmentsByClass = new Map<number, Array<{ subjectCode: string; subjectName: string }>>();
+    for (const a of classAssignments) {
+      const list = assignmentsByClass.get(a.classId) ?? [];
+      list.push(a);
+      assignmentsByClass.set(a.classId, list);
+    }
+
+    const pupilsSummary = buildSubjectStatistics(
+      classPupils,
+      assignmentsByClass,
+      allEvals,
+      itemsByEvalId,
+      teacherMap,
+      {
+        showForeignComments: config.statisticsShowForeignComments,
+        viewerRole: user.role,
+        viewerTeacherId: user.teacherId,
+        confirmedRanks: confirmedRanks.map((r) => ({
+          pupilId: r.pupilId,
+          rank: r.rank,
+          overrideReason: r.overrideReason,
         })),
-      );
+      },
+    );
 
-      const confirmed = confirmedRanks.find((r) => r.pupilId === pupil.id);
-      const finalRank = confirmed?.rank ?? calculateRank(counts.scoreForThreshold, false).finalRank;
-
-      if (finalRank === 'Meister') countMeister++;
-      else if (finalRank === 'Geselle') countGeselle++;
-      else countLehrling++;
-
-      const teacherVotes = pupilEvals.map((ev) => {
-        const teacher = teacherMap.get(ev.teacherId);
-        const normSub = normalizeSubject(ev.subjectCode);
-        const evalCounts = summarizeRatings([
-          { evaluationId: ev.id, items: itemsByEvalId.get(ev.id) ?? [] },
-        ]);
-
-        // When STATISTICS_SHOW_FOREIGN_COMMENTS is off, another teacher's written
-        // judgement is withheld. Their rank proposal and attribution stay visible, so the
-        // statistics remain complete without exposing private notes.
-        const isOwn = ev.teacherId != null && ev.teacherId === user.teacherId;
-        const showNotes =
-          config.statisticsShowForeignComments || isOwn || user.role !== 'teacher';
-
-        return {
-          teacherId: ev.teacherId,
-          teacherShort: teacher?.shortName || 'LEH',
-          teacherName: teacher?.fullName || 'Fachlehrer',
-          subjectCode: ev.subjectCode,
-          subjectName: normSub.name,
-          isCore: normSub.isCoreSmile,
-          proposedStatus: ev.proposedStatus,
-          nextStep: showNotes ? ev.nextStep : null,
-          comment: showNotes ? ev.comment : null,
-          notesWithheld: !showNotes,
-          positiveCount: evalCounts.positiveCount,
-          totalRated: evalCounts.totalRated,
-          updatedAt: ev.updatedAt,
-        };
-      });
-
-      const pupilItems = pupilEvals.flatMap((e) => itemsByEvalId.get(e.id) ?? []);
-      const formattedItems = pupilItems.map((it) => {
-        const updater = it.updatedByTeacherId != null ? teacherMap.get(it.updatedByTeacherId) : undefined;
-        return { ...it, updatedBy: updater?.fullName || updater?.shortName || null };
-      });
-
-      return {
-        id: pupil.id,
-        fullName: pupil.fullName,
-        classId: pupil.classId,
-        className: pupil.className,
-        grade: pupil.grade,
-        positiveCount: counts.positiveCount,
-        totalRated: counts.totalRated,
-        calculatedRank: calculateRank(counts.scoreForThreshold, false).finalRank,
-        finalRank,
-        isConfirmed: !!confirmed,
-        overrideReason: confirmed?.overrideReason,
-        teacherVotes,
-        items: formattedItems,
-      };
-    });
-
-    const totalPupils = pupilsSummary.length;
-    const pct = (n: number) => (totalPupils > 0 ? Math.round((n / totalPupils) * 100) : 0);
+    const distribution = calculateSubjectDistribution(pupilsSummary);
 
     return reply.send({
       classes: visibleClasses,
       round,
-      distribution: {
-        lehrling: countLehrling,
-        geselle: countGeselle,
-        meister: countMeister,
-        total: totalPupils,
-        percentLehrling: pct(countLehrling),
-        percentGeselle: pct(countGeselle),
-        percentMeister: pct(countMeister),
-      },
+      rubricConfig: currentRubricConfig(),
+      distribution,
       pupils: pupilsSummary,
-      scope: { restricted: global.classIds !== null, classIds: global.classIds },
+      scope: buildScope(),
     });
   });
 
   /** GET /api/statistics/rubric — the active rubric definition. */
-  fastify.get('/rubric', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/rubric', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     requireAuth(request);
     const [rubric] = await db
       .select()
@@ -305,6 +277,15 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({ rubric, criteria });
   });
 };
+
+function currentRubricConfig() {
+  return {
+    meister: config.rankThresholds.meister,
+    geselle: config.rankThresholds.geselle,
+    itemCount: config.rubricItemCount,
+    aggregation: config.rankAggregation,
+  };
+}
 
 function emptyDistribution() {
   return {

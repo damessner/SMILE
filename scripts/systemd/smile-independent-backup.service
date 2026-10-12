@@ -1,0 +1,31 @@
+[Unit]
+Description=SMILE Independent Asymmetric Encrypted Backup
+Documentation=file:/opt/smile/docs/SECURITY.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=smile
+Group=smile
+EnvironmentFile=-/etc/smile/backup.env
+ExecStart=/usr/bin/python3 /opt/smile/scripts/backup_independent.py
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/smile /var/backups/smile-independent /tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

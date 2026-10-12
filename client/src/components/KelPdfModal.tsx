@@ -1,11 +1,13 @@
 import React from 'react';
 import { Printer, X, Award, CheckCircle } from 'lucide-react';
 import { PupilWithData, RubricCriterion } from '../types';
+import { isSubjectMatch, scoreSubject } from '../lib/pupilItems';
 
 interface KelPdfModalProps {
   pupil: PupilWithData;
   className: string;
   criteria: RubricCriterion[];
+  subjects?: Array<{ code: string; name: string }>;
   roundName?: string;
   onClose: () => void;
 }
@@ -14,23 +16,41 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
   pupil,
   className,
   criteria,
+  subjects,
   roundName = 'Schuljahr 2026/27',
   onClose,
 }) => {
-  // Extract all evaluation items
-  const allItems = pupil.evaluations.flatMap((e) => e.items || []);
-  const isPositive = (r?: string) => r === 'crown' || r === 'smile' || r === '++' || r === '+';
-  const positiveCount = allItems.filter((i) => isPositive(i.rating)).length;
+  const rubricItemKeys = criteria.flatMap((c) => c.items.map((i) => i.key));
 
-  let calculatedRank = 'Lehrling';
-  let rankBadgeStyle = 'bg-rose-500 text-slate-50';
-  if (positiveCount >= 14) {
-    calculatedRank = 'Meister';
-    rankBadgeStyle = 'bg-amber-400 text-slate-950 font-bold';
-  } else if (positiveCount >= 8) {
-    calculatedRank = 'Geselle';
-    rankBadgeStyle = 'bg-blue-500 text-slate-50 font-bold';
-  }
+  const effectiveSubjects =
+    subjects && subjects.length > 0
+      ? subjects
+      : Array.from(new Set(pupil.evaluations.map((e) => e.subjectCode))).map((code) => ({
+          code,
+          name: code,
+        }));
+
+  const subjectResults = effectiveSubjects.map((s) => {
+    const scored = scoreSubject(pupil.evaluations, s.code, rubricItemKeys);
+    const evalRecord = pupil.evaluations.find((e) => isSubjectMatch(e.subjectCode, s.code));
+
+    let rankBadgeStyle = 'bg-slate-300 text-slate-700 font-bold';
+    if (scored.rank === 'Meister') {
+      rankBadgeStyle = 'bg-amber-400 text-slate-950 font-bold';
+    } else if (scored.rank === 'Geselle') {
+      rankBadgeStyle = 'bg-blue-500 text-slate-50 font-bold';
+    } else if (scored.rank === 'Lehrling') {
+      rankBadgeStyle = 'bg-rose-500 text-slate-50 font-bold';
+    }
+
+    return {
+      subject: s,
+      scored,
+      rank: scored.rank ?? 'Ausstehend',
+      rankBadgeStyle,
+      evalRecord,
+    };
+  });
 
   const handlePrint = () => {
     window.print();
@@ -68,7 +88,7 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-6">
             <div>
               <span className="text-xs uppercase font-extrabold tracking-wider text-slate-500">
-                Mittelschule Telfs Weissenbach
+                MS Weissenbach
               </span>
               <h1 className="text-2xl font-bold text-slate-900">SMILE Entwicklungsübersicht</h1>
               <p className="text-xs text-slate-600">Beobachtungsraster & KEL-Gesprächsbeiblatt · {roundName}</p>
@@ -79,70 +99,87 @@ export const KelPdfModal: React.FC<KelPdfModalProps> = ({
             </div>
           </div>
 
-          {/* Pupil Info & Rank Badge */}
-          <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-100 border border-slate-200 mb-6">
+          {/* Pupil Info */}
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-200 mb-6">
             <div>
               <span className="text-xs uppercase font-bold text-slate-500">Schülerin / Schüler</span>
               <h2 className="text-xl font-bold text-slate-900">{pupil.fullName}</h2>
             </div>
             <div className="text-right">
-              <span className="text-xs uppercase font-bold text-slate-500 block">Erreichter Status</span>
-              <span className={`inline-block px-4 py-1.5 rounded-xl text-sm font-bold uppercase tracking-wider shadow-sm ${rankBadgeStyle}`}>
-                {calculatedRank}
-              </span>
+              <span className="text-xs uppercase font-bold text-slate-500 block">Klasse {className}</span>
+              <span className="text-xs text-slate-600 font-semibold">{subjectResults.map(s => `${s.subject.code}: ${s.rank}`).join(' · ')}</span>
             </div>
           </div>
 
-          {/* 6 Criteria Breakdown */}
-          <div className="mb-6">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-              Beobachtungskriterien (6 Dimensionen)
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {criteria.map((crit) => {
-                const critItems = allItems.filter((i) => i.criterionId === crit.id);
-                const pos = critItems.filter((i) => isPositive(i.rating)).length;
-                const total = crit.items.length;
-                const isStrong = pos >= 2;
+          {/* Subject Sections */}
+          {subjectResults.map((sr) => (
+            <div key={sr.subject.code} className="mb-6 pb-6 border-b border-slate-200 last:border-b-0">
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-100 border border-slate-200 mb-4">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-500">Fach</span>
+                  <h2 className="text-base font-bold text-slate-900">{sr.subject.name} ({sr.subject.code})</h2>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Status ({sr.scored.positiveCount}/{rubricItemKeys.length})</span>
+                  <span className={`inline-block px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider shadow-sm ${sr.rankBadgeStyle}`}>
+                    {sr.rank}
+                  </span>
+                </div>
+              </div>
 
-                return (
-                  <div
-                    key={crit.id}
-                    className="p-3 rounded-xl border border-slate-200 bg-white flex items-center justify-between"
-                  >
-                    <div>
-                      <span className="font-bold text-xs text-slate-900 block">{crit.name}</span>
-                      <span className="text-[11px] text-slate-500">
-                        {pos} von {total} Merkmalen sicher erreicht
-                      </span>
-                    </div>
-                    {isStrong ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                        Kompetent
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
-                        In Entwicklung
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+              {/* 6 Criteria Breakdown */}
+              <div className="mb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                  Beobachtungskriterien {sr.subject.name} (6 Dimensionen)
+                </h3>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {criteria.map((crit) => {
+                    const critKeys = crit.items.map((i) => i.key);
+                    const critScore = scoreSubject(pupil.evaluations, sr.subject.code, critKeys);
+                    const pos = critScore.positiveCount;
+                    const total = crit.items.length;
+                    const isStrong = pos >= 2;
 
-          {/* Next Steps & Comments */}
-          <div className="mb-6">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-              Vereinbarte Entwicklungsziele & Nächste Schritte
-            </h3>
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 min-h-[70px]">
-              <p className="text-xs text-slate-700 italic">
-                {pupil.evaluations.find((e) => e.nextStep)?.nextStep ||
-                  'Lernorganisation eigenständig vertiefen und gezielt Fragen bei Arbeitsaufträgen formulieren.'}
-              </p>
+                    return (
+                      <div
+                        key={crit.id}
+                        className="p-2.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between"
+                      >
+                        <div>
+                          <span className="font-bold text-xs text-slate-900 block">{crit.name}</span>
+                          <span className="text-[11px] text-slate-500">
+                            {pos} von {total} Merkmalen sicher erreicht
+                          </span>
+                        </div>
+                        {isStrong ? (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                            Kompetent
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                            In Entwicklung
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Next Steps & Comments */}
+              <div className="mb-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Vereinbarte Entwicklungsziele &amp; Nächste Schritte ({sr.subject.code})
+                </h3>
+                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 min-h-[50px]">
+                  <p className="text-xs text-slate-700 italic">
+                    {sr.evalRecord?.nextStep ||
+                      'Lernorganisation eigenständig vertiefen und gezielt Fragen bei Arbeitsaufträgen formulieren.'}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
 
           {/* Signatures */}
           <div className="grid grid-cols-3 gap-8 pt-8 mt-6 border-t border-slate-300 text-center text-xs text-slate-500">

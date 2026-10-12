@@ -19,6 +19,7 @@ export interface SchoolClass {
   headTeacher1?: string | null;
   headTeacher2?: string | null;
   canAccessRaster?: boolean;
+  canRate?: boolean;
   mySubjects?: Array<{ code: string; name: string; isCoreSmile: boolean; hours?: number }>;
   isKv?: boolean;
 }
@@ -151,4 +152,3 @@ export interface PupilBehaviorProfile {
   }>;
   actions: PupilBehaviorAction[];
 }
-

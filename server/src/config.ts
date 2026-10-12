@@ -21,6 +21,7 @@ dotenv.config({ path: envFile });
 export const LEAKED_SECRETS: ReadonlySet<string> = new Set([
   'smile_super_secret_jwt_key_2026_telfs_weissenbach!',
   'smile_secure_pass_2026!',
+  '8JG1V6S28pQl6NZYqLjuHQ1d7hIeWY5h',
 ]);
 
 export class ConfigError extends Error {
@@ -30,31 +31,71 @@ export class ConfigError extends Error {
   }
 }
 
-function readInt(name: string, fallback: number): number {
+export function readInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
-  const parsed = Number.parseInt(raw.trim(), 10);
-  if (!Number.isFinite(parsed)) {
-    throw new ConfigError(`Environment variable ${name} must be an integer, got "${raw}".`);
+  const trimmed = raw.trim();
+  if (!/^-?\d+$/.test(trimmed)) {
+    throw new ConfigError(`Environment variable ${name} must be an integer.`);
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new ConfigError(`Environment variable ${name} must be a safe integer.`);
   }
   return parsed;
 }
 
-function readBool(name: string, fallback: boolean): boolean {
+export function readBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
+  const lower = raw.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(lower)) return true;
+  if (['0', 'false', 'no', 'off'].includes(lower)) return false;
+  throw new ConfigError(`Environment variable ${name} must be a boolean (true/false, 1/0, yes/no, on/off).`);
 }
 
-/** RFC3339 timestamp, validated. Used for the business deadlines. */
-function readTimestamp(name: string, fallback: string): Date {
+/** Strict RFC3339 timestamp (explicit timezone required), used for business dates. */
+export function readTimestamp(name: string, fallback: string): Date {
   const raw = process.env[name];
   const value = (raw && raw.trim()) || fallback;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) {
+    throw new ConfigError(`Environment variable ${name} must be an ISO-8601 timestamp.`);
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const zone = match[8];
+  const offset = zone === 'Z' ? null : /[+-](\d{2}):(\d{2})$/.exec(zone);
+  const offsetIsValid = !offset || (Number(offset[1]) <= 23 && Number(offset[2]) <= 59);
+  if (
+    month < 1 || month > 12 ||
+    day < 1 || day > daysInMonth[month - 1] ||
+    hour > 23 || minute > 59 || second > 59 ||
+    !offsetIsValid
+  ) {
+    throw new ConfigError(`Environment variable ${name} must be a valid ISO-8601 timestamp.`);
+  }
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new ConfigError(`Environment variable ${name} must be an ISO-8601 timestamp, got "${value}".`);
+    throw new ConfigError(`Environment variable ${name} must be a valid ISO-8601 timestamp.`);
   }
   return parsed;
+}
+
+export function readRankAggregation(name: string = 'RANK_AGGREGATION', fallback: 'total' | 'normalized' = 'total'): 'total' | 'normalized' {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === 'total' || trimmed === 'normalized') return trimmed;
+  throw new ConfigError(`Environment variable ${name} must be 'total' or 'normalized'.`);
 }
 
 function readOriginAllowlist(): string[] {
@@ -75,6 +116,24 @@ function readOriginAllowlist(): string[] {
 // tests) can load configuration without needing the JWT signing key.
 // ---------------------------------------------------------------------------
 
+function containsLeakedSecret(value: string): boolean {
+  for (const leaked of LEAKED_SECRETS) {
+    if (value.includes(leaked)) return true;
+  }
+  return false;
+}
+
+/** Percent-decoded password of a connection string, or "" when it cannot be parsed. */
+function decodedPasswordFromUrl(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).password);
+  } catch {
+    // Malformed URL: the pool will report it later. Never throw from here, so the
+    // caller still sees the raw scan result rather than an opaque parse error.
+    return '';
+  }
+}
+
 export function databaseUrl(): string {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) {
@@ -92,6 +151,15 @@ export function databaseUrl(): string {
           'is therefore compromised. Set a new database password before starting the server.',
       );
     }
+  }
+  // A password may be percent-encoded in the connection string ("%21" for "!"), which a raw
+  // substring scan cannot see. Decode the parsed password as well, otherwise the check is
+  // trivially bypassable by re-encoding a single character.
+  if (containsLeakedSecret(decodedPasswordFromUrl(url))) {
+    throw new ConfigError(
+      'DATABASE_URL contains a password that was previously committed to source control and ' +
+        'is therefore compromised. Set a new database password before starting the server.',
+    );
   }
   return url;
 }
@@ -168,8 +236,15 @@ export const config = {
 
   /** Session lifetime. Deliberately short; the UI re-authenticates on expiry. */
   sessionTtlSeconds: readInt('SESSION_TTL_SECONDS', 8 * 60 * 60),
-  /** Grace window so an in-flight request does not die mid-write at expiry. */
-  sessionGraceSeconds: readInt('SESSION_GRACE_SECONDS', 60),
+  /**
+   * SESSION_GRACE_SECONDS was removed.
+   *
+   * It was read, validated and advertised in .env.example as a window that keeps an
+   * in-flight request alive past token expiry, but nothing ever referenced it. An
+   * operator who set it was configuring a behaviour that did not exist. Either implement
+   * the grace window or leave it out; a knob that only reads as a feature is worse than
+   * no knob.
+   */
 
   loginRateLimit: {
     max: readInt('LOGIN_RATE_LIMIT_MAX', 10),
@@ -178,6 +253,15 @@ export const config = {
   globalRateLimit: {
     max: readInt('GLOBAL_RATE_LIMIT_MAX', 600),
     windowSeconds: readInt('GLOBAL_RATE_LIMIT_WINDOW_SECONDS', 60),
+  },
+  /**
+   * Inbound WebSocket message limit, per socket (token bucket). WebSocket frames are
+   * not HTTP requests, so the global HTTP limiter never saw them; a connected client
+   * could flood UPDATE_RATING without any throttle.
+   */
+  wsRateLimit: {
+    perSecond: readInt('WS_RATE_LIMIT_PER_SECOND', 10),
+    burst: readInt('WS_RATE_LIMIT_BURST', 40),
   },
   /** Max JSON request body. Assessment payloads are small; this is a cheap DoS guard. */
   bodyLimitBytes: readInt('BODY_LIMIT_BYTES', 256 * 1024),
@@ -204,9 +288,7 @@ export const config = {
    * RANK_AGGREGATION=normalized scales each core-subject evaluation back to an 18-item
    *   scale before averaging, so the threshold always means "14 of 18".
    */
-  rankAggregation: (process.env.RANK_AGGREGATION?.trim() || 'total') === 'normalized'
-    ? ('normalized' as const)
-    : ('total' as const),
+  rankAggregation: readRankAggregation(),
   rankThresholds: {
     meister: readInt('RANK_THRESHOLD_MEISTER', 14),
     geselle: readInt('RANK_THRESHOLD_GESELLE', 8),
@@ -250,10 +332,56 @@ export type AppConfig = typeof config;
 export function assertServerConfig(): void {
   databaseUrl();
   jwtSecret();
+
+  const positiveSettings: Array<[string, number]> = [
+    ['PORT', config.port],
+    ['SESSION_TTL_SECONDS', config.sessionTtlSeconds],
+    ['LOGIN_RATE_LIMIT_MAX', config.loginRateLimit.max],
+    ['LOGIN_RATE_LIMIT_WINDOW_SECONDS', config.loginRateLimit.windowSeconds],
+    ['GLOBAL_RATE_LIMIT_MAX', config.globalRateLimit.max],
+    ['GLOBAL_RATE_LIMIT_WINDOW_SECONDS', config.globalRateLimit.windowSeconds],
+    ['WS_RATE_LIMIT_PER_SECOND', config.wsRateLimit.perSecond],
+    ['WS_RATE_LIMIT_BURST', config.wsRateLimit.burst],
+    ['BODY_LIMIT_BYTES', config.bodyLimitBytes],
+    ['WS_ROOM_MAX_CLIENTS', config.wsRoomMaxClients],
+    ['WS_SOFT_LOCK_TTL_MS', config.wsSoftLockTtlMs],
+    ['RUBRIC_ITEM_COUNT', config.rubricItemCount],
+    ['YELLOW_CARD_ALERT_THRESHOLD', config.yellowCardAlertThreshold],
+    ['YELLOW_CARD_ALERT_WINDOW_DAYS', config.yellowCardAlertWindowDays],
+    ['ESCALATION_STEP', config.escalationStep],
+  ];
+  for (const [name, value] of positiveSettings) {
+    if (value <= 0) {
+      throw new ConfigError(`Environment variable ${name} must be greater than 0.`);
+    }
+  }
+
+  if (config.port > 65_535) {
+    throw new ConfigError('Environment variable PORT must be between 1 and 65535.');
+  }
+  if (config.rankThresholds.geselle < 0) {
+    throw new ConfigError('RANK_THRESHOLD_GESELLE must be 0 or greater.');
+  }
   if (config.rankThresholds.meister <= config.rankThresholds.geselle) {
     throw new ConfigError(
       `RANK_THRESHOLD_MEISTER (${config.rankThresholds.meister}) must be greater than ` +
         `RANK_THRESHOLD_GESELLE (${config.rankThresholds.geselle}).`,
     );
   }
+}
+
+/**
+ * Non-fatal deployment warnings, logged once at boot. These describe known-accepted
+ * states on the current LAN deployment (plain HTTP), so they must not fail startup —
+ * but an operator should see them in the journal rather than discover them later.
+ */
+export function insecureConfigWarnings(cfg: Pick<AppConfig, 'cookieSecure'> = config): string[] {
+  const warnings: string[] = [];
+  if (!cfg.cookieSecure) {
+    warnings.push(
+      'COOKIE_SECURE is disabled: the session cookie travels without the Secure flag. ' +
+        'Set COOKIE_SECURE=true once the app is served over HTTPS (for example behind a TLS reverse proxy).',
+    );
+  }
+  return warnings;
 }

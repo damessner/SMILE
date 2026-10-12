@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'fix/**', 'feature/**' ]
+  pull_request:
+    branches: [ main ]
+
+# Least privilege: this workflow only ever checks out code and runs tests. It needs no
+# write access to the repository, no package publishing, and no deployments.
+permissions:
+  contents: read
+
+# Supersede in-flight runs on the same ref so a force-push does not pay for two runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Must match the version install-lxc.sh provisions in production (PostgreSQL 17).
+        # The integration suite is the only place migration SQL is actually executed, so
+        # running it against a different major version than production tests a database
+        # nobody deploys onto.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_admin_password_12345
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # Pinned to commit SHAs, not mutable tags: a compromised `v4` tag would otherwise
+      # execute arbitrary code in this workflow with the repository's token.
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create least-privilege integration database role
+        run: |
+          docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c "CREATE ROLE smile_test LOGIN PASSWORD 'ci_test_password_12345';"
+          docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c "CREATE DATABASE smile_db_test OWNER smile_test;"
+
+      - name: Install Python test dependencies
+        run: pip install paramiko
+
+      - name: Typecheck
+        run: npm run typecheck --workspaces
+
+      - name: Run Tests (Server, Client & PostgreSQL Integration)
+        env:
+          CI: 'true'
+          TEST_DATABASE_URL: postgresql://smile_test:ci_test_password_12345@localhost:5432/smile_db_test
+        run: npm test
+
+      - name: Run Scripts / Security Unit Tests
+        run: python -m unittest discover -s scripts/test -p "test_*.py"
+
+      - name: Build
+        run: npm run build

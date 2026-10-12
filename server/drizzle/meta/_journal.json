@@ -8,6 +8,48 @@
       "when": 1790870104180,
       "tag": "0000_init_schema_hardened",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791387494407,
+      "tag": "0001_persist_session_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791489300000,
+      "tag": "0002_admin_actor_teacher",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791575700000,
+      "tag": "0003_pupil_id_sequence_and_behavior_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791580000000,
+      "tag": "0004_timeout_expires_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791590000000,
+      "tag": "0005_class_round_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791700000000,
+      "tag": "0006_lernwerkstatt_room",
+      "breakpoints": true
     }
   ]
 }

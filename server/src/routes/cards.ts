@@ -10,8 +10,11 @@ import {
   getClassAccess,
   getGlobalAccess,
   getPupil,
+  hasPersistedTeacherActor,
+  MAX_POSTGRES_INTEGER,
   parseIdParam,
   requireAuth,
+  safeTeacherId,
 } from '../lib/guards.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 
@@ -27,7 +30,25 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * Previously any authenticated teacher could file a red card (instant rank loss)
    * against a pupil of any class.
    */
-  fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post(
+    '/',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['pupilId', 'classId', 'cardType'],
+          additionalProperties: false,
+          properties: {
+            pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
+            cardType: { enum: ['green', 'yellow', 'red'] },
+            note: { type: 'string', nullable: true, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -73,26 +94,44 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
     }
 
-    const [card] = await db
-      .insert(behaviorCards)
-      .values({
-        pupilId,
-        classId,
-        teacherId: user.teacherId ?? 0,
-        cardType: typedCard,
-        note: cleanNote || null,
-      })
-      .returning();
-
-    if (typedCard === 'red') {
-      await db.insert(auditLogs).values({
-        actorId: user.teacherId ?? null,
-        action: 'RED_CARD_ISSUED',
-        entity: 'pupil',
-        entityId: String(pupilId),
-        payload: { classId, note: cleanNote, reason: 'Instant rank loss' },
+    // Bound to a const so the `is number` narrowing survives into the transaction
+    // callback. `behavior_cards.teacher_id` is a NOT NULL foreign key; the former
+    // `?? 0` attributed the card to a phantom teacher row instead of failing.
+    const actorId = user.teacherId;
+    if (!hasPersistedTeacherActor(actorId)) {
+      return reply.status(503).send({
+        error:
+          'Das Ausstellen einer Karte ist nicht verfügbar, weil Ihrem Konto kein Lehrkraftdatensatz zugeordnet ist.',
+        code: 'SYSTEM_ACTOR_NOT_CONFIGURED',
       });
     }
+
+    // A red card costs the pupil a rank, so the card and its audit row commit
+    // together; a rank loss with no RED_CARD_ISSUED row cannot be explained later.
+    const card = await db.transaction(async (tx) => {
+      const [issued] = await tx
+        .insert(behaviorCards)
+        .values({
+          pupilId,
+          classId,
+          teacherId: actorId,
+          cardType: typedCard,
+          note: cleanNote || null,
+        })
+        .returning();
+
+      if (typedCard === 'red') {
+        await tx.insert(auditLogs).values({
+          actorId: safeTeacherId(user.teacherId),
+          action: 'RED_CARD_ISSUED',
+          entity: 'pupil',
+          entityId: String(pupilId),
+          payload: { classId, note: cleanNote, reason: 'Instant rank loss' },
+        });
+      }
+
+      return issued;
+    });
 
     // Yellow-card escalation alert.
     let alertTriggered = false;
@@ -125,7 +164,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * school administration. Previously any authenticated user could withdraw any
    * card, including another teacher's justified red card.
    */
-  fastify.post('/:id/revoke', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post('/:id/revoke', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
@@ -150,7 +189,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
 
     const [revoked] = await db
       .update(behaviorCards)
-      .set({ revokedAt: new Date(), revokedBy: user.teacherId ?? null })
+      .set({ revokedAt: new Date(), revokedBy: safeTeacherId(user.teacherId) })
       .where(and(eq(behaviorCards.id, id), isNull(behaviorCards.revokedAt)))
       .returning();
 
@@ -159,7 +198,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     await db.insert(auditLogs).values({
-      actorId: user.teacherId ?? null,
+      actorId: safeTeacherId(user.teacherId),
       action: 'CARD_REVOKED',
       entity: 'pupil',
       entityId: String(existing.pupilId),
@@ -181,7 +220,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * Scoped to the caller's classes. This used to return school-wide counts to any
    * authenticated teacher.
    */
-  fastify.get('/alerts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/alerts', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
 
     const global = await getGlobalAccess(user);
@@ -220,7 +259,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
    * LEFT JOIN on teachers so cards filed by an account without a teacher id (the
    * administrator) are still returned. The previous INNER JOIN silently dropped them.
    */
-  fastify.get('/class/:classId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/class/:classId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
@@ -255,7 +294,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/cards/pupil/:pupilId — full card history for one pupil. */
-  fastify.get('/pupil/:pupilId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/pupil/:pupilId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { pupilId } = request.params as { pupilId: string };
     const pid = parseIdParam(pupilId, 'pupilId');

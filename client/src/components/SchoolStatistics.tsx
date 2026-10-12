@@ -6,15 +6,11 @@ import {
   Printer,
   ChevronDown,
   ChevronUp,
-  Award,
-  Sparkles,
-  Users,
   RefreshCw,
-  Info,
-  CheckCircle2,
   Filter,
 } from 'lucide-react';
 import { getStatistics } from '../services/api';
+import { MAX_RUBRIC_ITEMS } from '../lib/conferenceEvidence';
 
 interface TeacherVote {
   teacherId: number;
@@ -39,25 +35,44 @@ interface PupilItem {
   updatedAt: string;
 }
 
+interface SubjectResult {
+  subjectCode: string;
+  subjectName: string;
+  positiveCount: number;
+  totalRated: number;
+  calculatedRank: 'Lehrling' | 'Geselle' | 'Meister' | null;
+  teacherVote: TeacherVote | null;
+  items: PupilItem[];
+}
+
+interface ConferenceDecision {
+  rank: 'Lehrling' | 'Geselle' | 'Meister';
+  isConfirmed: true;
+  overrideReason?: string | null;
+}
+
 interface PupilStat {
   id: number;
   fullName: string;
   classId: number;
   className: string;
   grade: number;
-  positiveCount: number;
-  totalRated: number;
-  calculatedRank: 'Lehrling' | 'Geselle' | 'Meister';
-  finalRank: 'Lehrling' | 'Geselle' | 'Meister';
-  isConfirmed: boolean;
+  subjectResults: SubjectResult[];
+  conferenceDecision?: ConferenceDecision | null;
+  isConfirmed?: boolean;
   overrideReason?: string | null;
   teacherVotes: TeacherVote[];
-  items: PupilItem[];
 }
 
 interface StatData {
   classes: Array<{ id: number; name: string; grade: number }>;
   round: any;
+  rubricConfig?: {
+    meister: number;
+    geselle: number;
+    itemCount: number;
+    aggregation: string;
+  };
   distribution: {
     lehrling: number;
     geselle: number;
@@ -68,6 +83,12 @@ interface StatData {
     percentMeister: number;
   };
   pupils: PupilStat[];
+}
+
+interface PupilSubjectRow {
+  rowKey: string;
+  pupil: PupilStat;
+  subjectResult: SubjectResult;
 }
 
 // Smiley Renderer Helper
@@ -105,9 +126,10 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
   const [selectedClassId, setSelectedClassId] = useState<string>(
     initialClassId ? String(initialClassId) : 'all'
   );
+  const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [rankFilter, setRankFilter] = useState<'all' | 'Lehrling' | 'Geselle' | 'Meister'>('all');
-  const [expandedPupilId, setExpandedPupilId] = useState<number | null>(null);
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   const fetchData = async (cid: string) => {
     setLoading(true);
@@ -125,15 +147,47 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
     fetchData(selectedClassId);
   }, [selectedClassId]);
 
-  // Filtered pupils list
-  const filteredPupils = useMemo(() => {
+  const availableSubjects = useMemo(() => {
     if (!data?.pupils) return [];
-    return data.pupils.filter((p) => {
-      const matchesSearch = p.fullName.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesRank = rankFilter === 'all' || p.finalRank === rankFilter;
-      return matchesSearch && matchesRank;
+    const map = new Map<string, string>();
+    for (const p of data.pupils) {
+      for (const sr of p.subjectResults ?? []) {
+        if (!map.has(sr.subjectCode)) {
+          map.set(sr.subjectCode, sr.subjectName);
+        }
+      }
+    }
+    return Array.from(map.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [data?.pupils]);
+
+  const flattenedRows = useMemo(() => {
+    if (!data?.pupils) return [];
+    const rows: PupilSubjectRow[] = [];
+    for (const p of data.pupils) {
+      if (p.subjectResults && p.subjectResults.length > 0) {
+        for (const sr of p.subjectResults) {
+          rows.push({
+            rowKey: `${p.id}:${sr.subjectCode}`,
+            pupil: p,
+            subjectResult: sr,
+          });
+        }
+      }
+    }
+    return rows;
+  }, [data?.pupils]);
+
+  const filteredRows = useMemo(() => {
+    return flattenedRows.filter((r) => {
+      const matchesSearch = r.pupil.fullName.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSubject = selectedSubject === 'all' || r.subjectResult.subjectCode === selectedSubject;
+      const matchesRank =
+        rankFilter === 'all' || r.subjectResult.calculatedRank === rankFilter;
+      return matchesSearch && matchesSubject && matchesRank;
     });
-  }, [data?.pupils, searchQuery, rankFilter]);
+  }, [flattenedRows, searchQuery, selectedSubject, rankFilter]);
 
   const handlePrint = () => {
     window.print();
@@ -147,6 +201,13 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
       </div>
     );
   }
+
+  const rubricItemCount =
+    typeof data?.rubricConfig?.itemCount === 'number' &&
+    Number.isFinite(data.rubricConfig.itemCount) &&
+    data.rubricConfig.itemCount > 0
+      ? data.rubricConfig.itemCount
+      : MAX_RUBRIC_ITEMS;
 
   const dist = data?.distribution || {
     lehrling: 0,
@@ -192,7 +253,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             onClick={() => setSelectedClassId('all')}
             className={`px-3 py-1 rounded-xl font-bold text-xs transition flex-shrink-0 ${
               selectedClassId === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
             }`}
           >
@@ -204,7 +265,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
               onClick={() => setSelectedClassId(String(c.id))}
               className={`px-3 py-1 rounded-xl font-bold text-xs transition flex-shrink-0 ${
                 selectedClassId === String(c.id)
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-sm font-bold'
+                  ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                   : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
               }`}
             >
@@ -212,6 +273,38 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
             </button>
           ))}
         </div>
+
+        {/* Subject Filter Tabs */}
+        {availableSubjects.length > 0 && (
+          <div className="pt-2 flex items-center gap-1.5 overflow-x-auto pb-1 border-t border-slate-800/60 mt-2">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
+              <Filter className="w-3 h-3 text-amber-400" /> Fach:
+            </span>
+            <button
+              onClick={() => setSelectedSubject('all')}
+              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex-shrink-0 ${
+                selectedSubject === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm font-bold'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
+              }`}
+            >
+              Alle Fächer
+            </button>
+            {availableSubjects.map((s) => (
+              <button
+                key={s.code}
+                onClick={() => setSelectedSubject(s.code)}
+                className={`px-2.5 py-1 rounded-xl font-bold text-xs transition flex-shrink-0 ${
+                  selectedSubject === s.code
+                    ? 'bg-amber-500 text-slate-950 shadow-sm font-bold'
+                    : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
+                }`}
+              >
+                {s.name} ({s.code})
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Color Balken (Stacked Distribution Progress Bar - Compact) */}
@@ -220,7 +313,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-slate-50">Status-Verteilung</h2>
             <span className="text-xs text-slate-400">
-              ({dist.total} Schüler gesamt)
+              ({dist.total} Fächer-Ergebnisse gesamt)
             </span>
           </div>
 
@@ -303,7 +396,7 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                 : 'bg-slate-800 text-slate-400 hover:text-slate-50'
             }`}
           >
-            Alle ({data?.pupils.length || 0})
+            Alle ({flattenedRows.length})
           </button>
           <button
             onClick={() => setRankFilter('Lehrling')}
@@ -341,11 +434,11 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
         </div>
       </div>
 
-      {/* Main Pupil Table & Teachers' Votes (Dense & Compact) */}
+      {/* Main Pupil & Subject Results Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
         <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Schülerübersicht ({filteredPupils.length} Einträge)
+            Schüler- &amp; Fachübersicht ({filteredRows.length} Einträge)
           </span>
           <span className="text-[11px] text-slate-500 hidden sm:inline">
             Klicken Sie auf eine Zeile für die detaillierte Merkmal-Aufschlüsselung
@@ -353,116 +446,127 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
         </div>
 
         <div className="divide-y divide-slate-800/80">
-          {filteredPupils.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <div className="p-8 text-center text-slate-500 text-xs">
               Keine Schüler gefunden für diese Auswahl.
             </div>
           ) : (
-            filteredPupils.map((pupil) => {
-              const isExpanded = expandedPupilId === pupil.id;
+            filteredRows.map((r) => {
+              const { pupil, subjectResult: sr } = r;
+              const isExpanded = expandedRowKey === r.rowKey;
 
               // Rank styling
-              let rankBadgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-              let barColor = 'bg-rose-500';
-              if (pupil.finalRank === 'Meister') {
+              let rankBadgeClass = 'bg-slate-800 text-slate-400 border-slate-700';
+              let barColor = 'bg-slate-700';
+              let rankLabel = 'Ausstehend';
+
+              if (sr.calculatedRank === 'Meister') {
                 rankBadgeClass = 'bg-amber-400/20 text-amber-300 border-amber-400/40';
                 barColor = 'bg-amber-400';
-              } else if (pupil.finalRank === 'Geselle') {
+                rankLabel = 'Meister';
+              } else if (sr.calculatedRank === 'Geselle') {
                 rankBadgeClass = 'bg-blue-500/20 text-blue-300 border-blue-500/40';
                 barColor = 'bg-blue-500';
+                rankLabel = 'Geselle';
+              } else if (sr.calculatedRank === 'Lehrling') {
+                rankBadgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+                barColor = 'bg-rose-500';
+                rankLabel = 'Lehrling';
               }
 
               return (
-                <div key={pupil.id} className="transition hover:bg-slate-800/25">
+                <div key={r.rowKey} className="transition hover:bg-slate-800/25">
                   {/* Summary Row (Dense) */}
                   <div
-                    onClick={() => setExpandedPupilId(isExpanded ? null : pupil.id)}
+                    onClick={() => setExpandedRowKey(isExpanded ? null : r.rowKey)}
                     className="py-2.5 px-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 cursor-pointer"
                   >
-                    {/* Column 1: Pupil & Class */}
-                    <div className="w-full lg:w-56 flex-shrink-0">
-                      <div className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] font-bold text-slate-400 border border-slate-700">
+                    {/* Column 1: Pupil & Class & Subject */}
+                    <div className="w-full lg:w-64 flex-shrink-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-bold text-slate-400 border border-slate-700">
                           {pupil.className}
                         </span>
                         <span className="font-bold text-slate-50 text-xs leading-tight truncate">
                           {pupil.fullName}
                         </span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px] font-bold border border-amber-500/20">
+                          {sr.subjectName} ({sr.subjectCode})
+                        </span>
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {pupil.positiveCount} / 18 Smileys positiv
+                        {sr.totalRated > 0
+                          ? `${sr.positiveCount} / ${rubricItemCount} Smileys positiv`
+                          : `0 / ${rubricItemCount} Smileys (Ausstehend)`}
                       </div>
                     </div>
 
                     {/* Column 2: Status & Balken */}
-                    <div className="w-full lg:w-48 flex-shrink-0">
+                    <div className="w-full lg:w-56 flex-shrink-0">
                       <div className="flex items-center justify-between mb-1">
                         <span
-                          className={`px-2 py-0.2 rounded-md text-[10px] font-bold uppercase tracking-wider border ${rankBadgeClass}`}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${rankBadgeClass}`}
                         >
-                          {pupil.finalRank}
+                          {rankLabel}
                         </span>
-                        {pupil.isConfirmed && (
-                          <span className="text-[9px] text-amber-400 font-bold">
-                            ✓ Konferenzbeschluss
+                        {pupil.conferenceDecision && (
+                          <span
+                            className="text-[9px] text-amber-400 font-bold ml-1 truncate"
+                            title={pupil.conferenceDecision.overrideReason || undefined}
+                          >
+                            ✓ Konferenzbeschluss: {pupil.conferenceDecision.rank}
                           </span>
                         )}
                       </div>
                       {/* Mini Score Bar */}
                       <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700">
                         <div
-                          style={{ width: `${Math.min(100, Math.round((pupil.positiveCount / 18) * 100))}%` }}
+                          style={{
+                            width: `${Math.min(100, Math.round((sr.positiveCount / rubricItemCount) * 100))}%`,
+                          }}
                           className={`h-full ${barColor} transition-all duration-300`}
                         />
                       </div>
                     </div>
 
-                    {/* Column 3: Teachers' Votes (Die Stimmen der Lehrpersonen) */}
+                    {/* Column 3: Subject Teacher's Vote */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1">
-                        {pupil.teacherVotes.length > 0 ? (
-                          pupil.teacherVotes.map((vote, idx) => {
-                            let voteBadge = 'border-slate-700 bg-slate-800/80 text-slate-300';
-                            if (vote.proposedStatus === 'Meister') {
-                              voteBadge = 'border-amber-400/40 bg-amber-400/10 text-amber-300';
-                            } else if (vote.proposedStatus === 'Geselle') {
-                              voteBadge = 'border-blue-500/40 bg-blue-500/10 text-blue-300';
-                            } else if (vote.proposedStatus === 'Lehrling') {
-                              voteBadge = 'border-rose-500/40 bg-rose-500/10 text-rose-300';
-                            }
-
-                            return (
-                              <div
-                                key={idx}
-                                className={`px-2 py-0.5 rounded-lg border text-[11px] flex items-center gap-1 ${voteBadge}`}
-                                title={`${vote.teacherName} (${vote.subjectName}): ${
-                                  vote.proposedStatus || 'Ohne Einstufung'
-                                } ${vote.comment ? '· Notiz: ' + vote.comment : ''}`}
-                              >
-                                <span className="font-bold text-[10px] text-slate-400">
-                                  {vote.teacherShort}
-                                </span>
-                                <span className="text-[9px] px-1 py-0.2 rounded bg-slate-900/60 font-medium">
-                                  {vote.subjectCode}
-                                </span>
-                                {vote.proposedStatus && (
-                                  <span className="font-bold text-[10px]">
-                                    {vote.proposedStatus === 'Meister'
-                                      ? 'Meister'
-                                      : vote.proposedStatus === 'Geselle'
-                                      ? 'Geselle'
-                                      : 'Lehrling'}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <span className="text-[11px] text-slate-500 italic">
-                            Noch keine Fachlehrer-Bewertungen eingereicht
-                          </span>
-                        )}
-                      </div>
+                      {sr.teacherVote ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <div
+                            className={`px-2 py-0.5 rounded-lg border text-[11px] flex items-center gap-1 ${
+                              sr.teacherVote.proposedStatus === 'Meister'
+                                ? 'border-amber-400/40 bg-amber-400/10 text-amber-300'
+                                : sr.teacherVote.proposedStatus === 'Geselle'
+                                ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+                                : sr.teacherVote.proposedStatus === 'Lehrling'
+                                ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                                : 'border-slate-700 bg-slate-800/80 text-slate-300'
+                            }`}
+                            title={`${sr.teacherVote.teacherName}: ${
+                              sr.teacherVote.proposedStatus || 'Ohne Einstufung'
+                            } ${sr.teacherVote.comment ? '· Notiz: ' + sr.teacherVote.comment : ''}`}
+                          >
+                            <span className="font-bold text-[10px] text-slate-400">
+                              {sr.teacherVote.teacherShort}
+                            </span>
+                            {sr.teacherVote.proposedStatus && (
+                              <span className="font-bold text-[10px]">
+                                {sr.teacherVote.proposedStatus}
+                              </span>
+                            )}
+                          </div>
+                          {sr.teacherVote.comment && (
+                            <span className="text-[11px] text-amber-200/80 italic truncate max-w-[200px]">
+                              &bdquo;{sr.teacherVote.comment}&ldquo;
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 italic">
+                          Noch keine Fachlehrer-Bewertung erfasst
+                        </span>
+                      )}
                     </div>
 
                     {/* Column 4: Toggle Chevron */}
@@ -475,75 +579,87 @@ export const SchoolStatistics: React.FC<{ initialClassId?: number | null }> = ({
                     </div>
                   </div>
 
-                  {/* Expanded Detail Section (Dense) */}
+                  {/* Expanded Detail Section */}
                   {isExpanded && (
                     <div className="bg-slate-950/70 p-4 border-t border-slate-800 space-y-4">
-                      {/* Detailed Teacher Comments & Votes */}
+                      {/* Detailed Teacher Comment */}
                       <div>
                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                          Detaillierte Fachlehrer-Rückmeldungen
+                          Fachlehrer-Rückmeldung ({sr.subjectName})
                         </h4>
-                        {pupil.teacherVotes.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {pupil.teacherVotes.map((v, i) => (
-                              <div
-                                key={i}
-                                className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col justify-between"
-                              >
-                                <div>
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="font-bold text-slate-50 text-xs">
-                                      {v.teacherName} ({v.teacherShort})
-                                    </span>
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
-                                      {v.subjectCode} · {v.subjectName}
-                                    </span>
-                                  </div>
-                                  <div className="text-[11px] text-slate-400 mb-1.5">
-                                    Einstufung: <strong className="text-slate-50">{v.proposedStatus || 'Keine'}</strong>
-                                  </div>
-                                  {v.comment && (
-                                    <p className="text-xs text-amber-200/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 italic">
-                                      &bdquo;{v.comment}&ldquo;
-                                    </p>
-                                  )}
-                                  {v.nextStep && (
-                                    <div className="text-[11px] text-sky-300 mt-1">
-                                      <strong>Nächster Schritt:</strong> {v.nextStep}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-slate-500 mt-2 text-right">
-                                  Stand: {new Date(v.updatedAt).toLocaleDateString('de-AT')}
-                                </div>
+                        {sr.teacherVote ? (
+                          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 max-w-xl">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-slate-50 text-xs">
+                                {sr.teacherVote.teacherName} ({sr.teacherVote.teacherShort})
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
+                                {sr.subjectCode} · {sr.subjectName}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 mb-1.5">
+                              Einstufung: <strong className="text-slate-50">{sr.teacherVote.proposedStatus || 'Keine'}</strong>
+                            </div>
+                            {sr.teacherVote.comment && (
+                              <p className="text-xs text-amber-200/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 italic">
+                                &bdquo;{sr.teacherVote.comment}&ldquo;
+                              </p>
+                            )}
+                            {sr.teacherVote.nextStep && (
+                              <div className="text-[11px] text-sky-300 mt-1">
+                                <strong>Nächster Schritt:</strong> {sr.teacherVote.nextStep}
                               </div>
-                            ))}
+                            )}
+                            <div className="text-[10px] text-slate-500 mt-2 text-right">
+                              Stand: {new Date(sr.teacherVote.updatedAt).toLocaleDateString('de-AT')}
+                            </div>
                           </div>
                         ) : (
                           <p className="text-xs text-slate-500">Keine detaillierten Voten erfasst.</p>
                         )}
                       </div>
 
+                      {/* Conference Decision if present */}
+                      {pupil.conferenceDecision && (
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                            Konferenzbeschluss (Schüler-Ebene)
+                          </h4>
+                          <div className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-300 max-w-xl">
+                            <span className="font-bold">Bestätigter Status: {pupil.conferenceDecision.rank}</span>
+                            {pupil.conferenceDecision.overrideReason && (
+                              <p className="text-[11px] mt-1 text-amber-200">
+                                Begründung: {pupil.conferenceDecision.overrideReason}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Criteria Breakdown Grid */}
                       <div>
                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                          18-Kriterien Raster (Aktueller Stand)
+                          Beobachtungsraster {sr.subjectName} ({sr.items.length} Merkmale erfasst)
                         </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-                          {pupil.items.map((it) => (
-                            <div
-                              key={it.id || it.itemKey}
-                              className="bg-slate-900 border border-slate-800 rounded-xl p-2 flex flex-col items-center justify-center text-center"
-                            >
-                              <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-                                {it.itemKey}
-                              </span>
-                              <div className="h-6 flex items-center justify-center">
-                                {renderSmiley(it.rating)}
+                        {sr.items.length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                            {sr.items.map((it) => (
+                              <div
+                                key={it.id || it.itemKey}
+                                className="bg-slate-900 border border-slate-800 rounded-xl p-2 flex flex-col items-center justify-center text-center"
+                              >
+                                <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">
+                                  {it.itemKey}
+                                </span>
+                                <div className="h-6 flex items-center justify-center">
+                                  {renderSmiley(it.rating)}
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">Noch keine Rastermerkmale für dieses Fach eingetragen.</p>
+                        )}
                       </div>
                     </div>
                   )}

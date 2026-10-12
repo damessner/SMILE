@@ -24,6 +24,8 @@ Unterricht.TXT
 *.dump
 *.sql.gz
 export/*.sql
+docs/screenshots/
+docs/*.html
 
 # Allow Drizzle schema migration SQL files
 !server/drizzle/*.sql
@@ -37,11 +39,14 @@ Beobachtungsraster_Lehrling_Geselle_Meister_Vorschlag1.docx
 
 # Backups and archives (contain complete pupil database dumps)
 backup_*
+!scripts/backup_*.py
 *.zip
 *.tar.gz
 *.tgz
 tools/
 m365_rclone.conf
+*rclone.conf
+*.conf
 m365_token.txt
 *.xlsx
 
@@ -49,6 +54,8 @@ m365_token.txt
 # Third-party clones & scratch scripts
 UntisPlus-main/
 scratch/
+.pi/
+.freebuff/
 _*.mjs
 _*.js
 
@@ -60,9 +67,11 @@ client/dist/
 server/dist/
 *.tsbuildinfo
 
-# Logs
+# Logs and Python cache
 *.log
 npm-debug.log*
+__pycache__/
+*.py[cod]
 
 # Editor / OS
 .vscode/
@@ -72,3 +81,5 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+# Superpowers SDD workspaces (ledger, briefs, review packages)
+.superpowers/

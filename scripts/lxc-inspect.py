@@ -12,18 +12,26 @@ import paramiko
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-HOST = os.environ.get('PROXMOX_HOST', '192.168.178.87')
+HOST = os.environ.get('PROXMOX_HOST', '172.16.1.54')
 USER = os.environ.get('PROXMOX_USER', 'root')
 PASSWORD = os.environ.get('PROXMOX_PASSWORD')
 CID = os.environ.get('LXC_CONTAINER_ID', '115')
 
-if not PASSWORD:
-    print('PROXMOX_PASSWORD not set', file=sys.stderr)
+key_file = os.path.expanduser('~/.ssh/id_ed25519')
+if not PASSWORD and not os.path.exists(key_file):
+    print('PROXMOX_PASSWORD not set and ~/.ssh/id_ed25519 not found', file=sys.stderr)
     sys.exit(1)
 
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect(HOST, username=USER, password=PASSWORD, timeout=20)
+sys.path.insert(0, os.path.dirname(__file__))
+from ssh_utils import create_ssh_client
+
+ssh = create_ssh_client()
+connect_kwargs = {'timeout': 20}
+if PASSWORD:
+    connect_kwargs['password'] = PASSWORD
+elif os.path.exists(key_file):
+    connect_kwargs['key_filename'] = key_file
+ssh.connect(HOST, username=USER, **connect_kwargs)
 
 def run(label, cmd, timeout=60):
     print(f'\n--- {label} ---')

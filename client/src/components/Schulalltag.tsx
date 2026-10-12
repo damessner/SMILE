@@ -26,7 +26,8 @@ import {
   Sprout,
   ShieldAlert as ShieldAlertIcon,
 } from 'lucide-react';
-import { SchoolClass, PupilWithData, User } from '../types';
+import { SchoolClass, PupilWithData, User, RubricCriterion } from '../types';
+import { scoreSubject, type AssessmentRank } from '../lib/pupilItems';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmDialog';
 import { PupilProfileModal } from './PupilProfileModal';
@@ -78,6 +79,7 @@ interface SchulalltagProps {
   currentUser: User;
   onSelectClass: (classId: number) => void;
   onRefreshClassData: () => void;
+  criteria: RubricCriterion[];
 }
 
 export const Schulalltag: React.FC<SchulalltagProps> = ({
@@ -87,6 +89,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   currentUser,
   onSelectClass,
   onRefreshClassData,
+  criteria,
 }) => {
   const [cards, setCards] = useState<BehaviorCardItem[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
@@ -115,8 +118,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const [redCardTarget, setRedCardTarget] = useState<{
     pupilId: number;
     pupilName: string;
-    currentRank: 'Lehrling' | 'Geselle' | 'Meister';
-    demotedRank: 'Lehrling' | 'Geselle';
+    deductions: Array<{
+      label: string;
+      currentRank: 'Lehrling' | 'Geselle' | 'Meister';
+      demotedRank: 'Lehrling' | 'Geselle';
+    }>;
+    pendingNote: string | null;
   } | null>(null);
   const [redCardStep, setRedCardStep] = useState<1 | 2>(1);
   const [redCardNote, setRedCardNote] = useState('');
@@ -200,52 +207,81 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   useEffect(() => {
     loadTimeoutsData();
     const interval = setInterval(loadTimeoutsData, 15000); // Poll every 15s for live updates
-    return () => clearInterval(interval);
+    const handleTimeoutsUpdated = () => {
+      void loadTimeoutsData();
+    };
+    window.addEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
+    };
   }, []);
 
-  // Compute live rank per pupil (taking red cards into account)
-  const isPositiveRating = (r?: string) =>
-    r === 'crown' || r === 'smile' || r === '++' || r === '+';
+  const rubricItemKeys = useMemo(
+    () => Array.from(new Set(criteria.flatMap((c) => c.items.map((i) => i.key)))),
+    [criteria],
+  );
 
-  const getPupilRank = (p: PupilWithData) => {
-    const allItems = p.evaluations.flatMap((e) => e.items || []);
-    const pos = allItems.filter((i) => isPositiveRating(i.rating)).length;
-    let baseRank: 'Lehrling' | 'Geselle' | 'Meister' = 'Lehrling';
-    if (pos >= 14) baseRank = 'Meister';
-    else if (pos >= 8) baseRank = 'Geselle';
+  const getPupilSubjectResults = (p: PupilWithData) => {
+    const subjectsToScore =
+      currentClass?.mySubjects && currentClass.mySubjects.length > 0
+        ? currentClass.mySubjects
+        : Array.from(new Set(p.evaluations.map((e) => e.subjectCode))).map((code) => ({
+            code,
+            name: code,
+          }));
 
-    // Check active red cards
-    const pupilCards = cards.filter((c) => c.pupil_id === p.id);
+    const pupilCards = Array.isArray(cards) ? cards.filter((c) => c.pupil_id === p.id) : [];
     const activeRedCards = pupilCards.filter((c) => c.card_type === 'red');
     const hasRedCard = activeRedCards.length > 0;
 
-    let rank: 'Lehrling' | 'Geselle' | 'Meister' = baseRank;
-    let hasRedCardDemotion = false;
+    return subjectsToScore.map((s) => {
+      const scored = scoreSubject(p.evaluations, s.code, rubricItemKeys);
+      const baseRank = scored.rank;
+      let rank: AssessmentRank | null = baseRank;
+      let hasRedCardDemotion = false;
 
-    if (hasRedCard) {
-      if (baseRank === 'Meister') {
-        rank = 'Geselle';
-        hasRedCardDemotion = true;
-      } else if (baseRank === 'Geselle') {
-        rank = 'Lehrling';
-        hasRedCardDemotion = true;
-      } else {
-        rank = 'Lehrling';
+      if (hasRedCard && baseRank) {
+        if (baseRank === 'Meister') {
+          rank = 'Geselle';
+          hasRedCardDemotion = true;
+        } else if (baseRank === 'Geselle') {
+          rank = 'Lehrling';
+          hasRedCardDemotion = true;
+        } else {
+          rank = 'Lehrling';
+        }
       }
-    }
 
-    let color = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-    if (rank === 'Meister') color = 'bg-amber-400/20 text-amber-300 border-amber-400/40';
-    else if (rank === 'Geselle') color = 'bg-blue-500/20 text-blue-300 border-blue-500/40';
+      const displayRank = rank ?? 'Ausstehend';
+      const label = `${s.code} ${scored.positiveCount}/${rubricItemKeys.length} ${displayRank}`;
+
+      return {
+        subjectCode: s.code,
+        positiveCount: scored.positiveCount,
+        totalRated: scored.totalRated,
+        baseRank,
+        rank,
+        hasRedCardDemotion,
+        label,
+      };
+    });
+  };
+
+  const getPupilRank = (p: PupilWithData) => {
+    // Per-subject results only. A pupil-level rank is deliberately not derived:
+    // with subject-scoped scoring there is no single rank to read off `results[0]`
+    // (that fabricates one whenever the subject order changes), and every consumer
+    // below works per subject - the modal from `subjectResults`, the detail panel
+    // from the same list. `hasRedCardDemotion` is likewise per subject only.
+    const results = getPupilSubjectResults(p);
+    const pupilCards = Array.isArray(cards) ? cards.filter((c) => c.pupil_id === p.id) : [];
+    const activeRedCards = pupilCards.filter((c) => c.card_type === 'red');
 
     return {
-      rank,
-      baseRank,
-      hasRedCard,
-      hasRedCardDemotion,
+      hasRedCard: activeRedCards.length > 0,
       redCardCount: activeRedCards.length,
-      color,
-      pos,
+      subjectResults: results,
     };
   };
 
@@ -288,14 +324,34 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
   // Open 2-step Red Card Modal
   const handleOpenRedCardModal = (pupil: PupilWithData) => {
-    const { rank } = getPupilRank(pupil);
-    const demotedRank: 'Lehrling' | 'Geselle' = rank === 'Meister' ? 'Geselle' : 'Lehrling';
+    const { subjectResults } = getPupilRank(pupil);
+
+    // A red card demotes each subject's rank one level from its calculated
+    // (base) rank; subjects without a calculated rank are untouched and called
+    // out separately.
+    const deductions = subjectResults.flatMap((r) =>
+      r.baseRank
+        ? [
+            {
+              label: r.subjectCode,
+              currentRank: r.baseRank,
+              demotedRank: (r.baseRank === 'Meister' ? 'Geselle' : 'Lehrling') as
+                | 'Lehrling'
+                | 'Geselle',
+            },
+          ]
+        : [],
+    );
+    const pendingSubjects = subjectResults.filter((r) => !r.baseRank).map((r) => r.subjectCode);
 
     setRedCardTarget({
       pupilId: pupil.id,
       pupilName: pupil.fullName,
-      currentRank: rank,
-      demotedRank,
+      deductions,
+      pendingNote:
+        pendingSubjects.length > 0
+          ? `In ${pendingSubjects.join(', ')} liegt noch keine Bewertung vor – kein Rangverlust.`
+          : null,
     });
     setRedCardStep(1);
     setRedCardNote('');
@@ -320,9 +376,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       setRedCardNote('');
 
       // A red card costs a rank, so it carries the same undo window as the others.
-      toast.success(
-        `Rote Karte für ${target.pupilName}: ${target.currentRank} → ${target.demotedRank}.`,
-        {
+      const summary =
+        target.deductions.length > 0
+          ? target.deductions.map((d) => `${d.label}: ${d.currentRank} → ${d.demotedRank}`).join(', ')
+          : 'kein Rangverlust';
+      toast.success(`Rote Karte für ${target.pupilName}: ${summary}.`, {
           action: {
             label: 'Rückgängig',
             onClick: async () => {
@@ -536,11 +594,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const filteredPupils = useMemo(() => {
     return pupils.filter((p) => {
       const matchesSearch = p.fullName.toLowerCase().includes(searchQuery.toLowerCase());
-      const pRank = getPupilRank(p);
-      const matchesRank = filterRank === 'all' || pRank.rank === filterRank;
+      const pResults = getPupilSubjectResults(p);
+      const matchesRank =
+        filterRank === 'all' || pResults.some((r) => r.rank === filterRank);
       return matchesSearch && matchesRank;
     });
-  }, [pupils, searchQuery, filterRank, cards]);
+  }, [pupils, searchQuery, filterRank, cards, rubricItemKeys, currentClass?.mySubjects]);
 
   // Day names helper
   const dayNames = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
@@ -600,14 +659,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               onClick={() => setIsLwView(true)}
               className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                 isLwView
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-sm'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
                   : 'bg-slate-800/80 text-amber-300 hover:text-slate-50 hover:bg-slate-700 border border-amber-500/30'
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
               <span>Lernwerkstatt (LW)</span>
               {activeTimeouts.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-slate-50 font-bold text-[10px] animate-pulse">
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-[10px] animate-pulse">
                   {activeTimeouts.length}
                 </span>
               )}
@@ -898,7 +957,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             ) : (
               filteredPupils.map((pupil, index) => {
                 const isExpanded = expandedPupilId === pupil.id;
-                const { rank, baseRank, hasRedCard, hasRedCardDemotion, pos: positiveTicks } = getPupilRank(pupil);
+                const { hasRedCard, subjectResults } = getPupilRank(pupil);
                 const pupilCards = cards.filter((c) => c.pupil_id === pupil.id);
                 const greenCards = pupilCards.filter((c) => c.card_type === 'green');
                 const yellowCards = pupilCards.filter((c) => c.card_type === 'yellow');
@@ -961,39 +1020,40 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         </span>
                       </div>
 
-                      {/* Col 2: Rang
-
-                          Minimalist treatment: colour alone carries the meaning, so the
-                          badge drops its tint, border, bold weight and letter-spacing.
-                          Those four layers were stacked on every label in this row,
-                          which is what made the list read as busy rather than calm. */}
-                      <div className="col-span-2 flex items-center gap-1.5">
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                            rank === 'Meister'
-                              ? 'text-amber-300'
-                              : rank === 'Geselle'
-                              ? 'text-sky-300'
-                              : 'text-rose-300'
-                          }`}
-                        >
-                          {rank === 'Meister' ? (
-                            <Crown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                          ) : rank === 'Geselle' ? (
-                            <Wrench className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                          ) : (
-                            <Sprout className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                          )}
-                          <span>{rank}</span>
-                        </span>
-                        {hasRedCardDemotion && (
-                          <span
-                            className="text-[11px] text-rose-400/80"
-                            title={`Rangverlust durch Rote Karte (ursprünglich ${baseRank})`}
-                          >
-                            −1
-                          </span>
-                        )}
+                      {/* Col 2: Rang */}
+                      <div className="col-span-2 flex items-center gap-1.5 flex-wrap">
+                        {subjectResults.map((sr) => (
+                          <div key={sr.subjectCode} className="inline-flex items-center gap-1">
+                            <span
+                              className={`inline-flex items-center gap-1 text-xs font-medium ${
+                                sr.rank === 'Meister'
+                                  ? 'text-amber-300'
+                                  : sr.rank === 'Geselle'
+                                  ? 'text-sky-300'
+                                  : sr.rank === 'Lehrling'
+                                  ? 'text-rose-300'
+                                  : 'text-slate-400'
+                              }`}
+                            >
+                              {sr.rank === 'Meister' ? (
+                                <Crown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                              ) : sr.rank === 'Geselle' ? (
+                                <Wrench className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                              ) : sr.rank === 'Lehrling' ? (
+                                <Sprout className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                              ) : null}
+                              <span>{sr.label}</span>
+                            </span>
+                            {sr.hasRedCardDemotion && (
+                              <span
+                                className="text-[11px] text-rose-400/80 font-bold"
+                                title={`Rangverlust durch Rote Karte in ${sr.subjectCode} (ursprünglich ${sr.baseRank})`}
+                              >
+                                −1
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
 
                       {/* Col 3: Karten (Counts) */}
@@ -1106,20 +1166,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       <div className="bg-surface-2 px-5 py-4 border-t border-hairline space-y-4">
                         {/* Header inside detail: Info Bar */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 text-xs">
-                          <div className="flex items-center gap-3">
-                            <span className="text-slate-400">
-                              Kriterien: <strong className="text-slate-50">{positiveTicks}</strong> von 18 positiv
-                            </span>
-                            <span className="text-slate-600">·</span>
-                            <span className="text-slate-400">
-                              Basis-Rang:{' '}
-                              <strong className="text-amber-400">{baseRank}</strong>
-                              {hasRedCardDemotion && (
-                                <span className="ml-1 text-rose-400 font-bold">
-                                  (herabgestuft auf {rank} durch Rote Karte)
-                                </span>
-                              )}
-                            </span>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {subjectResults.map((sr) => (
+                              <span key={sr.subjectCode} className="text-slate-400">
+                                {sr.subjectCode}: {sr.positiveCount}/{rubricItemKeys.length} positiv ·
+                                Basis-Rang: {sr.baseRank ?? 'Ausstehend'}
+                                {sr.hasRedCardDemotion && ` (herabgestuft auf ${sr.rank} durch Rote Karte)`}
+                              </span>
+                            ))}
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -1346,21 +1400,28 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <div className="space-y-4">
                 <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-xs text-rose-200 space-y-2">
                   <p className="text-sm font-bold text-rose-300">
-                    Möchten Sie den Schüler {redCardTarget.pupilName} wirklich zu {redCardTarget.demotedRank} degradieren?
+                    Möchten Sie dem Schüler {redCardTarget.pupilName} wirklich eine Rote Karte geben?
                   </p>
                   <p className="text-slate-300 leading-relaxed">
                     Eine <strong className="text-rose-400">Rote Karte</strong> führt zu einem <strong>sofortigen Rangverlust (Instant Rank Loss)</strong>.
-                    Der Schüler wird verbindlich um eine Rangstufe degradiert:
+                    Der Schüler wird je Fach um eine Rangstufe degradiert:
                   </p>
-                  <div className="flex items-center gap-3 pt-2 font-bold text-sm">
-                    <span className="px-3 py-1 rounded-xl bg-slate-800 border border-slate-700 text-slate-300">
-                      {redCardTarget.currentRank}
-                    </span>
-                    <span className="text-rose-400">➔</span>
-                    <span className="px-3 py-1 rounded-xl bg-rose-500/30 border border-rose-500/60 text-rose-300">
-                      {redCardTarget.demotedRank}
-                    </span>
+                  <div className="flex flex-col gap-2 pt-2 font-bold text-sm">
+                    {redCardTarget.deductions.map((d) => (
+                      <span key={d.label} className="flex items-center gap-1.5">
+                        <span className="px-3 py-1 rounded-xl bg-slate-800 border border-slate-700 text-slate-300">
+                          {d.label}: {d.currentRank}
+                        </span>
+                        <span className="text-rose-400">➔</span>
+                        <span className="px-3 py-1 rounded-xl bg-rose-500/30 border border-rose-500/60 text-rose-300">
+                          {d.demotedRank}
+                        </span>
+                      </span>
+                    ))}
                   </div>
+                  {redCardTarget.pendingNote && (
+                    <p className="text-slate-400 text-xs pt-1">{redCardTarget.pendingNote}</p>
+                  )}
                 </div>
 
                 <p className="text-xs text-slate-400">
@@ -1388,11 +1449,19 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {/* Step 2: Mandatory Incident Description */}
             {redCardStep === 2 && (
               <div className="space-y-4">
-                <div className="text-xs text-slate-300">
+                <div className="text-xs text-slate-300 space-y-1.5">
                   Schüler*in: <strong className="text-slate-50">{redCardTarget.pupilName}</strong> (Klasse {currentClass.name})
-                  <span className="block text-rose-400 font-bold mt-1">
-                    Degradierung zu: {redCardTarget.demotedRank}
+                  <span className="block text-rose-400 font-bold">Degradierung:</span>
+                  <span className="flex flex-col gap-1.5 font-bold">
+                    {redCardTarget.deductions.map((d) => (
+                      <span key={d.label} className="text-slate-200">
+                        {d.label}: {d.currentRank} ➔ {d.demotedRank}
+                      </span>
+                    ))}
                   </span>
+                  {redCardTarget.pendingNote && (
+                    <span className="block text-slate-400 font-normal">{redCardTarget.pendingNote}</span>
+                  )}
                 </div>
 
                 <div>

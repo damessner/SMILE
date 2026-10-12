@@ -1,5 +1,5 @@
 import { pgTable, text, integer, boolean, timestamp, uuid, jsonb, numeric, serial, bigserial, index, uniqueIndex, pgSequence } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 /**
  * Source of IDs for pupils created inside SMILE.
@@ -42,7 +42,15 @@ export const teachingAssignments = pgTable('teaching_assignments', {
   id: serial('id').primaryKey(),
   teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
-  subjectCode: text('subject_code').notNull(), // e.g. "SD", "SE", "SM", "D", "E"
+  // Write canonical WebUntis codes — "D", "E", "M", "BO", "PH", "MUS", "TUD", ...
+  // Legacy aliases ("SD", "SE", "SM", "DigGB", "R KATH") occur in the imported data and
+  // stay readable because every lookup runs them through normalizeSubject(); do not
+  // write one. They are here because the seed (db/seed.ts:170) stores the WebUntis
+  // subject string verbatim as trimmed.toUpperCase() — that is deliberate, since
+  // normalizeSubject() resolves those forms, so do not "fix" the seed to pre-normalize.
+  // Invariant 1 in IF_YOU_ARE_AN_AI.md. No CHECK constraint enforces any of this, so
+  // the callers are the only guard.
+  subjectCode: text('subject_code').notNull(),
   subjectName: text('subject_name').notNull(),
 }, (t) => ({
   // Every guard resolves class access through this lookup.
@@ -62,9 +70,11 @@ export const users = pgTable('users', {
    * Set on every freshly seeded account. Until the user picks their own password the
    * account may log in and read, but every mutating endpoint is rejected — this is what
    * stops the old shared default ("smile2026") from being a permanent school-wide secret.
-   */
+  */
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  /** Incremented on reset/change so all previously issued JWTs become stale. */
+  sessionVersion: integer('session_version').default(0).notNull(),
 });
 
 /**
@@ -115,6 +125,10 @@ export const evaluations = pgTable('evaluations', {
   roundId: uuid('round_id').references(() => observationRounds.id).notNull(),
   pupilId: integer('pupil_id').references(() => pupils.id).notNull(),
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
+  // The column Invariant 1 in IF_YOU_ARE_AN_AI.md governs: canonical WebUntis codes
+  // only ("D", "E", "M", "BO", "PH", ...), never a full German name or a legacy alias
+  // ("SD", "SE", "SM"). No CHECK constraint here, and normalizeSubject() coerces rather
+  // than rejects, so a write path must validate the code itself — none does yet.
   subjectCode: text('subject_code').notNull(),
   teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
   proposedStatus: text('proposed_status'), // "Lehrling", "Geselle", "Meister"
@@ -231,10 +245,14 @@ export const timeoutIncidents = pgTable('timeout_incidents', {
   resolvedBy: integer('resolved_by').references(() => teachers.id),
   resolutionNote: text('resolution_note'),
   redCardId: uuid('red_card_id').references(() => behaviorCards.id),
+  expiresAt: timestamp('expires_at'),
 }, (t) => ({
   // Escalation counting and the LW live view.
   pupilIdx: index('timeout_incidents_pupil_idx').on(t.pupilId),
   statusSentIdx: index('timeout_incidents_status_sent_idx').on(t.status, t.sentAt),
+  expiresAtActiveIdx: index('timeout_incidents_expires_at_active_idx')
+    .on(t.expiresAt)
+    .where(sql`status = 'active'`),
 }));
 
 // 15. Timeout Escalations (Handled by SLC at 3, 6, 9... timeouts)
@@ -266,6 +284,18 @@ export const pupilBehaviorActions = pgTable('pupil_behavior_actions', {
 }, (t) => ({
   pupilStageIdx: index('pupil_behavior_actions_pupil_stage_idx').on(t.pupilId, t.stageLevel),
   actionDateIdx: index('pupil_behavior_actions_date_idx').on(t.actionDate),
+}));
+
+// 17. Class-Scoped Observation Round Locks
+export const classRoundLocks = pgTable('class_round_locks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  roundId: uuid('round_id').references(() => observationRounds.id).notNull(),
+  classId: integer('class_id').references(() => schoolClasses.id).notNull(),
+  isLocked: boolean('is_locked').default(false).notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  naturalKey: uniqueIndex('class_round_locks_round_class_uidx').on(t.roundId, t.classId),
+  classRoundIdx: index('class_round_locks_class_round_idx').on(t.classId, t.roundId),
 }));
 
 

@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { config } from '../config.js';
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
+import { safeErrorLogFields } from '../lib/log-safety.js';
 import {
   assessmentRubrics,
   behaviorCards,
@@ -21,12 +23,17 @@ import {
   type ClassAccess,
 } from '../lib/guards.js';
 import { normalizeSubject } from '../utils/subject.js';
+import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
 
 /**
- * Per-class permission results, filled in as classes are opened, so GET /api/classes
- * can report the raster permission for each class without re-resolving every guard.
+ * Per-class permission results, filled in as classes are opened.
+ *
+ * Removed: this map was written on two paths and read by none. It held a full
+ * `ClassAccess` per class, was never invalidated, and was only exported so a test could
+ * observe it — which no test did. `GET /api/classes` resolves every class's access on
+ * each request, which is correct and cheap enough at 15 classes; a cache that is never
+ * read and never invalidated is not a speed-up.
  */
-const accessCache = new Map<number, ClassAccess>();
 
 function normaliseSubjects(raw: string[]) {
   return Array.from(
@@ -40,8 +47,21 @@ function normaliseSubjects(raw: string[]) {
 }
 
 export const classRoutes: FastifyPluginAsync = async (fastify) => {
+  /** GET /api/classes/all — all real school classes for school-wide overview and reports */
+  fastify.get('/all', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    requireAuth(request);
+
+    const realClasses = await db
+      .select()
+      .from(schoolClasses)
+      .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
+      .orderBy(schoolClasses.grade, schoolClasses.name);
+
+    return reply.send(realClasses);
+  });
+
   /** GET /api/classes — the classes this user may open. */
-  fastify.get('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const global = await getGlobalAccess(user);
 
@@ -50,6 +70,11 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       .from(schoolClasses)
       .where(and(ne(schoolClasses.name, 'LW'), gt(schoolClasses.grade, 0)))
       .orderBy(schoolClasses.grade, schoolClasses.name);
+
+    const { all } = (request.query || {}) as { all?: string };
+    if (all === 'true' || all === '1') {
+      return reply.send(realClasses);
+    }
 
     // Look up teacher's timetable lesson hours across classes and subjects
     const teacherHoursMap = new Map<string, number>();
@@ -72,7 +97,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
           teacherHoursMap.set(key, (teacherHoursMap.get(key) || 0) + h.hours);
         }
       } catch (err) {
-        fastify.log.warn({ err }, 'Failed to query timetable lessons for classes');
+        fastify.log.warn(safeErrorLogFields(err), 'Failed to query timetable lessons for classes');
       }
     }
 
@@ -95,7 +120,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send(
         realClasses.map((c) => {
           const subs = normaliseSubjects(
-            mine.filter((a) => a.classId === c.id).map((a) => a.subjectName),
+            mine.filter((a) => a.classId === c.id).map((a) => a.subjectCode || a.subjectName),
           );
           return {
             ...c,
@@ -115,7 +140,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Resolve permissions for exactly the classes being listed.
     const resolved = await Promise.all(classes.map((c) => getClassAccess(user, c.id)));
-    classes.forEach((c, i) => accessCache.set(c.id, resolved[i]!));
+
 
     return reply.send(
       classes.map((cls, i) => {
@@ -133,7 +158,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** GET /api/classes/:classId/rubric */
-  fastify.get('/:classId/rubric', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/:classId/rubric', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
@@ -178,16 +203,28 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
    *   eq(col, null) -> `where  = $1` [null]      (matches zero rows)
    *   isNull(col)   -> `where  is null`          (correct)
    */
-  fastify.get('/:classId/pupils', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/:classId/pupils', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user = requireAuth(request);
     const { classId } = request.params as { classId: string };
     const cid = parseIdParam(classId, 'classId');
     if (!cid) return badRequest(reply, 'Ungültige Klassen-ID.');
 
+    // The rubric thresholds are part of the answer, not a fixed constant: the
+    // client's raster maths and the server's `lib/ranking.ts` must not drift, or
+    // a pupil can read Meister on screen while the server stores Lehrling.
+    const rubricConfig = {
+      meister: config.rankThresholds.meister,
+      geselle: config.rankThresholds.geselle,
+      itemCount: config.rubricItemCount,
+      aggregation: config.rankAggregation,
+    };
+
     if (cid === 999) {
       const [cls] = await db.select().from(schoolClasses).where(eq(schoolClasses.id, 999)).limit(1);
       return reply.send({
         class: cls ?? { id: 999, name: 'LW', grade: 0 },
+        submissionDeadline: config.submissionDeadline.toISOString(),
+        rubricConfig,
         pupils: [],
         canAccessRaster: false,
         isKv: false,
@@ -201,7 +238,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für die Schüler dieser Klasse' });
     }
 
-    accessCache.set(cid, access);
+
 
     const classPupils = await db
       .select()
@@ -260,17 +297,56 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       };
     });
 
+    // Look up teacher's timetable lesson hours for this class and subjects
+    const userHoursMap = new Map<string, number>();
+    if (user.teacherId) {
+      try {
+        const hoursRes = await getPool().query<{
+          class_id: number;
+          subject_code: string;
+          hours: number;
+        }>(
+          `SELECT class_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
+             FROM timetable_lessons
+            WHERE teacher_id = $1 AND class_id = $2
+            GROUP BY class_id, UPPER(TRIM(subject_code))`,
+          [user.teacherId, cid],
+        );
+        for (const h of hoursRes.rows) {
+          const norm = normalizeSubject(h.subject_code).code;
+          userHoursMap.set(norm, (userHoursMap.get(norm) || 0) + h.hours);
+        }
+      } catch (err) {
+        fastify.log.warn(safeErrorLogFields(err), 'Failed to query timetable lessons for class pupils');
+      }
+    }
+
+    const mySubjectsWithHours = access.subjects.map((s) => ({
+      ...s,
+      hours: userHoursMap.get(s.code) || 0,
+    }));
+
+    let isLockedByConference = false;
+    if (round) {
+      const isClassLocked = await getClassRoundLockState(round.id, cid);
+      isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
+    }
+
     return reply.send({
       class: {
         id: access.classId,
         name: (await className(cid)) ?? String(cid),
       },
       round,
+      roundId: round?.id ?? null,
+      isLockedByConference,
       canAccessRaster: access.isCoreTeacher,
       isCoreTeacher: access.isCoreTeacher,
       canRate: access.canRate,
       isKv: access.isKv,
-      mySubjects: access.subjects,
+      submissionDeadline: config.submissionDeadline.toISOString(),
+      rubricConfig,
+      mySubjects: mySubjectsWithHours,
       pupils: pupilsWithData,
     });
   });
@@ -286,4 +362,4 @@ async function className(classId: number): Promise<string | undefined> {
 }
 
 /** Exported for tests. */
-export { accessCache };
+export {};

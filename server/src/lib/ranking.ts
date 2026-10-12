@@ -20,6 +20,14 @@ export function isCountedRating(rating: string | null | undefined): boolean {
 
 export interface RatingLike {
   rating: string;
+  /**
+   * Rubric criterion this rating belongs to. Optional so callers that only carry
+   * ratings keep working, but present on every real query: without it a duplicated
+   * item row cannot be recognised and would be counted twice.
+   */
+  itemKey?: string;
+  /** When the rating was last written; newest wins for a duplicated itemKey. */
+  updatedAt?: string | Date;
 }
 
 /**
@@ -33,12 +41,61 @@ export interface RatingGroups {
   /**
    * The figure the rank thresholds are compared against.
    *
-   * With `RANK_AGGREGATION=total` this is `positiveCount`, preserving the behaviour the
-   * system has always reported. With `normalized` each evaluation is rescaled to an
-   * 18-item raster before averaging, so "14" always means "14 of 18" no matter how many
-   * core-subject teachers rated the pupil.
+   * With `RANK_AGGREGATION=total` (the default, preserving historical behaviour) this
+   * is `positiveCount`: every positive item across all of a pupil's evaluations. That
+   * total is unbounded — a pupil rated by three core-subject teachers can reach 54
+   * items — so 14 is easier to reach with more co-teachers than with one.
+   *
+   * With `normalized` it is the *mean* positive count across the evaluations that
+   * actually contributed items.
+   *
+   * It does NOT rescale to an 18-item raster, which is what the setting's own docstring
+   * used to claim. The "scaling" step was `(positive / 18) * 18`, which is an identity,
+   * so the only thing the mode ever did was divide by the number of contributing
+   * evaluations. Corrected here rather than left as a comment that misdescribes the
+   * code; the arithmetic is now written as the average it actually is. See hardening
+   * roadmap D8 — making this mean "14 of 18" needs the per-evaluation *rated* count as
+   * the denominator, which is a product decision, not a one-line change.
    */
   scoreForThreshold: number;
+}
+
+/**
+ * Collapse duplicate rows for the same rubric criterion into the one the client
+ * shows: newest `updatedAt` wins, and equal timestamps keep the earlier row.
+ *
+ * The tie-break is deliberately order, never rating value, so a resolution
+ * cannot be biased toward a positive outcome — the same rule `scoreSubject`
+ * applies on the client. Items without an `itemKey` cannot be identified as
+ * duplicates and are all kept.
+ */
+export function dedupeRatingsByItemKey(items: RatingLike[]): RatingLike[] {
+  const byKey = new Map<string, RatingLike>();
+  const withoutKey: RatingLike[] = [];
+
+  for (const item of items ?? []) {
+    if (typeof item.itemKey !== 'string' || item.itemKey === '') {
+      withoutKey.push(item);
+      continue;
+    }
+    const existing = byKey.get(item.itemKey);
+    if (!existing) {
+      byKey.set(item.itemKey, item);
+      continue;
+    }
+    if (ratingTimestamp(item) > ratingTimestamp(existing)) {
+      byKey.set(item.itemKey, item);
+    }
+  }
+
+  return [...byKey.values(), ...withoutKey];
+}
+
+/** Missing or unparsable timestamps sort as the oldest, so a real one wins. */
+function ratingTimestamp(item: RatingLike): number {
+  if (!item.updatedAt) return Number.NEGATIVE_INFINITY;
+  const ts = new Date(item.updatedAt).getTime();
+  return Number.isNaN(ts) ? Number.NEGATIVE_INFINITY : ts;
 }
 
 /**
@@ -53,7 +110,9 @@ export function summarizeRatings(
   groups: Array<{ evaluationId: string; items: RatingLike[] }>,
 ): RatingGroups {
   const perEvaluation = groups.map((g) => {
-    const items = g.items ?? [];
+    // One row per criterion before counting, so a duplicated item key cannot
+    // inflate the figures past the 18-item raster.
+    const items = dedupeRatingsByItemKey(g.items ?? []);
     return {
       positive: items.filter((i) => isPositiveRating(i.rating)).length,
       rated: items.filter((i) => isCountedRating(i.rating)).length,
@@ -67,9 +126,10 @@ export function summarizeRatings(
   let scoreForThreshold = positiveCount;
 
   if (config.rankAggregation === 'normalized' && contributing.length > 0) {
-    const perItem = config.rubricItemCount;
-    const scaledTotal = contributing.reduce((sum, e) => sum + (e.positive / perItem) * perItem, 0);
-    scoreForThreshold = scaledTotal / contributing.length;
+    // The mean positive count per contributing evaluation. Written without the
+    // `(positive / perItem) * perItem` round trip this used to perform, which cancelled
+    // out to `positive` and made the normalisation a no-op.
+    scoreForThreshold = positiveCount / contributing.length;
   }
 
   return {

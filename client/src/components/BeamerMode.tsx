@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Lock, Unlock, Gavel, X, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { getConferenceSummary, lockVoting, conferenceOverride } from '../services/api';
 import { useToast } from './Toast';
+import { formatSubjectEvidence } from '../lib/conferenceEvidence';
 
 interface BeamerModeProps {
   classId: number;
@@ -22,7 +23,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
     try {
       const res = await getConferenceSummary(classId);
       setData(res);
-      setIsLocked(res.round?.isLocked || false);
+      setIsLocked(res.isLocked ?? res.round?.isLocked ?? false);
     } catch (e) {
       console.error(e);
     } finally {
@@ -120,7 +121,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
                   <h3 className="font-bold text-lg text-slate-50 mb-1">{p.fullName}</h3>
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <span>
-                      Punkte: <b className="text-amber-400">{p.positiveCount}</b> / 18
+                      Raster: <strong className="text-amber-400">{formatSubjectEvidence(p.subjectEvidence)}</strong>
                     </span>
                     {p.isConfirmed && (
                       <span className="text-emerald-400 flex items-center gap-1">
