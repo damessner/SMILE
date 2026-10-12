@@ -301,8 +301,8 @@ implemented honestly.
 ## Test coverage
 
 The root `npm test` command runs the server and client workspaces (with `PORT` set). The latest
-local-safe run reported **577 server tests passed, 27 PostgreSQL integration tests skipped, and
-235 client tests passed** (2026-10-12); `server/src/docs/contract.test.ts` keeps every document
+local-safe run reported **581 server tests passed, 27 PostgreSQL integration tests skipped, and
+241 client tests passed** (2026-10-12); `server/src/docs/contract.test.ts` keeps every document
 that quotes a total in agreement.
 
 Run it as `npm test` from the repository root. There is no root vitest config, so invoking
