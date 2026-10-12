@@ -73,10 +73,12 @@ def main():
     cert_path = resolve_setting(loaded, "INDEPENDENT_BACKUP_CERT", "/etc/smile/independent_backup.cert.pem")
     keep_days = int(resolve_setting(loaded, "INDEPENDENT_KEEP_DAYS", "14"))
 
-    os.makedirs(dest_dir, exist_ok=True)
-
+    # Fail fast before touching the filesystem: a host without the encryption
+    # certificate must not leave a stray destination directory behind.
     if not os.path.exists(cert_path):
         fail(f"Public certificate not found at {cert_path}. Run setup_independent_keys.py first.")
+
+    os.makedirs(dest_dir, exist_ok=True)
 
     # Find the newest local pg_dump archive
     dumps = glob.glob(os.path.join(source_dir, "smile_db_*.dump"))

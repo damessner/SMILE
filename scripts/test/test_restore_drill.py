@@ -34,13 +34,17 @@ class TestRestoreDrill(unittest.TestCase):
                     self.assertEqual(cm.exception.code, 1)
 
     def test_backup_independent_fails_if_cert_missing(self):
-        with patch.dict(os.environ, {
-            "INDEPENDENT_BACKUP_CERT": "/non/existent/path/cert.pem",
-        }):
-            with patch("backup_independent.load_env", return_value={}):
-                with self.assertRaises(SystemExit) as cm:
-                    backup_independent.main()
-                self.assertEqual(cm.exception.code, 1)
+        # Isolate the destination directory: the CI runner cannot write to the
+        # default /var/backups path, and the test must never touch it.
+        with tempfile.TemporaryDirectory() as dest_dir:
+            with patch.dict(os.environ, {
+                "INDEPENDENT_BACKUP_CERT": "/non/existent/path/cert.pem",
+                "INDEPENDENT_BACKUP_DIR": dest_dir,
+            }):
+                with patch("backup_independent.load_env", return_value={}):
+                    with self.assertRaises(SystemExit) as cm:
+                        backup_independent.main()
+                    self.assertEqual(cm.exception.code, 1)
 
 if __name__ == "__main__":
     unittest.main()
