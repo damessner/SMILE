@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { FastifyPluginAsync } from 'fastify';
 import { db, getPool } from '../db/index.js';
-import { databaseUrl } from '../config.js';
+import { backupDirectory, backupEncryptionPassphrase, databaseUrl } from '../config.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
 import { closeAllWebSockets } from '../ws/live-sync.js';
+import { endRestore, tryBeginRestore } from '../lib/restore-lock.js';
+import { runPgDump, runPgRestore, runTool } from '../lib/pg-cli.js';
 import {
   assessmentRubrics,
   auditLogs,
@@ -29,45 +29,81 @@ import {
 import { assertPasswordCurrent, requireAuth, safeTeacherId } from '../lib/guards.js';
 import { parsePageParams } from '../lib/pagination.js';
 
-const execFileAsync = promisify(execFile);
+/**
+ * Raised when a restore fails before the live database is modified (tools missing,
+ * safety dump failed). Nothing is rolled back in that case.
+ */
+export class PreRestoreError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PreRestoreError';
+  }
+}
 
+/** Forward operation: writes the safety dump of the live database, then replaces it with backupPath. */
 export type RestoreRunner = (
   dbUrl: string,
   backupPath: string,
   safetyPath: string,
 ) => Promise<{ safetyCreated: boolean }>;
 
+/** Rollback operation: replaces the live database with the pre-restore safety dump. */
+export type RollbackRunner = (dbUrl: string, safetyPath: string) => Promise<void>;
+
 export const defaultRestoreRunner: RestoreRunner = async (dbUrl, backupPath, safetyPath) => {
   // Pre-flight: verify required PostgreSQL client binaries exist
   try {
-    await execFileAsync('pg_dump', ['--version']);
-    await execFileAsync('pg_restore', ['--version']);
+    await runTool('pg_dump', ['--version']);
+    await runTool('pg_restore', ['--version']);
   } catch {
-    throw new Error('PostgreSQL-Werkzeuge (pg_dump / pg_restore) sind auf dem Server nicht im PATH verfügbar.');
+    throw new PreRestoreError('PostgreSQL-Werkzeuge (pg_dump / pg_restore) sind auf dem Server nicht im PATH verfügbar.');
   }
 
-  // Step 1: Pre-restore safety snapshot
-  await execFileAsync('pg_dump', ['-Fc', '--no-owner', '--no-acl', '-d', dbUrl, '-f', safetyPath]);
-
-  // Step 2: pg_restore
+  // Step 1: safety snapshot. Read-only, so a failure here leaves the data untouched.
   try {
-    await execFileAsync('pg_restore', ['--clean', '--if-exists', '--no-owner', '--no-acl', '-d', dbUrl, backupPath]);
-  } catch (err: unknown) {
-    const errorWithCode = err as { code?: number };
-    // pg_restore exits with 1 when warnings occur (such as non-existent objects on clean drop)
-    if (errorWithCode && typeof errorWithCode.code === 'number' && errorWithCode.code === 1) {
-      // warnings are acceptable
-    } else {
-      throw err;
-    }
+    await runPgDump(dbUrl, safetyPath);
+  } catch (err) {
+    throw new PreRestoreError(
+      `Sicherheitskopie fehlgeschlagen: ${err instanceof Error ? err.message : 'unbekannter Fehler'}`,
+    );
   }
+
+  // Step 2: destructive replacement. Any error from here on is handled by the rollback.
+  await runPgRestore(dbUrl, backupPath);
   return { safetyCreated: true };
 };
 
+export const defaultRollbackRunner: RollbackRunner = async (dbUrl, safetyPath) => {
+  if (!fs.existsSync(safetyPath)) {
+    throw new Error('Sicherheitskopie für die Zurücksetzung wurde nicht gefunden.');
+  }
+  await runPgRestore(dbUrl, safetyPath);
+};
+
 let activeRestoreRunner: RestoreRunner = defaultRestoreRunner;
+let activeRollbackRunner: RollbackRunner = defaultRollbackRunner;
 
 export function setRestoreRunnerForTests(runner: RestoreRunner | null): void {
   activeRestoreRunner = runner ?? defaultRestoreRunner;
+}
+
+export function setRollbackRunnerForTests(runner: RollbackRunner | null): void {
+  activeRollbackRunner = runner ?? defaultRollbackRunner;
+}
+
+/** Returns true when the safety dump was restored. Never throws; logs the outcome. */
+async function rollbackToSafety(
+  dbUrl: string,
+  safetyFilePath: string,
+  log: { error: (obj: object, msg: string) => void },
+): Promise<boolean> {
+  try {
+    await activeRollbackRunner(dbUrl, safetyFilePath);
+    return true;
+  } catch (err) {
+    log.error(safeErrorLogFields(err), 'Automatic rollback from pre-restore safety backup failed');
+    return false;
+  }
 }
 
 export const backupRoutes: FastifyPluginAsync = async (fastify) => {
@@ -269,7 +305,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const backupDir = process.env.BACKUP_DIR || '/var/backups/smile';
+    const backupDir = backupDirectory();
     if (!fs.existsSync(backupDir)) {
       return reply.send({ backups: [] });
     }
@@ -329,8 +365,12 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
    *  - Administrator only.
    *  - Strict filename sanitization and traversal prevention.
    *  - Automatic pre-restore safety dump created before restore execution.
+   *  - Restore gate (restore-lock.ts) and LiveSync disconnect (1001) happen BEFORE the
+   *    first destructive statement, not after success.
+   *  - If anything fails after the destructive step, the safety dump is restored
+   *    automatically. The response reports both the failure and the rollback outcome,
+   *    and names the safety file. The safety file is never deleted.
    *  - Full audit logging upon completion.
-   *  - LiveSync WebSocket disconnect (code 1001) to force clients to re-synchronize.
    */
   fastify.post(
     '/restore',
@@ -365,7 +405,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Nicht unterstütztes Backup-Dateiformat.' });
       }
 
-      const backupDir = process.env.BACKUP_DIR || '/var/backups/smile';
+      const backupDir = backupDirectory();
       const targetFilePath = path.join(backupDir, cleanId);
 
       if (!fs.existsSync(targetFilePath)) {
@@ -384,6 +424,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
 
       let targetRestorePath = targetFilePath;
       let tempDecryptedPath: string | null = null;
+      let restoreGateHeld = false;
 
       try {
         if (cleanId.endsWith('.dump.enc')) {
@@ -391,52 +432,98 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
           // no fallback to a second variable name: scripts/backup_m365.py encrypts
           // only with BACKUP_ENCRYPTION_PASSPHRASE, so accepting anything else here
           // could produce a confusing failure instead of a clear misconfiguration.
-          const passphrase = process.env.BACKUP_ENCRYPTION_PASSPHRASE;
+          const passphrase = backupEncryptionPassphrase();
           if (!passphrase) {
             return reply.status(400).send({
               error: 'Kein Entschlüsselungs-Passwort (BACKUP_ENCRYPTION_PASSPHRASE) konfiguriert.',
             });
           }
           tempDecryptedPath = path.join(backupDir, `temp-decrypt-${Date.now()}.dump`);
-          await execFileAsync('openssl', [
+          // The passphrase travels in the child environment, not argv (visible in the process list).
+          await runTool('openssl', [
             'enc', '-d', '-aes-256-cbc', '-pbkdf2',
             '-in', targetFilePath,
             '-out', tempDecryptedPath,
-            '-pass', `pass:${passphrase}`,
-          ]);
+            '-pass', 'env:SMILE_BACKUP_PASSPHRASE',
+          ], { env: { SMILE_BACKUP_PASSPHRASE: passphrase }, secrets: [passphrase] });
           targetRestorePath = tempDecryptedPath;
         }
 
         const dbUrl = databaseUrl();
-        await activeRestoreRunner(dbUrl, targetRestorePath, safetyFilePath);
 
-        request.log.info(
-          { restoredBackup: cleanId, safetyBackup: safetyFileName, restoredBy: user.username },
-          'Database restored successfully',
-        );
+        // Gate first, then disconnect: writes are refused and clients are dropped before the
+        // safety dump starts. Clients can reconnect only once the gate is released below.
+        if (!tryBeginRestore()) {
+          return reply.status(409).send({ error: 'Eine andere Wiederherstellung läuft bereits.' });
+        }
+        restoreGateHeld = true;
+        closeAllWebSockets(1001, 'database restore in progress');
 
-        // Record in audit log
-        await db.insert(auditLogs).values({
-          actorId: safeTeacherId(user.teacherId),
-          action: 'DATABASE_RESTORED',
-          entity: 'system',
-          entityId: 'backup',
-          payload: {
-            restoredBackup: cleanId,
-            safetyBackup: safetyFileName,
-            restoredBy: user.username,
-            restoredAt: new Date().toISOString(),
-          },
-        });
+        const failAfterDestructiveStep = async (err: unknown) => {
+          const rolledBack = await rollbackToSafety(dbUrl, safetyFilePath, request.log);
+          request.log.error(
+            { ...safeErrorLogFields(err), safetyBackup: safetyFileName, rollbackSucceeded: rolledBack },
+            'Database restore failed',
+          );
+          return reply.status(500).send({
+            error: rolledBack
+              ? 'Wiederherstellung fehlgeschlagen. Die Datenbank wurde automatisch auf die Sicherheitskopie zurückgesetzt.'
+              : 'Wiederherstellung fehlgeschlagen. Die automatische Zurücksetzung ist ebenfalls fehlgeschlagen. Die Sicherheitskopie muss manuell eingespielt werden.',
+            preRestoreBackup: safetyFileName,
+            rollback: { attempted: true, succeeded: rolledBack },
+            liveSyncReopened: true,
+          });
+        };
 
-        // Close all WebSockets to force client-side re-synchronization
-        closeAllWebSockets(1001, 'database restored');
+        try {
+          await activeRestoreRunner(dbUrl, targetRestorePath, safetyFilePath);
+        } catch (err) {
+          if (err instanceof PreRestoreError) {
+            // Failed before the live database was modified: there is nothing to roll back.
+            request.log.error(
+              { ...safeErrorLogFields(err), safetyBackup: safetyFileName },
+              'Restore aborted before the database was modified',
+            );
+            return reply.status(500).send({
+              error: 'Wiederherstellung fehlgeschlagen. Die Datenbank wurde nicht verändert. Überprüfen Sie die Server-Logs.',
+              preRestoreBackup: fs.existsSync(safetyFilePath) ? safetyFileName : null,
+              rollback: { attempted: false, succeeded: false },
+              liveSyncReopened: true,
+            });
+          }
+          return failAfterDestructiveStep(err);
+        }
+
+        try {
+          request.log.info(
+            { restoredBackup: cleanId, safetyBackup: safetyFileName, restoredBy: user.username },
+            'Database restored successfully',
+          );
+
+          // Record in audit log
+          await db.insert(auditLogs).values({
+            actorId: safeTeacherId(user.teacherId),
+            action: 'DATABASE_RESTORED',
+            entity: 'system',
+            entityId: 'backup',
+            payload: {
+              restoredBackup: cleanId,
+              safetyBackup: safetyFileName,
+              restoredBy: user.username,
+              restoredAt: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          // A failure after the data was replaced is still a failed restore; it rolls back too.
+          return failAfterDestructiveStep(err);
+        }
 
         return reply.send({
           success: true,
           message: `Backup ${cleanId} wurde erfolgreich eingespielt. Sicherheitskopie ${safetyFileName} wurde erstellt.`,
           preRestoreBackup: safetyFileName,
           restoredAt: new Date().toISOString(),
+          liveSyncReopened: true,
         });
       } catch (err) {
         request.log.error(safeErrorLogFields(err), 'Database restore execution failed');
@@ -444,6 +531,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
           error: 'Wiederherstellung fehlgeschlagen. Überprüfen Sie die Server-Logs.',
         });
       } finally {
+        if (restoreGateHeld) endRestore();
         if (tempDecryptedPath && fs.existsSync(tempDecryptedPath)) {
           try {
             fs.unlinkSync(tempDecryptedPath);

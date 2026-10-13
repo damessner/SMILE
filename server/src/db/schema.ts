@@ -72,6 +72,12 @@ export const users = pgTable('users', {
    * stops the old shared default ("smile2026") from being a permanent school-wide secret.
   */
   mustChangePassword: boolean('must_change_password').default(true).notNull(),
+  /**
+   * When the current password was issued (seed, administrator-issued credential, or the
+   * user's own change). A start password still awaiting its change expires 14 days after
+   * this instant; see POST /api/auth/login.
+   */
+  passwordIssuedAt: timestamp('password_issued_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   /** Incremented on reset/change so all previously issued JWTs become stale. */
   sessionVersion: integer('session_version').default(0).notNull(),

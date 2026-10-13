@@ -137,7 +137,7 @@ async function reset() {
 
     // Reset all teacher accounts to initial bootstrap password & mustChangePassword
     const userRes = await client.query(
-      "UPDATE users SET password_hash = $1, must_change_password = true, session_version = 0 WHERE role != \x27admin\x27 RETURNING username;",
+      "UPDATE users SET password_hash = $1, must_change_password = true, password_issued_at = now(), session_version = 0 WHERE role != \x27admin\x27 RETURNING username;",
       [hash]
     );
 

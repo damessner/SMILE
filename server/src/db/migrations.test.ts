@@ -89,4 +89,12 @@ describe('schema is owned by the committed migrations', () => {
     expect(migrationSql).toMatch(/CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?"?class_round_locks"?/i);
     expect(migrationSql).toMatch(/UNIQUE\s*\(\s*round_id\s*,\s*class_id\s*\)/i);
   });
+
+  it('migration history adds users.password_issued_at as NOT NULL with a default', () => {
+    // The start-password expiry at login reads this column; existing rows get now().
+    expect(migrationSql).toMatch(
+      /ALTER\s+TABLE\s+users\s+ADD\s+COLUMN\s+(IF\s+NOT\s+EXISTS\s+)?password_issued_at\s+TIMESTAMP[^;]*DEFAULT\s+now\(\)\s+NOT\s+NULL/i,
+    );
+    expect(schemaSource).toMatch(/passwordIssuedAt: timestamp\('password_issued_at'\)\.defaultNow\(\)\.notNull\(\)/);
+  });
 });

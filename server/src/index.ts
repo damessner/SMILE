@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-import { assertServerConfig, config, ConfigError, insecureConfigWarnings, jwtSecret } from './config.js';
+import { assertServerConfig, config, ConfigError, insecureConfigWarnings, jwtSecret, productionCookieError } from './config.js';
 import { buildAuthenticate, buildRequireAccountAdministrator, buildRequireRole, buildSessionGuard, getTeacher } from './lib/guards.js';
 import type { PersistedUserSessionState } from './lib/session.js';
 import { rateLimitKey } from './lib/rate-limit.js';
@@ -35,6 +35,7 @@ import {
   startWebSocketHeartbeat,
   stopWebSocketHeartbeat,
 } from './ws/live-sync.js';
+import { isRestoreInProgress } from './lib/restore-lock.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -120,6 +121,19 @@ export async function buildServer(
   // account/session version in preHandler, after schema validation but before any
   // protected handler or database write.
   fastify.addHook('preHandler', buildSessionGuard(sessionStateReader));
+
+  // While a restore replaces the database, refuse writes and new live-sync sockets.
+  // The restore route is exempt so a concurrent restore still gets its own 409.
+  fastify.addHook('onRequest', async (request, reply) => {
+    if (!isRestoreInProgress()) return;
+    const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
+    const isRestoreRoute = request.method === 'POST' && request.url.split('?', 1)[0] === '/api/backup/restore';
+    if (isRestoreRoute || (!isWrite && !request.url.startsWith('/ws'))) return;
+    return reply.status(503).send({
+      error: 'Wiederherstellung läuft. Bitte später erneut versuchen.',
+      code: 'RESTORE_IN_PROGRESS',
+    });
+  });
 
   fastify.setErrorHandler((error: FastifyError, request, reply) => {
     const correlationId = request.id || 'req-unknown';
@@ -286,10 +300,12 @@ export async function start() {
   // Known-accepted deployment states (for example plain-HTTP LAN serving) are
   // surfaced here rather than silently absorbed.
   for (const warning of insecureConfigWarnings()) fastify.log.warn(warning);
+  const cookieError = productionCookieError();
+  if (cookieError) fastify.log.error(cookieError);
 
   // Apply pending schema migrations before accepting traffic, so the app never
   // serves requests against a schema it does not expect.
-  if (process.env.RUN_MIGRATIONS !== 'false') {
+  if (config.runMigrations) {
     try {
       await runMigrations();
       fastify.log.info('Database migrations up to date');

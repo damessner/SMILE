@@ -186,24 +186,29 @@ apt-get install -y nodejs
 
 # Dedicated unprivileged service user
 if ! id -u smile >/dev/null 2>&1; then
-  useradd -r -m -s /bin/bash -d /opt/smile smile
+  # -M: /opt/smile becomes a symlink to the live release (created in step 11)
+  useradd -r -M -s /bin/bash -d /opt/smile smile
 fi
 '
 
 ok "Prerequisites installed inside container."
 
-# 8. Clone or transfer SMILE application
-info "Setting up SMILE codebase in /opt/smile..."
+# 8. Clone or transfer SMILE application into a new release directory.
+#    Layout: /opt/smile -> /opt/smile-releases/<REL> (symlink set in step 11),
+#            /opt/smile-shared/.env (mutable config, outside every release).
+info "Setting up SMILE codebase in /opt/smile-releases/<release>..."
 
+REL="$(date -u +%Y%m%d-%H%M%S)"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 CLONE_SUCCESS=false
 
 # Try git clone first
 if pct exec "$CTID" -- bash -c "
+mkdir -p /opt/smile-releases /opt/smile-shared
 if [ -n \"$GITHUB_TOKEN\" ]; then
-  git clone https://${GITHUB_TOKEN}@github.com/damessner/SMILE.git /opt/smile
+  git clone https://${GITHUB_TOKEN}@github.com/damessner/SMILE.git /opt/smile-releases/$REL
 else
-  git clone https://github.com/damessner/SMILE.git /opt/smile
+  git clone https://github.com/damessner/SMILE.git /opt/smile-releases/$REL
 fi
 " 2>/dev/null; then
   CLONE_SUCCESS=true
@@ -216,7 +221,7 @@ if [ "$CLONE_SUCCESS" = false ]; then
     pct exec 115 -- tar -czf /tmp/smile_source.tar.gz -C /opt/smile --exclude="node_modules" --exclude=".env" .
     pct pull 115 /tmp/smile_source.tar.gz /tmp/smile_source.tar.gz
     pct push "$CTID" /tmp/smile_source.tar.gz /tmp/smile_source.tar.gz
-    pct exec "$CTID" -- tar -xzf /tmp/smile_source.tar.gz -C /opt/smile
+    pct exec "$CTID" -- bash -c "mkdir -p /opt/smile-releases/$REL && tar -xzf /tmp/smile_source.tar.gz -C /opt/smile-releases/$REL"
     pct exec 115 -- rm -f /tmp/smile_source.tar.gz
     rm -f /tmp/smile_source.tar.gz
     CLONE_SUCCESS=true
@@ -225,7 +230,7 @@ fi
 
 [ "$CLONE_SUCCESS" = true ] || fail "Could not clone SMILE. If the repo is private, re-run with: GITHUB_TOKEN=ghp_xxx $0"
 
-ok "Codebase deployed to /opt/smile."
+ok "Codebase deployed to /opt/smile-releases/$REL (live link set in step 11)."
 
 # 9. Configure PostgreSQL & generate secure secrets
 info "Configuring PostgreSQL and application environment..."
@@ -244,18 +249,20 @@ sudo -u postgres psql -c "CREATE USER smile_user WITH ENCRYPTED PASSWORD '"$DB_P
 sudo -u postgres psql -c "CREATE DATABASE smile_db OWNER smile_user;"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE smile_db TO smile_user;"
 
-cat > /opt/smile/.env << EOF
+mkdir -p /opt/smile-shared
+cat > /opt/smile-shared/.env << EOF
 DATABASE_URL="postgres://smile_user:${DB_PASS}@127.0.0.1:5432/smile_db"
 JWT_SECRET="${JWT_SECRET}"
 INITIAL_USER_PASSWORD="${INITIAL_PW}"
 PORT=3000
 HOST="0.0.0.0"
 NODE_ENV="production"
+COOKIE_SECURE="false"
 RUN_MIGRATIONS="true"
 EOF
 
-chmod 600 /opt/smile/.env
-chown smile:smile /opt/smile/.env
+chmod 600 /opt/smile-shared/.env
+chown smile:smile /opt/smile-shared/.env
 '
 
 # 10. If importing database from CT 115, restore now
@@ -273,21 +280,32 @@ fi
 # 11. Build application and run migrations
 info "Building application bundles (Client & Server)..."
 
-pct exec "$CTID" -- bash -c '
+pct exec "$CTID" -- env REL="$REL" bash -c '
 set -euo pipefail
-cd /opt/smile
+RELDIR="/opt/smile-releases/$REL"
+cd "$RELDIR"
 
 # Install production dependencies
 npm install --omit=dev --ignore-scripts
 
 # Build if dist folders not present
-if [ ! -d "/opt/smile/server/dist" ] || [ ! -d "/opt/smile/client/dist" ]; then
+if [ ! -d "$RELDIR/server/dist" ] || [ ! -d "$RELDIR/client/dist" ]; then
   npm install --ignore-scripts
   npm run build --workspaces
   npm prune --omit=dev
 fi
 
-chown -R smile:smile /opt/smile
+# Mutable config lives outside the release and is linked in.
+ln -sfn /opt/smile-shared/.env "$RELDIR/.env"
+
+# Atomic live link. Fresh install: /opt/smile must not exist as a plain directory.
+if [ -d /opt/smile ] && [ ! -L /opt/smile ]; then
+  echo "ERROR: /opt/smile is a plain directory; refusing to replace it" >&2; exit 1
+fi
+ln -sfn "$RELDIR" /opt/.smile-next
+mv -T /opt/.smile-next /opt/smile
+
+chown -R smile:smile "$RELDIR"
 '
 
 ok "Application built successfully."
@@ -309,7 +327,7 @@ ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
-EnvironmentFile=/opt/smile/.env
+EnvironmentFile=/opt/smile-shared/.env
 
 [Install]
 WantedBy=multi-user.target

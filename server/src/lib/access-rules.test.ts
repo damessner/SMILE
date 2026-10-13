@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import { config } from '../config.js';
 
@@ -34,9 +34,19 @@ function code(fileUrl: URL): string {
     .replace(/\/\/.*$/gm, '');
 }
 
+function clientAppSource(): string {
+  const appDir = new URL('../../../client/src/app/', import.meta.url);
+  return readdirSync(appDir, { recursive: true })
+    .map(String)
+    .filter((name) => /\.tsx?$/.test(name))
+    .map((name) => code(new URL(name, appDir)))
+    .join('\n');
+}
+
 describe('conference mode is gated, not merely hidden', () => {
   it('the UI gate no longer grants access to homeroom heads', async () => {
-    const src = code(new URL('../../../client/src/App.tsx', import.meta.url));
+    const src =
+      code(new URL('../../../client/src/App.tsx', import.meta.url)) + clientAppSource();
 
     // The old line combined headmaster with any KV.
     expect(src).not.toMatch(/canAccessConference\s*=\s*isHeadmaster\s*\|\|\s*isAnyKv/);

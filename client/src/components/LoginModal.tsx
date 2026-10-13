@@ -114,13 +114,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
 
         {/*
           The published shared default ("smile2026" for every teacher, "admin123" for
-          the administrator) has been removed. Each account receives an individual
+          the administrator) has been removed. New accounts start with a shared initial
           password and must change it at first login.
         */}
         <div className="mt-8 pt-6 border-t border-slate-800/80 text-center space-y-1">
           <p className="text-xs text-slate-500">
-            Zugangsdaten erhalten Sie von der Schulleitung. Jedes Konto hat ein eigenes
-            Passwort und muss es beim ersten Anmelden ändern.
+            Zugangsdaten erhalten Sie von der Schulleitung. Das Startpasswort muss beim
+            ersten Anmelden geändert werden.
           </p>
           <p className="text-xs text-slate-600">
             Passwort vergessen? Bitte die Schulleitung kontaktieren.

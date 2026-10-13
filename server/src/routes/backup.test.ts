@@ -3,7 +3,11 @@ import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { setRestoreRunnerForTests, type RestoreRunner } from './backup.js';
+import {
+  setRestoreRunnerForTests,
+  setRollbackRunnerForTests,
+  type RestoreRunner,
+} from './backup.js';
 
 const auditEntries: any[] = [];
 
@@ -64,6 +68,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (app) await app.close();
   setRestoreRunnerForTests(null);
+  setRollbackRunnerForTests(null);
   try {
     fs.rmSync(testBackupDir, { recursive: true, force: true });
   } catch {
@@ -246,6 +251,10 @@ describe('Backup API endpoints (Task 6)', () => {
         throw new Error('Database connection failed during restore');
       };
       setRestoreRunnerForTests(mockFailingRunner);
+      const rollbackCalls: string[] = [];
+      setRollbackRunnerForTests(async (_dbUrl, safetyPath) => {
+        rollbackCalls.push(safetyPath);
+      });
 
       const token = createToken('admin');
       const res = await app!.inject({
@@ -257,6 +266,11 @@ describe('Backup API endpoints (Task 6)', () => {
 
       expect(res.statusCode).toBe(500);
       expect(res.json().error).toContain('Wiederherstellung fehlgeschlagen');
+      // Generic failures after the destructive step roll back from the safety dump.
+      expect(rollbackCalls).toHaveLength(1);
+      expect(path.basename(rollbackCalls[0])).toMatch(/^pre-restore-safety-.*\.dump$/);
+      expect(res.json().preRestoreBackup).toBe(path.basename(rollbackCalls[0]));
+      expect(res.json().rollback).toEqual({ attempted: true, succeeded: true });
     });
   });
 

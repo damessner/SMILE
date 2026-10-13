@@ -40,11 +40,13 @@ the leaked password.
 All teacher accounts shared one password, and the admin used a second published one. Any
 teacher could sign in as any other teacher or as the administrator.
 
-- `npm run seed` now creates accounts with an individual password from
-  `INITIAL_USER_PASSWORD` and sets `must_change_password = true`.
+- `npm run seed` creates new accounts with one shared start password taken from
+  `INITIAL_USER_PASSWORD` and sets `must_change_password = true` on each.
 - Re-running the seed **does not** overwrite an existing account's password.
-- Distribute the bootstrap passwords out of band. Each user must set their own at first
-  login before they can write anything.
+- Distribute the start password out of band. Each user must set their own at first
+  login before they can write anything. The start password expires 14 days after it is
+  issued; an account that has not changed it by then is refused at login (403) until an
+  administrator resets it.
 - If the old shared passwords were in use, assume they were and rotate regardless.
 
 For an existing deployment, rotate directly:
@@ -94,7 +96,7 @@ backup files matching `backup*.zip`, `*.dump`, or `*.sql.gz`. All three files (`
 
 ### 6. Pin SSH known-hosts for deployment scripts
 
-All Python deployment and inspection scripts under `scripts/` (`deploy.py`, `deploy_to_production.py`,
+All Python deployment and inspection scripts under `scripts/` (`deploy.py`,
 `lxc-inspect.py`, `lxc-migration-check.py`, `lxc-predeploy.py`) enforce `paramiko.RejectPolicy()`.
 They will refuse to connect to unverified SSH servers to prevent man-in-the-middle attacks.
 
@@ -129,7 +131,7 @@ export SSH_KNOWN_HOSTS=/path/to/pinned_known_hosts
 | WS authorization was `if (client.teacherId)`, where `teacherId` came from the client's own `SUBSCRIBE_CLASS` payload — omissible and forgeable | Identity comes exclusively from the verified JWT; the guard is now `getClassAccess(user, classId).canRate`. `server/src/ws/live-sync.ts` |
 | JWT secret hardcoded as a fallback identical to the real `.env` value | No fallback. Validated at boot; rejects the leaked value and short secrets. `server/src/config.ts` |
 | DB connection string hardcoded as fallback in two places, including `drizzle.config.ts` | Resolved from `DATABASE_URL` with no fallback; the leaked password is rejected |
-| All teachers shared one password; admin used a second published one | Per-account random bootstrap password + `must_change_password`; server rejects all writes until changed |
+| All teachers shared one password; admin used a second published one | Published shared defaults removed and banned. New accounts get one operator-supplied start password (`INITIAL_USER_PASSWORD`) with `must_change_password`; the server rejects writes until changed. Residual shared-start-password risk is an accepted item (see Known limitations) |
 
 ### High
 
@@ -248,10 +250,12 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
 - **No TLS.** The app serves plain HTTP on the school LAN, as originally specified. The
   session cookie is `httpOnly` and `SameSite=Strict`, but the token still crosses the
   network in clear text and is interceptable by anyone on a switched network. Set
-  `COOKIE_SECURE=true` and put it behind a TLS-terminating proxy when you can. While
-  `COOKIE_SECURE` is false the server now logs a boot warning (`insecureConfigWarnings`
-  in `server/src/config.ts`, emitted by `start()`), so the state is visible in the
-  journal instead of silent.
+  `COOKIE_SECURE=true` and put it behind a TLS-terminating proxy when you can. The default
+  stays `false` on purpose because the LAN deployment has no TLS. While `COOKIE_SECURE` is
+  false the server logs a boot warning (`insecureConfigWarnings` in `server/src/config.ts`,
+  emitted by `start()`). When `NODE_ENV=production` and `COOKIE_SECURE` is unset, the server
+  logs an error at startup (`productionCookieError`); setting it explicitly to `true` or
+  `false` silences that error. Boot still succeeds in both cases.
 - ~~**No automated backup schedule.**~~ Resolved: hourly encrypted `pg_dump` to Google
   Drive with tiered retention, `cryptcheck` verification, a restore script, and a weekly
   unattended restore drill. See [`docs/BACKUP.md`](BACKUP.md). (A stale note here claimed
@@ -272,15 +276,24 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
   1. Primary cloud destination: 10-minute daytime backups with AES-256-CBC encryption to Microsoft 365 OneDrive (`scripts/backup_m365.py`, triggered by `smile-m365-backup.timer`).
   2. Independent off-host copy: Asymmetric 4096-bit RSA public key encryption (`scripts/backup_independent.py`, triggered by `smile-independent-backup.timer`). The private key is stored exclusively off-host on the Proxmox host (`/etc/smile-security/independent_backup_private.key`, mode 0600) and never touches LXC 115. A total compromise of LXC 115 cannot decrypt historical independent copies. Synced daily to Proxmox host storage (`/var/backups/smile-independent/`).
   3. Automated restore drill: Weekly scheduled restore verification into an isolated scratch database (`scripts/restore_drill.py`, triggered by `smile-restore-drill.timer`). Verifies table counts against live data, verifies pupil count (>= 100), proves 0 data loss, writes status receipt, and cleanly drops the isolated database without touching live data.
-- ~~**One bootstrap password for every seeded account.**~~ Seeded accounts still use the
-  operator-supplied `INITIAL_USER_PASSWORD` and require a change at first login. The Konten
-  panel's administrator reset (`POST /api/auth/admin/temporary-password`) now generates a
-  fresh random one-time credential for each reset (`server/src/lib/temporary-credential.ts`)
-  instead of reusing the legacy shared `smile2026` value; no flow produces `smile2026` any
-  more. The reset revokes prior sessions and forces a password change before the account can
-  mutate data. The generated value is shown once in the reset response and is deliberately
-  never logged (nor copied to the clipboard by the UI), so the administrator must hand it to
-  the user out of band.
+- **Shared start password for new accounts (accepted risk, decided 2026-10-13).** Every
+  account created by `npm run seed` starts with the one operator-supplied
+  `INITIAL_USER_PASSWORD` (minimum 12 characters; `smile2026` is banned) and is flagged
+  `must_change_password`. Per-account random seed passwords were considered and not adopted.
+  Until an account logs in once, anyone who knows the start password can sign in as that
+  account. Mitigations:
+  - Forced change at first login: writes are refused until the password is changed.
+  - 14-day expiry: a start password not changed within 14 days is refused at login (403)
+    until an administrator resets the account.
+  - Login lockout: 5 failed logins within 15 minutes lock that username for 15 minutes.
+    The lockout is in memory and resets on restart.
+  - The Konten panel's administrator reset (`POST /api/auth/admin/temporary-password`)
+    generates a fresh random one-time credential (`server/src/lib/temporary-credential.ts`),
+    revokes prior sessions and forces a change before the account can mutate data. The value
+    is shown once in the reset response, never logged, and not copied to the clipboard, so
+    the administrator hands it over out of band.
+  Residual risk: the shared start password stays valid until each account has logged in once
+  (within the 14-day window).
 
 ### Open owner decisions
 
@@ -333,10 +346,10 @@ evidence.
 - The nullable `votes_yes`/`votes_no`/`total_voters` columns on `final_ranks` are left in
   place for reversibility. No code reads them, but a deployment still running older code
   would. Drop them once no deployment does.
-- Every newly seeded teacher still shares the operator-supplied `INITIAL_USER_PASSWORD`
-  (each is flagged `mustChangePassword`). The administrator reset issues a fresh random
-  one-time credential per handover, so that shared seed password is now the only
-  shared-password path left; it stays a risk until per-account bootstrap delivery exists.
+- Every newly seeded teacher shares the operator-supplied `INITIAL_USER_PASSWORD` (each is
+  flagged `mustChangePassword`). This is the only shared-password path left. It is an accepted
+  risk with the 14-day expiry and login lockout described in Known limitations. The
+  administrator reset issues a fresh random one-time credential per handover.
 - A conflict with no current version to reconcile (the item row disappeared, or no evaluation
   survived) now triggers an authoritative class reload on both the WebSocket and HTTP paths instead
   of leaving a stale cell on screen. The behaviour is unit-tested, but the resulting database state

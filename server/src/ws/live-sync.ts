@@ -42,6 +42,11 @@ const MAX_MESSAGE_BYTES = 64 * 1024;
  * session.
  */
 const MAX_RATE_LIMIT_VIOLATIONS = 20;
+
+/** Unknown inbound message types are logged at most once per this interval per socket. */
+const UNKNOWN_TYPE_LOG_INTERVAL_MS = 10_000;
+/** Logged type names are truncated to this many characters (code points). */
+const MAX_LOGGED_TYPE_CHARS = 64;
 const SUBSCRIBE_PAYLOAD_KEYS = ['classId'] as const;
 const FOCUS_PAYLOAD_KEYS = ['classId', 'pupilId', 'itemKey', 'subjectCode'] as const;
 const UPDATE_RATING_PAYLOAD_KEYS = [
@@ -85,6 +90,20 @@ interface InboundEnvelope {
 
 function isInboundEnvelope(value: unknown): value is InboundEnvelope {
   return isPayloadRecord(value) && typeof value.type === 'string';
+}
+
+/**
+ * Structured warning for an inbound message type this server does not handle. Only the
+ * truncated type name is logged, never the payload. The wire behaviour stays silent.
+ */
+function logUnknownMessageType(messageType: string, suppressedSinceLastLog: number): void {
+  const type = Array.from(messageType).slice(0, MAX_LOGGED_TYPE_CHARS).join('');
+  console.warn(JSON.stringify({
+    level: 'warn',
+    event: 'ws_unknown_message_type',
+    messageType: type,
+    suppressedSinceLastLog,
+  }));
 }
 
 function rawMessageLength(raw: unknown): number | undefined {
@@ -247,6 +266,9 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
 
   const rateBucket = new TokenBucket(config.wsRateLimit.perSecond, config.wsRateLimit.burst);
   let rateLimitViolations = 0;
+  // Per-socket throttle for unknown-type warnings (see logUnknownMessageType).
+  let lastUnknownTypeLogAt: number | undefined;
+  let unknownTypesSuppressed = 0;
 
   ws.on('message', async (raw: unknown) => {
     let responseMutationId: string | undefined;
@@ -300,8 +322,18 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
         case 'UPDATE_RATING':
           await onUpdateRating(client, payload);
           break;
-        default:
+        default: {
+          // Still no reply to the client; only the server-side record is throttled.
+          const now = Date.now();
+          if (lastUnknownTypeLogAt === undefined || now - lastUnknownTypeLogAt >= UNKNOWN_TYPE_LOG_INTERVAL_MS) {
+            logUnknownMessageType(envelope.type, unknownTypesSuppressed);
+            lastUnknownTypeLogAt = now;
+            unknownTypesSuppressed = 0;
+          } else {
+            unknownTypesSuppressed += 1;
+          }
           break;
+        }
       }
     } catch (err) {
       console.error('WebSocket message error:', safeErrorLogFields(err));

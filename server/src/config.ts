@@ -31,6 +31,12 @@ export class ConfigError extends Error {
   }
 }
 
+/** True when the variable is present and not blank. */
+export function isEnvSet(name: string): boolean {
+  const raw = process.env[name];
+  return raw !== undefined && raw.trim() !== '';
+}
+
 export function readInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
@@ -200,7 +206,35 @@ export function initialBootstrapPassword(): string {
   if (pw.length < 12) {
     throw new ConfigError('INITIAL_USER_PASSWORD must be at least 12 characters long.');
   }
+  if (pw.toLowerCase() === 'smile2026') {
+    throw new ConfigError(
+      'INITIAL_USER_PASSWORD is set to the previously published shared default. Choose a new value.',
+    );
+  }
   return pw;
+}
+
+/**
+ * Directory holding encrypted backup files. Read on each call (not cached) so that
+ * the value can change without a module reload; validated here in one place.
+ */
+export function backupDirectory(): string {
+  const raw = process.env.BACKUP_DIR;
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) return '/var/backups/smile';
+  if (trimmed.includes('\0')) {
+    throw new ConfigError('Environment variable BACKUP_DIR must not contain NUL bytes.');
+  }
+  return trimmed;
+}
+
+/**
+ * Passphrase used to decrypt M365 backups. The value is returned exactly as set (no
+ * trimming: a passphrase may legitimately contain spaces). Undefined when unset or empty.
+ */
+export function backupEncryptionPassphrase(): string | undefined {
+  const raw = process.env.BACKUP_ENCRYPTION_PASSPHRASE;
+  return raw ? raw : undefined;
 }
 
 /** Password for the single `admin` account, if the operator chooses to set one. */
@@ -229,7 +263,17 @@ export const config = {
 
   /** Set when running behind a TLS-terminating reverse proxy so cookies get the Secure flag. */
   trustProxy: readBool('TRUST_PROXY', false),
+  /**
+   * Default false because the LAN deployment serves plain HTTP. Setting it true also
+   * makes the CSRF origin check reject every non-https Origin, so it must only be enabled
+   * behind TLS. See productionCookieError() for the production signal.
+   */
   cookieSecure: readBool('COOKIE_SECURE', false),
+  /** True when COOKIE_SECURE was explicitly provided (even as false). */
+  cookieSecureConfigured: isEnvSet('COOKIE_SECURE'),
+
+  /** Apply pending schema migrations at boot. Set false only when migrations run out of band. */
+  runMigrations: readBool('RUN_MIGRATIONS', true),
 
   /** Empty = same-origin only. Populate for split-origin dev setups, e.g. http://localhost:5173. */
   corsAllowedOrigins: readOriginAllowlist(),
@@ -332,6 +376,7 @@ export type AppConfig = typeof config;
 export function assertServerConfig(): void {
   databaseUrl();
   jwtSecret();
+  backupDirectory();
 
   const positiveSettings: Array<[string, number]> = [
     ['PORT', config.port],
@@ -384,4 +429,21 @@ export function insecureConfigWarnings(cfg: Pick<AppConfig, 'cookieSecure'> = co
     );
   }
   return warnings;
+}
+
+/**
+ * Error-level startup signal for production when COOKIE_SECURE was never set. The
+ * default is false (plain-HTTP LAN), so an unset value in production is almost always an
+ * oversight rather than a decision. Setting COOKIE_SECURE=false explicitly silences this
+ * error while keeping the boot warning. Returns undefined when no error applies.
+ */
+export function productionCookieError(
+  cfg: Pick<AppConfig, 'env' | 'cookieSecureConfigured'> = config,
+): string | undefined {
+  if (cfg.env !== 'production' || cfg.cookieSecureConfigured) return undefined;
+  return (
+    'COOKIE_SECURE is not set while NODE_ENV=production. Session cookies are sent without the ' +
+    'Secure flag. Set COOKIE_SECURE=true if TLS terminates in front of the app, or COOKIE_SECURE=false ' +
+    'to acknowledge plain-HTTP serving. See docs/SECURITY.md (Known limitations).'
+  );
 }
