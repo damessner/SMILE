@@ -33,10 +33,12 @@ import {
   startTimeoutSweeper,
   sweepExpiredTimeouts,
 } from './timeout-sweeper.js';
+import { endRestore, resetRestoreGateForTests, tryBeginRestore } from './restore-lock.js';
 
 describe('timeout sweeper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRestoreGateForTests();
     updateReturningMock.mockResolvedValue([]);
   });
 
@@ -89,6 +91,23 @@ describe('timeout sweeper', () => {
     expect(count).toBe(0);
     expect(insertValuesMock).not.toHaveBeenCalled();
     expect(broadcastMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves expired rows untouched while a restore holds the gate', async () => {
+    expect(tryBeginRestore()).toBe(true);
+    try {
+      updateReturningMock.mockResolvedValue([
+        { id: 'incident-1', pupilId: 10, classId: 3, expiresAt: new Date(2026, 9, 7, 10, 35) },
+      ]);
+      const count = await sweepExpiredTimeouts(new Date(2026, 9, 7, 10, 36));
+
+      expect(count).toBe(0);
+      expect(updateReturningMock).not.toHaveBeenCalled();
+      expect(insertValuesMock).not.toHaveBeenCalled();
+      expect(broadcastMock).not.toHaveBeenCalled();
+    } finally {
+      endRestore();
+    }
   });
 
   it('stops timer on onClose hook', async () => {

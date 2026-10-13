@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { ClassSyncState } from './hooks/useLiveSync';
 import { LoginModal } from './components/LoginModal';
@@ -24,7 +24,6 @@ export function App() {
   const toast = useToast();
   const { forceDark } = useTheme();
   const { activeTab, setActiveTab, showAllModules, toggleAllModules } = useModuleVisibility();
-  const [ratingPupilId] = useState<number | null>(null);
   const modals = useAppModals();
   const { conferenceModalOpen } = modals;
 
@@ -188,7 +187,7 @@ export function App() {
           selectedClassId={selectedClassId}
           classListError={classListError}
           submissionDeadline={submissionDeadline}
-          ratingPupilId={ratingPupilId}
+          ratingPupilId={null}
           isLockedByConference={live.isLockedByConference}
           canRateCurrentClass={canRateCurrentClass}
           grid={{

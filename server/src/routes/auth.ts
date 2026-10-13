@@ -53,7 +53,9 @@ export const LOGIN_LOCKED_MESSAGE = 'Zu viele Fehlversuche. Bitte warten Sie 15 
  * In-memory and per process: it resets on restart and is not shared between instances.
  * That is acceptable for a single-process LAN deployment; it complements, not replaces,
  * the per-IP rate limit. Keys are normalised usernames, and the lock applies whether or
- * not the account exists, so it does not reveal which accounts exist.
+ * not the account exists, so it does not reveal which accounts exist. While locked, only
+ * wrong passwords are refused - the correct credential still logs in, so a targeted
+ * lockout cannot bar a known account (admin included) from the app.
  */
 const loginFailures = new Map<string, { count: number; windowStart: number }>();
 const LOGIN_FAILURE_MAP_SOFT_LIMIT = 10_000;
@@ -162,7 +164,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const hash = user?.passwordHash ?? '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
       const validPassword = await bcrypt.compare(password, hash);
 
-      if (locked) {
+      // The lock refuses only further *wrong* passwords; a correct credential always gets
+      // in. Otherwise anyone could lock a known account (admin included) out of the app by
+      // failing the login five times.
+      if (locked && !validPassword) {
         request.log.info({ username }, 'Login refused: too many failed attempts');
         return reply.status(429).send({ error: LOGIN_LOCKED_MESSAGE });
       }
@@ -532,6 +537,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           .update(users)
           .set({
             mustChangePassword: true,
+            // Re-issue the credential clock as well: the forced change must not trip the
+            // 14-day start-password expiry for accounts whose password is older than that.
+            passwordIssuedAt: new Date(),
             sessionVersion: sql`${users.sessionVersion} + 1`,
           })
           .where(eq(users.id, user.id));

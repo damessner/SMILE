@@ -52,8 +52,12 @@ teacher could sign in as any other teacher or as the administrator.
 For an existing deployment, rotate directly:
 
 ```sql
-UPDATE users SET password_hash = '<bcrypt hash>', must_change_password = true;
+UPDATE users SET password_hash = '<bcrypt hash>', must_change_password = true, password_issued_at = now();
 ```
+
+`password_issued_at = now()` is not optional here: without it the fresh start password
+inherits the old issue date, and the account is refused at the next login once that date
+is more than 14 days old.
 
 ### 4. Enable version control
 

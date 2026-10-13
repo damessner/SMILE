@@ -14,6 +14,7 @@ import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterion
 import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
 import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
 import { getLatestRound } from '../lib/rounds.js';
+import { isRestoreInProgress } from '../lib/restore-lock.js';
 
 /** Minimal shape we rely on; `ws` satisfies this. */
 interface WsLike {
@@ -273,6 +274,14 @@ export function handleWebSocketConnection(ws: WsLike, user: AuthUser, teacherNam
   ws.on('message', async (raw: unknown) => {
     let responseMutationId: string | undefined;
     try {
+      // A restore replaces the whole database; a frame already queued on this socket
+      // must not reach a write handler mid-restore. 1001 matches the bulk disconnect the
+      // restore route performs, and the client retries once the gate opens again.
+      if (isRestoreInProgress()) {
+        ws.close(CLOSE_GOING_AWAY, 'database restore in progress');
+        return;
+      }
+
       const rawLength = rawMessageLength(raw);
       if (rawLength !== undefined && rawLength > MAX_MESSAGE_BYTES) {
         ws.close(CLOSE_TOO_BIG, 'message too large');

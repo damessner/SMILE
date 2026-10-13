@@ -187,7 +187,7 @@ describe('start-password expiry at login', () => {
 });
 
 describe('login lockout per username', () => {
-  it('locks after 5 failures and refuses even the correct password with 429', async () => {
+  it('locks after 5 failures: further wrong passwords get 429, the correct password still works', async () => {
     const now = Date.now();
     setNow(now);
     state.users = [makeUser({ passwordIssuedAt: new Date(now) })];
@@ -195,11 +195,16 @@ describe('login lockout per username', () => {
     for (let i = 0; i < 5; i++) {
       expect((await login('muster', WRONG)).statusCode).toBe(401);
     }
-    const locked = await login('muster', PASSWORD);
+    const locked = await login('muster', WRONG);
 
     expect(locked.statusCode).toBe(429);
     expect(locked.json()).toEqual({ error: 'Zu viele Fehlversuche. Bitte warten Sie 15 Minuten.' });
     expect(locked.headers['set-cookie']).toBeUndefined();
+
+    // The lock must not bar the real owner: a correct password always gets in.
+    const correct = await login('muster', PASSWORD);
+    expect(correct.statusCode).toBe(200);
+    expect(correct.headers['set-cookie']).toBeTruthy();
   });
 
   it('locks a username that does not exist, so the lock does not reveal accounts', async () => {
@@ -221,7 +226,7 @@ describe('login lockout per username', () => {
     for (let i = 0; i < 5; i++) {
       await login('  MUSTER ', WRONG);
     }
-    expect((await login('muster', PASSWORD)).statusCode).toBe(429);
+    expect((await login('muster', WRONG)).statusCode).toBe(429);
   });
 
   it('recovers once the 15-minute window has passed', async () => {
@@ -232,9 +237,12 @@ describe('login lockout per username', () => {
     for (let i = 0; i < 5; i++) {
       await login('muster', WRONG);
     }
-    expect((await login('muster', PASSWORD)).statusCode).toBe(429);
+    expect((await login('muster', WRONG)).statusCode).toBe(429);
 
     setNow(now + 15 * MINUTE_MS + 1000);
+    // The lock is gone: a wrong password is back to a plain 401 (not 429)…
+    expect((await login('muster', WRONG)).statusCode).toBe(401);
+    // …and the correct one is accepted (the closed window also reset the counter).
     const res = await login('muster', PASSWORD);
 
     expect(res.statusCode).toBe(200);
@@ -279,7 +287,7 @@ describe('login lockout per username', () => {
     setNow(now + 10 * MINUTE_MS);
     await login('muster', WRONG);
     // Fifth failure at 10 minutes is still inside the window opened at t=0: locked.
-    expect((await login('muster', PASSWORD)).statusCode).toBe(429);
+    expect((await login('muster', WRONG)).statusCode).toBe(429);
 
     // At 15 minutes from the first failure the window has closed and the count resets.
     setNow(now + 15 * MINUTE_MS + 1000);
@@ -290,7 +298,7 @@ describe('login lockout per username', () => {
 describe('login source contract', () => {
   const source = readFileSync(new URL('./auth.ts', import.meta.url), 'utf8');
 
-  it('sets passwordIssuedAt wherever a password is set: self-service change and admin-issued credential', () => {
+  it('sets passwordIssuedAt wherever a password is set: self-service change, admin credential and forced reset', () => {
     const passwordRoute = /fastify\.post\(\s*['"]\/password['"][\s\S]*?\n  \}\);/.exec(source);
     expect(passwordRoute).toBeTruthy();
     expect(passwordRoute![0]).toContain('passwordIssuedAt: new Date()');
@@ -298,6 +306,12 @@ describe('login source contract', () => {
     const issueRoute = /fastify\.post\(\s*['"]\/admin\/temporary-password['"][\s\S]*?\n  \);/.exec(source);
     expect(issueRoute).toBeTruthy();
     expect(issueRoute![0]).toContain('passwordIssuedAt: new Date()');
+
+    // A forced reset re-flags the account; without refreshing the timestamp here, every
+    // account whose password is older than 14 days would be refused at its next login.
+    const resetRoute = /fastify\.post\(\s*['"]\/request-reset['"][\s\S]*?\n  \);/.exec(source);
+    expect(resetRoute).toBeTruthy();
+    expect(resetRoute![0]).toContain('passwordIssuedAt: new Date()');
   });
 
   it('checks the expiry only after the bcrypt comparison succeeds', () => {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyPluginAsync } from 'fastify';
-import { db, getPool } from '../db/index.js';
+import { db, getPool, runMigrations } from '../db/index.js';
 import { backupDirectory, backupEncryptionPassphrase, databaseUrl } from '../config.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
 import { closeAllWebSockets } from '../ws/live-sync.js';
@@ -27,6 +27,7 @@ import {
   users,
 } from '../db/schema.js';
 import { assertPasswordCurrent, requireAuth, safeTeacherId } from '../lib/guards.js';
+import type { AuthUser } from '../lib/guards.js';
 import { parsePageParams } from '../lib/pagination.js';
 
 /**
@@ -57,6 +58,17 @@ export const defaultRestoreRunner: RestoreRunner = async (dbUrl, backupPath, saf
     await runTool('pg_restore', ['--version']);
   } catch {
     throw new PreRestoreError('PostgreSQL-Werkzeuge (pg_dump / pg_restore) sind auf dem Server nicht im PATH verfügbar.');
+  }
+
+  // Pre-flight: the archive must actually be a pg_dump archive. `--list` reads the file
+  // only; plain SQL files, empty files or truncated archives fail here - before the
+  // safety dump runs and long before --clean touches the live database.
+  try {
+    await runTool('pg_restore', ['--list', backupPath]);
+  } catch (err) {
+    throw new PreRestoreError(
+      `Backup-Datei ist kein gültiges pg_dump-Archiv: ${err instanceof Error ? err.message : 'unbekannter Fehler'}`,
+    );
   }
 
   // Step 1: safety snapshot. Read-only, so a failure here leaves the data untouched.
@@ -103,6 +115,41 @@ async function rollbackToSafety(
   } catch (err) {
     log.error(safeErrorLogFields(err), 'Automatic rollback from pre-restore safety backup failed');
     return false;
+  }
+}
+
+/**
+ * Best-effort audit row for a failed restore. Runs after any rollback, so on a successful
+ * rollback the row survives in the safety-restored database; when even that failed, the
+ * insert may not be possible at all - hence failures here are only logged.
+ */
+async function recordRestoreFailureAudit(
+  user: Pick<AuthUser, 'teacherId' | 'username'>,
+  failure: {
+    attemptedBackup: string;
+    safetyBackup: string | null;
+    stage: 'pre-restore' | 'after-destructive-step';
+    rollback: { attempted: boolean; succeeded: boolean };
+  },
+  log: { error: (obj: object, msg: string) => void },
+): Promise<void> {
+  try {
+    await db.insert(auditLogs).values({
+      actorId: safeTeacherId(user.teacherId),
+      action: 'DATABASE_RESTORE_FAILED',
+      entity: 'system',
+      entityId: 'backup',
+      payload: {
+        attemptedBackup: failure.attemptedBackup,
+        safetyBackup: failure.safetyBackup,
+        stage: failure.stage,
+        rollback: failure.rollback,
+        attemptedBy: user.username,
+        failedAt: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    log.error(safeErrorLogFields(err), 'Failed to record restore failure in audit log');
   }
 }
 
@@ -396,13 +443,15 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Ungültiger Backup-Dateiname.' });
       }
 
-      if (
-        !cleanId.endsWith('.dump') &&
-        !cleanId.endsWith('.sql') &&
-        !cleanId.endsWith('.sql.gz') &&
-        !cleanId.endsWith('.dump.enc')
-      ) {
-        return reply.status(400).send({ error: 'Nicht unterstütztes Backup-Dateiformat.' });
+      // Only pg_dump archives can be applied by pg_restore. Plain-SQL exports
+      // (.sql / .sql.gz) remain listed for download, but restoring them here would
+      // fail halfway, so they must be replayed manually with psql.
+      if (!cleanId.endsWith('.dump') && !cleanId.endsWith('.dump.enc')) {
+        return reply.status(400).send({
+          error:
+            'Nur PostgreSQL-Archive (.dump / .dump.enc) können wiederhergestellt werden. ' +
+            'SQL-Exporte (.sql / .sql.gz) müssen manuell mit psql eingespielt werden.',
+        });
       }
 
       const backupDir = backupDirectory();
@@ -439,6 +488,9 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
             });
           }
           tempDecryptedPath = path.join(backupDir, `temp-decrypt-${Date.now()}.dump`);
+          // Create the target 0600 first: openssl keeps the mode of an existing file, so
+          // a crash mid-decrypt cannot leave a world-readable plaintext dump behind.
+          fs.writeFileSync(tempDecryptedPath, '', { mode: 0o600 });
           // The passphrase travels in the child environment, not argv (visible in the process list).
           await runTool('openssl', [
             'enc', '-d', '-aes-256-cbc', '-pbkdf2',
@@ -465,6 +517,16 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
             { ...safeErrorLogFields(err), safetyBackup: safetyFileName, rollbackSucceeded: rolledBack },
             'Database restore failed',
           );
+          await recordRestoreFailureAudit(
+            user,
+            {
+              attemptedBackup: cleanId,
+              safetyBackup: safetyFileName,
+              stage: 'after-destructive-step',
+              rollback: { attempted: true, succeeded: rolledBack },
+            },
+            request.log,
+          );
           return reply.status(500).send({
             error: rolledBack
               ? 'Wiederherstellung fehlgeschlagen. Die Datenbank wurde automatisch auf die Sicherheitskopie zurückgesetzt.'
@@ -484,6 +546,16 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
               { ...safeErrorLogFields(err), safetyBackup: safetyFileName },
               'Restore aborted before the database was modified',
             );
+            await recordRestoreFailureAudit(
+              user,
+              {
+                attemptedBackup: cleanId,
+                safetyBackup: fs.existsSync(safetyFilePath) ? safetyFileName : null,
+                stage: 'pre-restore',
+                rollback: { attempted: false, succeeded: false },
+              },
+              request.log,
+            );
             return reply.status(500).send({
               error: 'Wiederherstellung fehlgeschlagen. Die Datenbank wurde nicht verändert. Überprüfen Sie die Server-Logs.',
               preRestoreBackup: fs.existsSync(safetyFilePath) ? safetyFileName : null,
@@ -495,6 +567,11 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
+          // A restored dump may predate the app's newest migration (for example one taken
+          // before users.password_issued_at existed). Upgrade the schema now, while the
+          // gate is still held and writes are refused; a failure rolls back like any other.
+          await runMigrations();
+
           request.log.info(
             { restoredBackup: cleanId, safetyBackup: safetyFileName, restoredBy: user.username },
             'Database restored successfully',

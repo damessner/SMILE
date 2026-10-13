@@ -112,18 +112,28 @@ export async function runPgDump(dbUrl: string, outPath: string): Promise<void> {
   });
 }
 
-/** Replaces the live database contents with the archive at archivePath. */
+/**
+ * Replaces the live database contents with the archive at archivePath.
+ *
+ * Any non-zero exit is a failure. Exit code 1 from pg_restore means it ran into
+ * errors and continued past them ("errors ignored on restore") - a partially
+ * applied restore, which the route's rollback contract must treat as damage.
+ * --exit-on-error stops at the first failing statement instead.
+ */
 export async function runPgRestore(dbUrl: string, archivePath: string): Promise<void> {
   const conn = pgConnection(dbUrl);
-  try {
-    await runTool(
-      'pg_restore',
-      ['--clean', '--if-exists', '--no-owner', '--no-acl', '-d', conn.url, archivePath],
-      { env: conn.env, secrets: conn.secrets },
-    );
-  } catch (err) {
-    // pg_restore exits with 1 when it ignored warnings (e.g. objects missing on clean drop).
-    if (err instanceof ToolError && err.exitCode === 1) return;
-    throw err;
-  }
+  await runTool(
+    'pg_restore',
+    [
+      '--clean',
+      '--if-exists',
+      '--no-owner',
+      '--no-acl',
+      '--exit-on-error',
+      '-d',
+      conn.url,
+      archivePath,
+    ],
+    { env: conn.env, secrets: conn.secrets },
+  );
 }

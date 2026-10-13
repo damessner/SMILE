@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '../lib/guards.js';
 import { getPersistedUserSessionState } from '../lib/session.js';
+import { endRestore, tryBeginRestore } from '../lib/restore-lock.js';
 
 vi.mock('../lib/session.js', () => ({
   getPersistedUserSessionState: vi.fn(async () => ({
@@ -64,6 +65,26 @@ afterAll(() => {
 });
 
 afterEach(() => resetLiveSyncForTests?.());
+
+describe('live database restore gate', () => {
+  it('closes a frame that arrives while a restore holds the gate, with 1001', async () => {
+    const socket = new TestSocket();
+    const user: AuthUser = { id: 'teacher-1', username: 'teacher', role: 'teacher', teacherId: 1 };
+    handleWebSocketConnection(socket as never, user, 'Lehrkraft');
+
+    expect(tryBeginRestore()).toBe(true);
+    try {
+      await socket.receive({ type: 'SUBSCRIBE_CLASS', payload: { classId: 3 } });
+
+      expect(socket.closeCode).toBe(1001);
+      expect(socket.closeReason).toBe('database restore in progress');
+      // The frame must not have been processed: no replies, no subscribe side effects.
+      expect(socket.messages).toEqual([]);
+    } finally {
+      endRestore();
+    }
+  });
+});
 
 describe('live UPDATE_RATING subject validation', () => {
   it('rejects an unknown subject before class lookup or database access', async () => {

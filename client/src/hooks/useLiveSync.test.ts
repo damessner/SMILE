@@ -271,7 +271,7 @@ describe('useLiveSync event handling symmetry', () => {
     }
   });
 
-  it('stops reconnecting after five consecutive transport failures', async () => {
+  it('keeps probing slowly after the fast ladder is exhausted, without a permanent give-up', async () => {
     vi.useFakeTimers();
     MockWebSocket.autoOpen = false;
     const { result, unmount } = renderHook(() => useLiveSync(101, mockUser));
@@ -290,8 +290,13 @@ describe('useLiveSync event handling symmetry', () => {
       act(() => last.simulateClose(1006));
       await act(async () => vi.advanceTimersByTimeAsync(10_000));
 
+      // The fast ladder is done: the long message is shown, but no give-up.
       expect(MockWebSocket.instances).toHaveLength(6);
       expect(result.current.connectionError).toBe('Live-Verbindung konnte nicht wiederhergestellt werden.');
+
+      // A slow probe still opens a new socket instead of giving up forever.
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
+      expect(MockWebSocket.instances).toHaveLength(7);
     } finally {
       unmount();
       vi.clearAllTimers();

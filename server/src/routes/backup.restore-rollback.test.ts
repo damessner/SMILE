@@ -13,6 +13,10 @@ const ENCODED = encodeURIComponent(PASSWORD);
 
 const auditEntries: any[] = [];
 
+// The restore route migrates the restored database before reporting success; the stub
+// can be switched to fail so the rollback-on-migration-failure path stays covered.
+const migrationsMock = vi.hoisted(() => ({ calls: 0, fail: false }));
+
 vi.mock('../db/index.js', async (importOriginal) => {
   return {
     ...(await importOriginal<typeof import('../db/index.js')>()),
@@ -33,6 +37,10 @@ vi.mock('../db/index.js', async (importOriginal) => {
     getPool: () => ({
       query: async () => ({ rows: [] }),
     }),
+    runMigrations: async () => {
+      migrationsMock.calls += 1;
+      if (migrationsMock.fail) throw new Error('migration failed');
+    },
   };
 });
 
@@ -91,13 +99,19 @@ interface Scenario {
   safetyDumpFails: boolean;
   forwardRestoreFails: boolean;
   rollbackFails: boolean;
+  archiveInvalid: boolean;
 }
 
 const calls: Call[] = [];
 let scenario: Scenario;
 
-function classify(command: string, args: string[], backupFile: string): 'version' | 'safety' | 'forward' | 'rollback' {
+function classify(
+  command: string,
+  args: string[],
+  backupFile: string,
+): 'version' | 'list' | 'safety' | 'forward' | 'rollback' {
   if (args.includes('--version')) return 'version';
+  if (args.includes('--list')) return 'list';
   if (command === 'pg_dump') return 'safety';
   const archive = args[args.length - 1];
   return archive === backupFile ? 'forward' : 'rollback';
@@ -110,7 +124,9 @@ beforeEach(() => {
   auditEntries.length = 0;
   execFileMock.mockReset();
   resetRestoreGateForTests();
-  scenario = { safetyDumpFails: false, forwardRestoreFails: false, rollbackFails: false };
+  scenario = { safetyDumpFails: false, forwardRestoreFails: false, rollbackFails: false, archiveInvalid: false };
+  migrationsMock.calls = 0;
+  migrationsMock.fail = false;
   backupFile = path.join(testBackupDir, 'smile_db_2026-10-12_rollback.dump');
   fs.writeFileSync(backupFile, 'archive');
 
@@ -120,7 +136,8 @@ beforeEach(() => {
     const failing =
       (step === 'safety' && scenario.safetyDumpFails) ||
       (step === 'forward' && scenario.forwardRestoreFails) ||
-      (step === 'rollback' && scenario.rollbackFails);
+      (step === 'rollback' && scenario.rollbackFails) ||
+      (step === 'list' && scenario.archiveInvalid);
 
     if (step === 'safety' && !failing) {
       // pg_dump -f <path>: create the file so the safety dump exists on disk.
@@ -146,10 +163,13 @@ function restore(payload: unknown) {
   });
 }
 
-/** Database-touching calls only; the `--version` preflight is excluded. */
+/** Database-touching calls only; the `--version` and `--list` preflights are excluded. */
 function pgCalls(): Call[] {
   return calls.filter(
-    (c) => (c.command === 'pg_dump' || c.command === 'pg_restore') && !c.args.includes('--version'),
+    (c) =>
+      (c.command === 'pg_dump' || c.command === 'pg_restore') &&
+      !c.args.includes('--version') &&
+      !c.args.includes('--list'),
   );
 }
 
@@ -179,8 +199,25 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
     // The restore gate was held during every database-touching call and released afterwards.
     expect(pgCalls().every((c) => c.gateHeld)).toBe(true);
     expect(isRestoreInProgress()).toBe(false);
-    // No success audit row for a failed restore.
+    // The archive preflight ran before the safety dump.
+    const listIndex = calls.findIndex((c) => c.args.includes('--list'));
+    const safetyDumpIndex = calls.findIndex(
+      (c) => c.command === 'pg_dump' && !c.args.includes('--version'),
+    );
+    expect(listIndex).toBeGreaterThan(-1);
+    expect(safetyDumpIndex).toBeGreaterThan(-1);
+    expect(listIndex).toBeLessThan(safetyDumpIndex);
+    // No success audit row for a failed restore; the failure is recorded instead.
     expect(auditEntries.some((e) => e.action === 'DATABASE_RESTORED')).toBe(false);
+    const failureAudit = auditEntries.find((e) => e.action === 'DATABASE_RESTORE_FAILED');
+    expect(failureAudit).toBeDefined();
+    expect(failureAudit.payload).toMatchObject({
+      attemptedBackup: path.basename(backupFile),
+      stage: 'after-destructive-step',
+      rollback: { attempted: true, succeeded: true },
+    });
+    // The failed forward restore never reached the migration step.
+    expect(migrationsMock.calls).toBe(0);
   });
 
   it('reports a failed rollback and still keeps the safety file for manual recovery', async () => {
@@ -195,6 +232,13 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
     expect(body.preRestoreBackup).toMatch(/^pre-restore-safety-.*\.dump$/);
     expect(fs.existsSync(path.join(testBackupDir, body.preRestoreBackup))).toBe(true);
     expect(isRestoreInProgress()).toBe(false);
+    // Even a failed rollback is recorded, with the honest outcome.
+    const failureAudit = auditEntries.find((e) => e.action === 'DATABASE_RESTORE_FAILED');
+    expect(failureAudit).toBeDefined();
+    expect(failureAudit.payload).toMatchObject({
+      stage: 'after-destructive-step',
+      rollback: { attempted: true, succeeded: false },
+    });
   });
 
   it('does not touch the database again when the safety dump itself fails', async () => {
@@ -207,6 +251,36 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
     expect(body.rollback).toEqual({ attempted: false, succeeded: false });
     // Only the failed safety dump ran: no pg_restore of either archive.
     expect(pgCalls().map((c) => c.command)).toEqual(['pg_dump']);
+    expect(isRestoreInProgress()).toBe(false);
+    // The safety file never appeared on disk, so the audit row says so.
+    const failureAudit = auditEntries.find((e) => e.action === 'DATABASE_RESTORE_FAILED');
+    expect(failureAudit).toBeDefined();
+    expect(failureAudit.payload).toMatchObject({
+      attemptedBackup: path.basename(backupFile),
+      safetyBackup: null,
+      stage: 'pre-restore',
+      rollback: { attempted: false, succeeded: false },
+    });
+  });
+
+  it('refuses a file that pg_restore cannot read before creating a safety dump', async () => {
+    scenario.archiveInvalid = true;
+    const res = await restore({ backupId: path.basename(backupFile) });
+
+    expect(res.statusCode).toBe(500);
+    const body = res.json();
+    expect(body.error).toContain('nicht verändert');
+    expect(body.rollback).toEqual({ attempted: false, succeeded: false });
+    // Only preflights ran (--version and the failing --list): no safety dump, no restore.
+    expect(pgCalls()).toHaveLength(0);
+    expect(calls.some((c) => c.args.includes('--list'))).toBe(true);
+    expect(auditEntries.some((e) => e.action === 'DATABASE_RESTORED')).toBe(false);
+    const failureAudit = auditEntries.find((e) => e.action === 'DATABASE_RESTORE_FAILED');
+    expect(failureAudit).toBeDefined();
+    expect(failureAudit.payload).toMatchObject({
+      stage: 'pre-restore',
+      rollback: { attempted: false, succeeded: false },
+    });
     expect(isRestoreInProgress()).toBe(false);
   });
 
@@ -222,6 +296,29 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
     expect(pgCalls().every((c) => c.gateHeld)).toBe(true);
     expect(isRestoreInProgress()).toBe(false);
     expect(auditEntries.some((e) => e.action === 'DATABASE_RESTORED')).toBe(true);
+    // The restored dump is migrated to the current schema before success is reported.
+    expect(migrationsMock.calls).toBe(1);
+  });
+
+  it('rolls back when the restored database cannot be migrated to the current schema', async () => {
+    migrationsMock.fail = true;
+    const res = await restore({ backupId: path.basename(backupFile) });
+
+    expect(res.statusCode).toBe(500);
+    const body = res.json();
+    expect(body.error).toContain('zurückgesetzt');
+    expect(body.rollback).toEqual({ attempted: true, succeeded: true });
+    const steps = pgCalls().map((c) => c.command + ':' + c.args[c.args.length - 1]);
+    expect(steps).toEqual([
+      'pg_dump:' + path.join(testBackupDir, body.preRestoreBackup),
+      'pg_restore:' + backupFile,
+      'pg_restore:' + path.join(testBackupDir, body.preRestoreBackup),
+    ]);
+    expect(migrationsMock.calls).toBe(1);
+    expect(auditEntries.some((e) => e.action === 'DATABASE_RESTORED')).toBe(false);
+    const failureAudit = auditEntries.find((e) => e.action === 'DATABASE_RESTORE_FAILED');
+    expect(failureAudit).toBeDefined();
+    expect(failureAudit.payload.stage).toBe('after-destructive-step');
   });
 
   it('never places the database password in any argv, env var name, or response body', async () => {

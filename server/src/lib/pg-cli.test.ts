@@ -97,9 +97,19 @@ describe('pg_dump / pg_restore invocation', () => {
     expect(lastInvocation().args.join(' ')).toContain('postgres://smile@db.internal:5432/smile_db');
   });
 
-  it('treats pg_restore exit code 1 (ignored warnings) as success', async () => {
-    respondWith(failWith(1, 'warning: errors ignored on restore'));
-    await expect(runPgRestore(DB_URL, 'C:\\tmp\\backup.dump')).resolves.toBeUndefined();
+  it('passes --exit-on-error so a failing statement aborts the restore', async () => {
+    respondWith(null);
+    await runPgRestore(DB_URL, 'C:\\tmp\\backup.dump');
+    expect(lastInvocation().args).toContain('--exit-on-error');
+  });
+
+  it('rejects pg_restore exit code 1 (errors occurred) instead of reporting success', async () => {
+    // pg_restore exits 1 when it hit errors and continued past them. The restore
+    // route must see that as a failure and roll back, not as "some warnings".
+    respondWith(failWith(1, 'pg_restore: warning: errors ignored on restore: 3'));
+    const err = await runPgRestore(DB_URL, 'C:\\tmp\\backup.dump').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ToolError);
+    expect((err as ToolError).exitCode).toBe(1);
   });
 
   it('rejects real pg_restore failures without leaking the URL or password into the error', async () => {

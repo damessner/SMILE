@@ -11,6 +11,10 @@ import {
 
 const auditEntries: any[] = [];
 
+// The restore route migrates the restored database to the current schema before it
+// reports success; stub the migrator so these tests never touch a real database.
+const migrationsMock = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock('../db/index.js', async (importOriginal) => {
   return {
     ...(await importOriginal<typeof import('../db/index.js')>()),
@@ -31,6 +35,7 @@ vi.mock('../db/index.js', async (importOriginal) => {
     getPool: () => ({
       query: async () => ({ rows: [] }),
     }),
+    runMigrations: migrationsMock,
   };
 });
 
@@ -93,6 +98,7 @@ function createToken(role: 'admin' | 'teacher' | 'head_teacher'): string {
 describe('Backup API endpoints (Task 6)', () => {
   beforeEach(() => {
     auditEntries.length = 0;
+    migrationsMock.mockClear();
   });
 
   describe('GET /api/backup/list', () => {
@@ -241,6 +247,9 @@ describe('Backup API endpoints (Task 6)', () => {
       expect(auditEntries.length).toBe(1);
       expect(auditEntries[0].action).toBe('DATABASE_RESTORED');
       expect(auditEntries[0].payload.restoredBackup).toBe('smile_db_2026-10-10_valid.dump');
+
+      // The restored database is migrated to the current schema while the gate is held.
+      expect(migrationsMock).toHaveBeenCalledTimes(1);
     });
 
     it('returns 500 if restore runner throws an error', async () => {
@@ -271,6 +280,11 @@ describe('Backup API endpoints (Task 6)', () => {
       expect(path.basename(rollbackCalls[0])).toMatch(/^pre-restore-safety-.*\.dump$/);
       expect(res.json().preRestoreBackup).toBe(path.basename(rollbackCalls[0]));
       expect(res.json().rollback).toEqual({ attempted: true, succeeded: true });
+      // A failed restore never reaches the migration step; it leaves exactly one
+      // failure audit row instead of a success row.
+      expect(migrationsMock).not.toHaveBeenCalled();
+      expect(auditEntries).toHaveLength(1);
+      expect(auditEntries[0].action).toBe('DATABASE_RESTORE_FAILED');
     });
   });
 

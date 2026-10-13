@@ -215,9 +215,9 @@ DATABASE_URL=$(grep -E '^DATABASE_URL=' /opt/smile/.env | cut -d= -f2- | tr -d '
 f=/var/backups/smile/smile_db-$STAMP.dump
 pg_dump "$DATABASE_URL" -Fc -f "$f"
 pg_restore --list "$f" >/dev/null && echo "database backup: VALID ($f)"
-tar czf /var/backups/smile/opt-smile-$STAMP.tar.gz -C /opt/smile --exclude=node_modules --exclude=.env .
+tar czf /var/backups/smile/opt-smile-$STAMP.tar.gz -C /opt/smile --exclude=node_modules --exclude=.git --exclude=.env .
 echo "app snapshot: /var/backups/smile/opt-smile-$STAMP.tar.gz"
-cp -a /opt/smile/.env /var/backups/smile/env-backup-$STAMP
+cp -aL /opt/smile/.env /var/backups/smile/env-backup-$STAMP
 chmod 600 /var/backups/smile/env-backup-$STAMP
 echo "env copy: /var/backups/smile/env-backup-$STAMP"
 '''
@@ -330,9 +330,26 @@ for d in $(ls -1 | grep -E '^[0-9]{8}-[0-9]{6}(-legacy)?$' | sort -r); do
     rm -rf -- "$p"
   fi
 done
+
+# Stale hidden extraction dirs left by a crashed deploy (older than one day: a
+# running deploy's .incoming-* is newer and must survive).
+find /opt/smile-releases -maxdepth 1 -name '.incoming-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 '''
 
-TIMERS_SH = r'''mkdir -p /etc/smile /var/backups/smile /var/backups/smile-independent
+# Retention of deploy-produced files in /var/backups/smile. ONLY the three patterns
+# below are candidates: smile_db_*.dump (underscore) belongs to the 10-minute backup
+# job, pre-restore-safety-* to the restore drill, and neither is ever touched here.
+PRUNE_BACKUPS_SH = r'''cd /var/backups/smile 2>/dev/null || exit 0
+for pattern in 'smile_db-*.dump' 'opt-smile-*.tar.gz' 'env-backup-*'; do
+  ls -1t -- $pattern 2>/dev/null | tail -n +11 | while IFS= read -r old; do
+    echo "prune-backup $old"
+    rm -f -- "$old"
+  done
+done
+'''
+
+TIMERS_SH = r'''set -euo pipefail
+mkdir -p /etc/smile /var/backups/smile /var/backups/smile-independent
 chown -R smile:smile /var/backups/smile /var/backups/smile-independent
 chmod 700 /var/backups/smile /var/backups/smile-independent
 chmod +x /opt/smile/scripts/*.py /opt/smile/scripts/*.sh 2>/dev/null || true
@@ -372,6 +389,19 @@ systemctl enable --now smile-restore-drill.timer
 systemctl enable --now smile-independent-backup.timer
 echo "Restore drill and independent backup timers armed."
 systemctl status smile-m365-backup.timer smile-restore-drill.timer smile-independent-backup.timer --no-pager || true
+'''
+
+# Visibility only (deploy must not abort on timer issues): prints every timer with
+# a loud "!!" prefix when it is not enabled+active.
+TIMER_STATUS_SH = r'''for unit in smile-m365-backup.timer smile-restore-drill.timer smile-independent-backup.timer; do
+  enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+  active=$(systemctl is-active "$unit" 2>/dev/null || true)
+  if [ "$enabled" = "enabled" ] && [ "$active" = "active" ]; then
+    echo "$unit: enabled=$enabled active=$active"
+  else
+    echo "!! $unit: enabled=${enabled:-unknown} active=${active:-unknown} - NOT armed (deploy continues)"
+  fi
+done
 '''
 
 
@@ -498,8 +528,20 @@ def rollback(remote, prev):
 def deploy(bundle_path, stamp, sha, branch, dirty):
     remote = Remote()
     tmp_host = f'/tmp/smile_update-{stamp}.tar.gz'
+    lock = f'{RELEASES}/.deploy.lock'
+    lock_held = False
     try:
         remote.connect()
+
+        # Deploy lock: refuses a second concurrent deploy. `mkdir -p` on the parent is
+        # safe here even on a legacy layout; the one-time migration creates it anyway.
+        rc, _, _ = remote.host(f'mkdir -p {RELEASES} && mkdir {lock}', timeout=60,
+                               label='0. deploy lock', check=False)
+        if rc != 0:
+            raise DeployError(
+                f'{lock} already exists - another deploy is running, or a previous one crashed '
+                f'and left a stale lock; remove it manually with `rmdir {lock}` and retry')
+        lock_held = True
 
         remote.ex(render(BACKUP_SH, STAMP=stamp), timeout=900, label='0. pre-flight backups')
         remote.ex(render(MIGRATE_SH, STAMP=stamp), timeout=300,
@@ -518,13 +560,15 @@ def deploy(bundle_path, stamp, sha, branch, dirty):
                                    label='4. current live release (rollback target)')
         prev = prev_out.strip()
 
-        # ---- point of no return: from here, failures roll back -------------
+        # ---- point of no return: from here, ANY failure rolls back ---------
         try:
             remote.ex(render(SWITCH_SH, STAMP=stamp), label='5. atomic switch + restart smile.service')
             print('\n=== 5. health check (/health) ===')
             if not wait_healthy(remote):
                 raise DeployError('smile.service did not pass /health')
-        except DeployError as exc:
+        except Exception as exc:
+            # Includes DeployError and transport failures (dropped SSH session, socket
+            # timeout) raised while switching or health-checking.
             print(f'\n!! {exc} - rolling back to {prev}')
             healthy = rollback(remote, prev)
             raise DeployError(f'deploy failed and was rolled back (previous release healthy: {healthy})')
@@ -536,19 +580,32 @@ def deploy(bundle_path, stamp, sha, branch, dirty):
         remote.ex(VERIFY_SH, check=False, label='6. verification')
         remote.ex(render(PRUNE_SH, KEEP=KEEP_RELEASES), check=False,
                   label=f'7. retention (keep newest {KEEP_RELEASES} releases + live)')
+        remote.ex(PRUNE_BACKUPS_SH, check=False,
+                  label='7b. backup retention (newest 10 per deploy artifact type)')
         remote.ex('systemctl status smile.service --no-pager -n 5', check=False, label='8. service status')
         remote.ex('journalctl -u smile.service --since "-3 min" --no-pager | grep -iE "error|fail|migrat" | head -20 || true',
                   check=False, label='8. recent log warnings')
         remote.ex(render(TIMERS_SH), timeout=600, check=False, label='9. backup timers')
+        remote.ex(TIMER_STATUS_SH, check=False, label='9b. timer status (visibility only)')
 
         print(f'\n✓ DEPLOYMENT SUCCESSFUL  release={stamp}  sha={sha}  branch={branch}'
               + ('  (DIRTY: --allow-dirty)' if dirty else ''))
     finally:
         if remote.ssh is not None:
-            try:
-                remote.host(f'rm -f {tmp_host}', check=False)
-            except Exception:
-                pass
+            # Best-effort cleanup: host tarball, container tarball, partial extraction
+            # dir, then the deploy lock (only if this run acquired it).
+            for cmd in (f'rm -f {tmp_host}',
+                        f'pct exec {CID} -- rm -f {tmp_host}',
+                        f'rm -rf {RELEASES}/.incoming-{stamp}'):
+                try:
+                    remote.host(cmd, check=False)
+                except Exception:
+                    pass
+            if lock_held:
+                try:
+                    remote.host(f'rmdir {lock}', check=False)
+                except Exception:
+                    pass
             remote.close()
 
 
@@ -563,6 +620,10 @@ def parse_args(argv):
 
 def main(argv):
     args = parse_args(argv)
+    if not CID.isdigit():
+        print(f'REFUSING: LXC_CONTAINER_ID={CID!r} must be all digits - it is interpolated into '
+              'remote pct commands unquoted (ABBRUCH: LXC_CONTAINER_ID darf nur Ziffern enthalten).')
+        return 1
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d-%H%M%S')
 
     print('--- SMILE deploy ---')

@@ -81,7 +81,7 @@ BRIDGE="${INPUT_BRIDGE:-$DEF_BRIDGE}"
 
 # Optional: clone database from existing CT on this host (e.g. 115)
 IMPORT_CT=""
-if pct list | grep -q "115"; then
+if pct list | awk '{print $1}' | grep -qx "115"; then
   read -r -p "Import existing database from CT 115? (y/N): " DO_IMPORT
   if [[ "$DO_IMPORT" =~ ^[yY] ]]; then
     IMPORT_CT="115"
@@ -211,12 +211,16 @@ else
   git clone https://github.com/damessner/SMILE.git /opt/smile-releases/$REL
 fi
 " 2>/dev/null; then
+  # The token (when used) is baked into the clone URL and therefore into
+  # .git/config. Replace origin with the credential-free URL so the secret does
+  # not persist on the container.
+  pct exec "$CTID" -- git -C "/opt/smile-releases/$REL" remote set-url origin https://github.com/damessner/SMILE.git
   CLONE_SUCCESS=true
 fi
 
 # Fallback: if git clone failed (e.g. private repo) and host has CT 115, copy from CT 115
 if [ "$CLONE_SUCCESS" = false ]; then
-  if pct list | grep -q "115"; then
+  if pct list | awk '{print $1}' | grep -qx "115"; then
     info "Cloning directly from CT 115 on this host..."
     pct exec 115 -- tar -czf /tmp/smile_source.tar.gz -C /opt/smile --exclude="node_modules" --exclude=".env" .
     pct pull 115 /tmp/smile_source.tar.gz /tmp/smile_source.tar.gz
@@ -269,12 +273,19 @@ chown smile:smile /opt/smile-shared/.env
 if [ -n "$IMPORT_CT" ] && [ -s "${DUMP_HOST_PATH:-}" ]; then
   info "Restoring database dump into new container..."
   pct push "$CTID" "$DUMP_HOST_PATH" /tmp/smile_import.dump
-  pct exec "$CTID" -- bash -c '
-    sudo -u postgres pg_restore -d smile_db --no-owner --role=smile_user /tmp/smile_import.dump >/dev/null 2>&1 || true
-    rm -f /tmp/smile_import.dump
-  '
-  rm -f "$DUMP_HOST_PATH"
-  ok "Database restored from CT $IMPORT_CT."
+  # The dump is deleted only after a successful restore: pg_restore reports errors on
+  # stderr and exits non-zero, and silently dropping the only copy would make a retry
+  # impossible.
+  if pct exec "$CTID" -- sudo -u postgres pg_restore -d smile_db --no-owner --role=smile_user /tmp/smile_import.dump; then
+    pct exec "$CTID" -- rm -f /tmp/smile_import.dump
+    rm -f "$DUMP_HOST_PATH"
+    ok "Database restored from CT $IMPORT_CT."
+  else
+    warn "!! DATABASE RESTORE FAILED (pg_restore returned non-zero). The dump was NOT deleted."
+    warn "  container copy: /tmp/smile_import.dump"
+    warn "  host copy:      $DUMP_HOST_PATH"
+    warn "  retry with:     pct exec $CTID -- sudo -u postgres pg_restore -d smile_db --no-owner --role=smile_user /tmp/smile_import.dump"
+  fi
 fi
 
 # 11. Build application and run migrations
@@ -338,29 +349,31 @@ systemctl enable --now smile.service
 
 # Install the 10-minute automated M365 backup timer.
 #
-# The timer is INSTALLED but only ARMED if the job can actually run, i.e. if
-# `backup_m365.py --check` passes on the container. Previously this ran
-# `enable --now` unconditionally, so any redeploy of an existing box without a
-# configured passphrase or a working M365 credential started a run every 10
-# minutes that failed loudly — correct behaviour, but as an unrequested alert
-# storm during a deploy.
+# The unit files are only INSTALLED here. Arming happens on the host below, and
+# only if `backup_m365.py --check` passes in the container. Previously this ran
+# `enable --now` unconditionally, so a redeploy of a box without a configured
+# passphrase or working M365 credential started a run every 10 minutes that
+# failed loudly — correct behaviour, but as an unrequested alert storm during a
+# deploy. (The previous version also called `pct exec` and the host `info`
+# helper from inside this container block, where neither exists.)
 if [ -f "/opt/smile/scripts/systemd/smile-m365-backup.service" ]; then
   install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
   install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable smile-m365-backup.timer
-
-  if pct exec "$CTID" -- sudo -u smile python3 /opt/smile/scripts/backup_m365.py --check >/dev/null 2>&1; then
-    systemctl start smile-m365-backup.timer
-    info "M365 backup timer armed."
-  else
-    info "M365 backup timer installed but NOT started."
-    info "Configure M365_USER, M365_PASSWORD and BACKUP_ENCRYPTION_PASSPHRASE in"
-    info "/etc/smile/backup.env, then run 'backup_m365.py --check' before starting it:"
-    info "  pct exec $CTID -- systemctl start smile-m365-backup.timer"
-  fi
 fi
 '
+
+# Arm the M365 backup timer only if the job can actually run (host-side check).
+if pct exec "$CTID" -- sudo -u smile python3 /opt/smile/scripts/backup_m365.py --check; then
+  pct exec "$CTID" -- systemctl start smile-m365-backup.timer
+  info "M365 backup timer armed."
+else
+  info "M365 backup timer installed but NOT started."
+  info "Configure M365_USER, M365_PASSWORD and BACKUP_ENCRYPTION_PASSPHRASE in"
+  info "/etc/smile/backup.env, then run 'backup_m365.py --check' before starting it:"
+  info "  pct exec $CTID -- systemctl start smile-m365-backup.timer"
+fi
 
 # 13. Verify health
 info "Verifying service health on port 3000..."
@@ -373,7 +386,7 @@ for i in {1..30}; do
   sleep 1
 done
 
-[ "$SERVICE_HEALTHY" = true ] || warn "Service started but health check timed out. Check logs: pct exec $CTID -- journalctl -u smile.service"
+[ "$SERVICE_HEALTHY" = true ] || fail "Service started but health check timed out. Check logs: pct exec $CTID -- journalctl -u smile.service"
 
 # Retrieve Container IP
 CONTAINER_IP=$(pct exec "$CTID" -- ip -4 addr show eth0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1 || echo "")
