@@ -29,7 +29,7 @@
     "assessment"
   ],
   "author": "MS Telfs Weissenbach",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "devDependencies": {
     "concurrently": "^9.2.1"
   },

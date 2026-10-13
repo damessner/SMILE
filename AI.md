@@ -22,4 +22,4 @@ reconciliation is recorded in
 - **Deployment**: `python scripts/deploy.py` (Proxmox LXC 115)
 - **Known open security items**: [`docs/SECURITY.md`](./docs/SECURITY.md) — the backup archives were moved out of the working tree on 2026-10-12 (`verify-env` is clean); `GET /api/timeouts/active` was scoped on 2026-10-09 (`lib/lw-duty.ts`). Remaining accepted items: no TLS on the LAN (a boot warning now fires while `COOKIE_SECURE` is false) and the permissive `STATISTICS_*` defaults, which are a school decision.
 - **Deferred work**: [`docs/superpowers/plans/2026-10-06-hardening-roadmap.md`](./docs/superpowers/plans/2026-10-06-hardening-roadmap.md) — rank-logic unification, plus the accessibility and deadline items.
-- **Detailed Specification**: [SMILE_ARCHITECTURE_AND_CODE_REVIEW.md](./SMILE_ARCHITECTURE_AND_CODE_REVIEW.md)
+- **Detailed Specification**: [SMILE_ARCHITECTURE_AND_CODE_REVIEW.md](./docs/archive/SMILE_ARCHITECTURE_AND_CODE_REVIEW.md)

@@ -187,7 +187,7 @@ async function seed() {
   // hashed from the same INITIAL_USER_PASSWORD. Issuing per-account credentials needs a
   // delivery channel this app does not have (no mail, no keyring), so the seed cannot
   // invent one. Until that exists, a teacher who learns the bootstrap password can sign
-  // in as any teacher who has not logged in yet. Tracked in bugfix.md / docs/SECURITY.md.
+  // in as any teacher who has not logged in yet. Tracked in docs/archive/bugfix.md / docs/SECURITY.md.
   console.log('Seeding user accounts...');
   const bootstrapPassword = initialBootstrapPassword();
   const adminPassword = adminBootstrapPassword();

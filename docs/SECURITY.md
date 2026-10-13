@@ -339,7 +339,7 @@ evidence.
 ### Remaining verification limits
 
 - Conference vote/co-teaching semantics, lock scope, rank aggregation, comment ownership, and
-  post-deadline comment policy are product-gated in [`bugfix.md`](../bugfix.md); no outcome is
+  post-deadline comment policy are product-gated in [`bugfix.md`](archive/bugfix.md); no outcome is
   inferred here.
 - The administrator actor strategy is now implemented (placeholder `teachers` row per admin
   account, `active: false`, reserved id range), but **the production preflight has not been
