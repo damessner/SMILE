@@ -81,7 +81,7 @@ BRIDGE="${INPUT_BRIDGE:-$DEF_BRIDGE}"
 
 # Optional: clone database from existing CT on this host (e.g. 115)
 IMPORT_CT=""
-if pct list | grep -q "115"; then
+if pct list | awk '{print $1}' | grep -qx "115"; then
   read -r -p "Import existing database from CT 115? (y/N): " DO_IMPORT
   if [[ "$DO_IMPORT" =~ ^[yY] ]]; then
     IMPORT_CT="115"
@@ -186,37 +186,46 @@ apt-get install -y nodejs
 
 # Dedicated unprivileged service user
 if ! id -u smile >/dev/null 2>&1; then
-  useradd -r -m -s /bin/bash -d /opt/smile smile
+  # -M: /opt/smile becomes a symlink to the live release (created in step 11)
+  useradd -r -M -s /bin/bash -d /opt/smile smile
 fi
 '
 
 ok "Prerequisites installed inside container."
 
-# 8. Clone or transfer SMILE application
-info "Setting up SMILE codebase in /opt/smile..."
+# 8. Clone or transfer SMILE application into a new release directory.
+#    Layout: /opt/smile -> /opt/smile-releases/<REL> (symlink set in step 11),
+#            /opt/smile-shared/.env (mutable config, outside every release).
+info "Setting up SMILE codebase in /opt/smile-releases/<release>..."
 
+REL="$(date -u +%Y%m%d-%H%M%S)"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 CLONE_SUCCESS=false
 
 # Try git clone first
 if pct exec "$CTID" -- bash -c "
+mkdir -p /opt/smile-releases /opt/smile-shared
 if [ -n \"$GITHUB_TOKEN\" ]; then
-  git clone https://${GITHUB_TOKEN}@github.com/damessner/SMILE.git /opt/smile
+  git clone https://${GITHUB_TOKEN}@github.com/damessner/SMILE.git /opt/smile-releases/$REL
 else
-  git clone https://github.com/damessner/SMILE.git /opt/smile
+  git clone https://github.com/damessner/SMILE.git /opt/smile-releases/$REL
 fi
 " 2>/dev/null; then
+  # The token (when used) is baked into the clone URL and therefore into
+  # .git/config. Replace origin with the credential-free URL so the secret does
+  # not persist on the container.
+  pct exec "$CTID" -- git -C "/opt/smile-releases/$REL" remote set-url origin https://github.com/damessner/SMILE.git
   CLONE_SUCCESS=true
 fi
 
 # Fallback: if git clone failed (e.g. private repo) and host has CT 115, copy from CT 115
 if [ "$CLONE_SUCCESS" = false ]; then
-  if pct list | grep -q "115"; then
+  if pct list | awk '{print $1}' | grep -qx "115"; then
     info "Cloning directly from CT 115 on this host..."
     pct exec 115 -- tar -czf /tmp/smile_source.tar.gz -C /opt/smile --exclude="node_modules" --exclude=".env" .
     pct pull 115 /tmp/smile_source.tar.gz /tmp/smile_source.tar.gz
     pct push "$CTID" /tmp/smile_source.tar.gz /tmp/smile_source.tar.gz
-    pct exec "$CTID" -- tar -xzf /tmp/smile_source.tar.gz -C /opt/smile
+    pct exec "$CTID" -- bash -c "mkdir -p /opt/smile-releases/$REL && tar -xzf /tmp/smile_source.tar.gz -C /opt/smile-releases/$REL"
     pct exec 115 -- rm -f /tmp/smile_source.tar.gz
     rm -f /tmp/smile_source.tar.gz
     CLONE_SUCCESS=true
@@ -225,7 +234,7 @@ fi
 
 [ "$CLONE_SUCCESS" = true ] || fail "Could not clone SMILE. If the repo is private, re-run with: GITHUB_TOKEN=ghp_xxx $0"
 
-ok "Codebase deployed to /opt/smile."
+ok "Codebase deployed to /opt/smile-releases/$REL (live link set in step 11)."
 
 # 9. Configure PostgreSQL & generate secure secrets
 info "Configuring PostgreSQL and application environment..."
@@ -244,50 +253,70 @@ sudo -u postgres psql -c "CREATE USER smile_user WITH ENCRYPTED PASSWORD '"$DB_P
 sudo -u postgres psql -c "CREATE DATABASE smile_db OWNER smile_user;"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE smile_db TO smile_user;"
 
-cat > /opt/smile/.env << EOF
+mkdir -p /opt/smile-shared
+cat > /opt/smile-shared/.env << EOF
 DATABASE_URL="postgres://smile_user:${DB_PASS}@127.0.0.1:5432/smile_db"
 JWT_SECRET="${JWT_SECRET}"
 INITIAL_USER_PASSWORD="${INITIAL_PW}"
 PORT=3000
 HOST="0.0.0.0"
 NODE_ENV="production"
+COOKIE_SECURE="false"
 RUN_MIGRATIONS="true"
 EOF
 
-chmod 600 /opt/smile/.env
-chown smile:smile /opt/smile/.env
+chmod 600 /opt/smile-shared/.env
+chown smile:smile /opt/smile-shared/.env
 '
 
 # 10. If importing database from CT 115, restore now
 if [ -n "$IMPORT_CT" ] && [ -s "${DUMP_HOST_PATH:-}" ]; then
   info "Restoring database dump into new container..."
   pct push "$CTID" "$DUMP_HOST_PATH" /tmp/smile_import.dump
-  pct exec "$CTID" -- bash -c '
-    sudo -u postgres pg_restore -d smile_db --no-owner --role=smile_user /tmp/smile_import.dump >/dev/null 2>&1 || true
-    rm -f /tmp/smile_import.dump
-  '
-  rm -f "$DUMP_HOST_PATH"
-  ok "Database restored from CT $IMPORT_CT."
+  # The dump is deleted only after a successful restore: pg_restore reports errors on
+  # stderr and exits non-zero, and silently dropping the only copy would make a retry
+  # impossible.
+  if pct exec "$CTID" -- sudo -u postgres pg_restore -d smile_db --no-owner --role=smile_user /tmp/smile_import.dump; then
+    pct exec "$CTID" -- rm -f /tmp/smile_import.dump
+    rm -f "$DUMP_HOST_PATH"
+    ok "Database restored from CT $IMPORT_CT."
+  else
+    warn "!! DATABASE RESTORE FAILED (pg_restore returned non-zero). The dump was NOT deleted."
+    warn "  container copy: /tmp/smile_import.dump"
+    warn "  host copy:      $DUMP_HOST_PATH"
+    warn "  retry with:     pct exec $CTID -- sudo -u postgres pg_restore -d smile_db --no-owner --role=smile_user /tmp/smile_import.dump"
+  fi
 fi
 
 # 11. Build application and run migrations
 info "Building application bundles (Client & Server)..."
 
-pct exec "$CTID" -- bash -c '
+pct exec "$CTID" -- env REL="$REL" bash -c '
 set -euo pipefail
-cd /opt/smile
+RELDIR="/opt/smile-releases/$REL"
+cd "$RELDIR"
 
 # Install production dependencies
 npm install --omit=dev --ignore-scripts
 
 # Build if dist folders not present
-if [ ! -d "/opt/smile/server/dist" ] || [ ! -d "/opt/smile/client/dist" ]; then
+if [ ! -d "$RELDIR/server/dist" ] || [ ! -d "$RELDIR/client/dist" ]; then
   npm install --ignore-scripts
   npm run build --workspaces
   npm prune --omit=dev
 fi
 
-chown -R smile:smile /opt/smile
+# Mutable config lives outside the release and is linked in.
+ln -sfn /opt/smile-shared/.env "$RELDIR/.env"
+
+# Atomic live link. Fresh install: /opt/smile must not exist as a plain directory.
+if [ -d /opt/smile ] && [ ! -L /opt/smile ]; then
+  echo "ERROR: /opt/smile is a plain directory; refusing to replace it" >&2; exit 1
+fi
+ln -sfn "$RELDIR" /opt/.smile-next
+mv -T /opt/.smile-next /opt/smile
+
+chown -R smile:smile "$RELDIR"
 '
 
 ok "Application built successfully."
@@ -309,7 +338,7 @@ ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
-EnvironmentFile=/opt/smile/.env
+EnvironmentFile=/opt/smile-shared/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -320,29 +349,31 @@ systemctl enable --now smile.service
 
 # Install the 10-minute automated M365 backup timer.
 #
-# The timer is INSTALLED but only ARMED if the job can actually run, i.e. if
-# `backup_m365.py --check` passes on the container. Previously this ran
-# `enable --now` unconditionally, so any redeploy of an existing box without a
-# configured passphrase or a working M365 credential started a run every 10
-# minutes that failed loudly — correct behaviour, but as an unrequested alert
-# storm during a deploy.
+# The unit files are only INSTALLED here. Arming happens on the host below, and
+# only if `backup_m365.py --check` passes in the container. Previously this ran
+# `enable --now` unconditionally, so a redeploy of a box without a configured
+# passphrase or working M365 credential started a run every 10 minutes that
+# failed loudly — correct behaviour, but as an unrequested alert storm during a
+# deploy. (The previous version also called `pct exec` and the host `info`
+# helper from inside this container block, where neither exists.)
 if [ -f "/opt/smile/scripts/systemd/smile-m365-backup.service" ]; then
   install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.service /etc/systemd/system/
   install -m 0644 /opt/smile/scripts/systemd/smile-m365-backup.timer /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable smile-m365-backup.timer
-
-  if pct exec "$CTID" -- sudo -u smile python3 /opt/smile/scripts/backup_m365.py --check >/dev/null 2>&1; then
-    systemctl start smile-m365-backup.timer
-    info "M365 backup timer armed."
-  else
-    info "M365 backup timer installed but NOT started."
-    info "Configure M365_USER, M365_PASSWORD and BACKUP_ENCRYPTION_PASSPHRASE in"
-    info "/etc/smile/backup.env, then run 'backup_m365.py --check' before starting it:"
-    info "  pct exec $CTID -- systemctl start smile-m365-backup.timer"
-  fi
 fi
 '
+
+# Arm the M365 backup timer only if the job can actually run (host-side check).
+if pct exec "$CTID" -- sudo -u smile python3 /opt/smile/scripts/backup_m365.py --check; then
+  pct exec "$CTID" -- systemctl start smile-m365-backup.timer
+  info "M365 backup timer armed."
+else
+  info "M365 backup timer installed but NOT started."
+  info "Configure M365_USER, M365_PASSWORD and BACKUP_ENCRYPTION_PASSPHRASE in"
+  info "/etc/smile/backup.env, then run 'backup_m365.py --check' before starting it:"
+  info "  pct exec $CTID -- systemctl start smile-m365-backup.timer"
+fi
 
 # 13. Verify health
 info "Verifying service health on port 3000..."
@@ -355,7 +386,7 @@ for i in {1..30}; do
   sleep 1
 done
 
-[ "$SERVICE_HEALTHY" = true ] || warn "Service started but health check timed out. Check logs: pct exec $CTID -- journalctl -u smile.service"
+[ "$SERVICE_HEALTHY" = true ] || fail "Service started but health check timed out. Check logs: pct exec $CTID -- journalctl -u smile.service"
 
 # Retrieve Container IP
 CONTAINER_IP=$(pct exec "$CTID" -- ip -4 addr show eth0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1 || echo "")

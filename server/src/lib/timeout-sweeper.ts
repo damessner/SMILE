@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { auditLogs, timeoutIncidents } from '../db/schema.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 import { LW_CLASS_ID } from './guards.js';
+import { isRestoreInProgress } from './restore-lock.js';
 
 export const AUTO_RESOLVE_NOTE = 'Automatisch beendet (Stundenende)';
 
@@ -17,6 +18,10 @@ export const AUTO_RESOLVE_NOTE = 'Automatisch beendet (Stundenende)';
  * - broadcasts TIMEOUT_RESOLVED to the pupil's class room and room 999 (Lernwerkstatt)
  */
 export async function sweepExpiredTimeouts(now: Date = new Date()): Promise<number> {
+  // While a restore holds the gate the database is being replaced; an auto-resolve
+  // UPDATE here would race the destructive step. Skip this tick, try again next round.
+  if (isRestoreInProgress()) return 0;
+
   const resolved = await db
     .update(timeoutIncidents)
     .set({

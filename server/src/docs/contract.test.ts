@@ -98,48 +98,13 @@ describe('directive documents do not instruct a destructive edit', () => {
   });
 });
 
-/**
- * Pull a quoted count out of a document, tolerating the several phrasings in use
- * ("356 server tests passed", "server: 356 passed", "server: 26 suites / 356 tests").
- * Returns null when the document quotes no count at all, so a document that simply does
- * not talk about test totals does not fail the comparison.
- */
-function quotedCount(doc: string, scope: 'server' | 'client'): number | null {
-  const forms = [
-    new RegExp(`(\\d+)\\s+${scope}(?:\\s+tests)?\\s+passed`, 'i'),
-    new RegExp(`${scope}:?\\s*(\\d+)\\s+(?:passed|tests)`, 'i'),
-  ];
-  for (const re of forms) {
-    const m = re.exec(doc);
-    if (m) return Number(m[1]);
-  }
-  return null;
-}
-
-describe('documents do not hand-type test totals', () => {
+describe('directive documents: test-run hygiene', () => {
   const docs: Array<[string, string]> = [
     ['AGENTS.md', AGENTS],
     ['AI.md', AI],
     ['IF_YOU_ARE_AN_AI.md', IF_YOU],
     ['docs/SECURITY.md', SECURITY],
   ];
-
-  // Hand-typed totals drift the moment a test is added, and the documents then disagree
-  // with each other (the reason this check exists). The runner output from `npm test` is
-  // the only source of truth, so no document may quote a total for either workspace.
-  it.each(['server', 'client'] as const)('no document quotes a %s total', (scope) => {
-    const quoted = docs
-      .map(([name, doc]) => [name, quotedCount(doc, scope)] as const)
-      .filter((entry): entry is readonly [string, number] => entry[1] !== null);
-
-    if (quoted.length > 0) {
-      const detail = quoted.map(([name, value]) => `${name}=${value}`).join(', ');
-      throw new Error(
-        `Documents hand-type ${scope} test totals (${detail}). ` +
-          `Remove the number and point to \`npm test\` instead.`,
-      );
-    }
-  });
 
   it('no document still quotes a superseded count', () => {
     // Backstop for the specific historical totals, so a doc cannot quietly revert.

@@ -7,7 +7,7 @@
 
 ### Core Domain Rules & Invariants
 1. **Canonical Subject Codes (Invariant 1)**:  
-   Only store canonical codes (`D`, `E`, `M`, `BO`, `PH`, `MUS`, `TUD`, etc.). Always normalize via `normalizeSubject()` from `server/src/utils/subject.ts`.
+   Only store canonical codes (`D`, `E`, `M`, `BO`, `PH`, `MUS`, `TUD`, etc.). Write paths validate with `normalizeKnownSubject()` and reject unknown or missing codes (400). Reads use `normalizeSubject()`. Both live in `server/src/utils/subject.ts`. Never use `normalizeSubject()` on a write.
 2. **Database OCC Concurrency (Invariant 2)**:  
    Table `evaluations` has unique constraint on `(round_id, pupil_id, class_id, subject_code)`. Version increments must be atomic in PostgreSQL (`version = version + 1`). Single-cell writes in `BeobachtungsGrid.tsx` carry the subject-specific version.
 3. **LiveSync Event Bus Symmetry (Invariant 3)**:  

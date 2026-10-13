@@ -40,11 +40,15 @@ elif os.path.exists(key_file):
 try:
     ssh.connect(HOST, username=USER, **connect_kwargs)
 except (paramiko.AuthenticationException, paramiko.SSHException):
-    if not PASSWORD:
-        PASSWORD = getpass.getpass(f"Enter SSH password for {USER}@{HOST}: ")
-        ssh.connect(HOST, username=USER, password=PASSWORD, timeout=20)
-    else:
-        raise
+    # Only interactive password fallback when a key is present but rejected;
+    # otherwise a non-interactive run would hang on getpass.getpass().
+    if PASSWORD or not os.path.exists(key_file):
+        raise SystemExit(
+            f"SSH authentication to {USER}@{HOST} failed. Set PROXMOX_PASSWORD or "
+            f"install the SSH key at {key_file}."
+        )
+    PASSWORD = getpass.getpass(f"Enter SSH password for {USER}@{HOST}: ")
+    ssh.connect(HOST, username=USER, password=PASSWORD, timeout=20)
 
 def run(cmd, timeout=60):
     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
@@ -137,7 +141,7 @@ async function reset() {
 
     // Reset all teacher accounts to initial bootstrap password & mustChangePassword
     const userRes = await client.query(
-      "UPDATE users SET password_hash = $1, must_change_password = true, session_version = 0 WHERE role != \x27admin\x27 RETURNING username;",
+      "UPDATE users SET password_hash = $1, must_change_password = true, password_issued_at = now(), session_version = 0 WHERE role != \x27admin\x27 RETURNING username;",
       [hash]
     );
 

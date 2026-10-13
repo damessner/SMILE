@@ -207,6 +207,9 @@ interface PendingRatingWrite {
 
 const RATING_ACK_TIMEOUT_MS = 15_000;
 const RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
+// After the fast ladder is exhausted (e.g. a long server-side database restore closes
+// every socket with 1001) keep probing at this interval instead of giving up for good.
+const SLOW_RETRY_INTERVAL_MS = 15_000;
 let mutationSequence = 0;
 
 function settleRatingWrite(
@@ -304,7 +307,13 @@ export function useLiveSync(
     const scheduleReconnect = () => {
       if (disposed || reconnectTimer) return;
       if (retries >= RECONNECT_DELAYS_MS.length) {
+        // Fast ladder exhausted: report the degraded state but keep probing slowly, so a
+        // connection that went away for a restore or a restart heals without a reload.
         setConnectionError('Live-Verbindung konnte nicht wiederhergestellt werden.');
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          connect();
+        }, SLOW_RETRY_INTERVAL_MS);
         return;
       }
       const delay = RECONNECT_DELAYS_MS[retries++];

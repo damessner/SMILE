@@ -33,6 +33,74 @@ function validateNewPassword(password: string): string | null {
   return null;
 }
 
+/**
+ * A start password (`mustChangePassword` still true) stops working 14 days after it was
+ * issued. Exported so tests can build a password exactly at, or past, the boundary.
+ */
+export const START_PASSWORD_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+export const START_PASSWORD_EXPIRED_MESSAGE =
+  'Das Start-Passwort ist abgelaufen. Bitte wenden Sie sich an die Schulleitung, damit ein neues Passwort vergeben wird.';
+
+/** Failed logins per username before further attempts are refused. */
+export const LOGIN_MAX_FAILURES = 5;
+/** Window in which failures are counted; the lock lasts until it closes. */
+export const LOGIN_LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
+export const LOGIN_LOCKED_MESSAGE = 'Zu viele Fehlversuche. Bitte warten Sie 15 Minuten.';
+
+/**
+ * Per-username failure counter for POST /api/auth/login.
+ *
+ * In-memory and per process: it resets on restart and is not shared between instances.
+ * That is acceptable for a single-process LAN deployment; it complements, not replaces,
+ * the per-IP rate limit. Keys are normalised usernames, and the lock applies whether or
+ * not the account exists, so it does not reveal which accounts exist. While locked, only
+ * wrong passwords are refused - the correct credential still logs in, so a targeted
+ * lockout cannot bar a known account (admin included) from the app.
+ */
+const loginFailures = new Map<string, { count: number; windowStart: number }>();
+const LOGIN_FAILURE_MAP_SOFT_LIMIT = 10_000;
+
+function loginLockActive(username: string, now: number): boolean {
+  const entry = loginFailures.get(username);
+  if (!entry) return false;
+  if (now - entry.windowStart >= LOGIN_LOCKOUT_WINDOW_MS) {
+    loginFailures.delete(username);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES;
+}
+
+function recordLoginFailure(username: string, now: number): void {
+  const entry = loginFailures.get(username);
+  if (!entry || now - entry.windowStart >= LOGIN_LOCKOUT_WINDOW_MS) {
+    loginFailures.set(username, { count: 1, windowStart: now });
+  } else {
+    entry.count += 1;
+  }
+  if (loginFailures.size > LOGIN_FAILURE_MAP_SOFT_LIMIT) {
+    for (const [key, value] of loginFailures) {
+      if (now - value.windowStart >= LOGIN_LOCKOUT_WINDOW_MS) loginFailures.delete(key);
+    }
+  }
+}
+
+/** Test helper: forget every recorded failure. */
+export function resetLoginFailures(): void {
+  loginFailures.clear();
+}
+
+/** True when a still-flagged start password is older than the 14-day limit. */
+export function startPasswordExpired(
+  user: { mustChangePassword: boolean; passwordIssuedAt: Date | string },
+  now: number = Date.now(),
+): boolean {
+  if (!user.mustChangePassword) return false;
+  const issued = new Date(user.passwordIssuedAt).getTime();
+  // An unreadable issue date fails closed: the start password must not live on unchecked.
+  if (Number.isNaN(issued)) return true;
+  return now - issued > START_PASSWORD_MAX_AGE_MS;
+}
+
 async function publicUser(user: typeof users.$inferSelect) {
   let teacher = null;
   if (user.teacherId) {
@@ -86,14 +154,26 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         return badRequest(reply, 'Benutzername und Passwort sind erforderlich.');
       }
 
+      const now = Date.now();
+      const locked = loginLockActive(username, now);
+
       const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
 
-      // Always run a bcrypt comparison so a missing account and a wrong password take
-      // a comparable amount of time.
+      // Always run a bcrypt comparison so a missing account, a locked name and a wrong
+      // password take a comparable amount of time.
       const hash = user?.passwordHash ?? '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
       const validPassword = await bcrypt.compare(password, hash);
 
+      // The lock refuses only further *wrong* passwords; a correct credential always gets
+      // in. Otherwise anyone could lock a known account (admin included) out of the app by
+      // failing the login five times.
+      if (locked && !validPassword) {
+        request.log.info({ username }, 'Login refused: too many failed attempts');
+        return reply.status(429).send({ error: LOGIN_LOCKED_MESSAGE });
+      }
+
       if (!user || !validPassword) {
+        recordLoginFailure(username, now);
         request.log.info({ username }, 'Failed login');
         return reply.status(401).send({ error: 'Ungültige Anmeldedaten' });
       }
@@ -104,6 +184,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           return forbid(reply, 'Dieses Konto wurde deaktiviert. Bitte wenden Sie sich an die Schulleitung.');
         }
       }
+
+      // Correct password, but the start password was issued too long ago. No session is
+      // issued; the administrator has to set a new one.
+      if (startPasswordExpired(user, now)) {
+        request.log.info({ username }, 'Login refused: start password expired');
+        return forbid(reply, START_PASSWORD_EXPIRED_MESSAGE);
+      }
+
+      loginFailures.delete(username);
 
       const token = issueSessionToken((payload, opts) => fastify.jwt.sign(payload, opts), {
         id: user.id,
@@ -201,6 +290,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .set({
           passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
           mustChangePassword: false,
+          passwordIssuedAt: new Date(),
           sessionVersion: sql`${users.sessionVersion} + 1`,
         })
         .where(and(eq(users.id, authUser.id), eq(users.sessionVersion, user.sessionVersion)))
@@ -343,6 +433,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           .set({
             passwordHash: await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS),
             mustChangePassword: true,
+            passwordIssuedAt: new Date(),
             sessionVersion: sql`${users.sessionVersion} + 1`,
           })
           .where(eq(users.id, user.id));
@@ -446,6 +537,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           .update(users)
           .set({
             mustChangePassword: true,
+            // Re-issue the credential clock as well: the forced change must not trip the
+            // 14-day start-password expiry for accounts whose password is older than that.
+            passwordIssuedAt: new Date(),
             sessionVersion: sql`${users.sessionVersion} + 1`,
           })
           .where(eq(users.id, user.id));

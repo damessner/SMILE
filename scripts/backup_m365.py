@@ -548,11 +548,13 @@ def main():
     # -------------------------------------------------------------------------
     # STEP 6: Local retention pruning.
     # Deliberately AFTER a successful upload: the dump only leaves the box once
-    # the cloud copy is confirmed to exist.
+    # the cloud copy is confirmed to exist. Skipped entirely when any upload
+    # failed, so the local copy survives for a retry.
     # -------------------------------------------------------------------------
     keep_intraday_days = int(setting(loaded, "KEEP_INTRADAY_DAYS", "3"))
     keep_daily_days = int(setting(loaded, "KEEP_DAILY_DAYS", "30"))
-    prune_local_backups(backup_root, keep_intraday_days=keep_intraday_days, keep_daily_days=keep_daily_days)
+    if upload_errors == 0:
+        prune_local_backups(backup_root, keep_intraday_days=keep_intraday_days, keep_daily_days=keep_daily_days)
 
     if upload_errors > 0:
         fail(f"{upload_errors} file(s) failed to upload to Microsoft 365 OneDrive.")
