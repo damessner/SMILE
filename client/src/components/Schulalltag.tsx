@@ -1048,7 +1048,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     {/* Main Compact Row */}
                     <div
                       onClick={() => setExpandedPupilId(isExpanded ? null : pupil.id)}
-                      className={`cursor-pointer px-3 py-3 flex flex-col gap-2.5 transition ${
+                      className={`cursor-pointer px-3 py-2.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 transition ${
                         isExpanded
                           ? 'bg-slate-800/80 border-b border-slate-700/60'
                           : activeTimeoutIncident
@@ -1058,61 +1058,61 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           : 'hover:bg-slate-800/50'
                       }`}
                     >
-                      {/* Pupil name in a single rank-coloured box */}
-                      <div className="flex items-center justify-between gap-2 min-w-0">
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveProfilePupilId(pupil.id);
-                            }}
-                            className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2.5 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-400 ${rankBoxClass}`}
-                            title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
+                      {/* Left: pupil name in a single rank-coloured box */}
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveProfilePupilId(pupil.id);
+                          }}
+                          className={`flex min-h-[56px] min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-400 ${rankBoxClass}`}
+                          title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
+                        >
+                          <span className="truncate text-base font-extrabold">{pupil.fullName}</span>
+                          <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                            {rankLabel}
+                          </span>
+                        </button>
+                        {activeTimeoutIncident && (
+                          <span
+                            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                            title={activeTimeoutIncident.kind === 'cooldown' ? 'Im Cool-Down (Lernwerkstatt)' : 'Im Time-Out (Lernwerkstatt)'}
                           >
-                            <span className="truncate text-base font-extrabold">{pupil.fullName}</span>
-                            <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
-                              {rankLabel}
-                            </span>
-                          </button>
-                          {activeTimeoutIncident && (
-                            <span
-                              className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
-                              title={activeTimeoutIncident.kind === 'cooldown' ? 'Im Cool-Down (Lernwerkstatt)' : 'Im Time-Out (Lernwerkstatt)'}
-                            >
-                              {activeTimeoutIncident.kind === 'cooldown' ? (
-                                <Snowflake className="w-3 h-3" aria-hidden="true" />
-                              ) : (
-                                <Clock className="w-3 h-3" aria-hidden="true" />
-                              )}
-                              {' '}LW
-                            </span>
-                          )}
-                          {isYellowAlert && (
-                            <span
-                              className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
-                              title="Mahnstufe (>= 2 gelbe Karten)"
-                            >
-                              <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
-                            </span>
-                          )}
-                        </div>
+                            {activeTimeoutIncident.kind === 'cooldown' ? (
+                              <Snowflake className="w-3 h-3" aria-hidden="true" />
+                            ) : (
+                              <Clock className="w-3 h-3" aria-hidden="true" />
+                            )}
+                            {' '}LW
+                          </span>
+                        )}
+                        {isYellowAlert && (
+                          <span
+                            className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+                            title="Mahnstufe (>= 2 gelbe Karten)"
+                          >
+                            <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setExpandedPupilId(isExpanded ? null : pupil.id);
                           }}
-                          className="shrink-0 inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-800/80 px-2 text-[10px] font-bold text-slate-300 transition hover:bg-slate-700 hover:text-slate-50"
+                          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:bg-slate-700 hover:text-slate-50 sm:hidden"
                           aria-expanded={isExpanded}
+                          aria-label={isExpanded ? 'Details ausblenden' : 'Details einblenden'}
+                          title="Details"
                         >
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          <span className="hidden sm:inline">Details</span>
                         </button>
                       </div>
 
-                      {/* Quick actions stay directly under the name tile */}
-                      <div data-tour={index === 0 ? 'card-actions' : undefined} className="grid w-full grid-cols-5 gap-1.5">
+                      {/* Right: quick action cards */}
+                      <div className="flex items-stretch gap-1.5 sm:shrink-0">
+                        <div data-tour={index === 0 ? 'card-actions' : undefined} className="grid flex-1 grid-cols-5 gap-1.5 sm:flex sm:flex-none sm:items-stretch">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1123,7 +1123,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
                           title="Grüne Karte vergeben  (Tastatur: 1)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1140,7 +1140,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
                           title="Gelbe Karte vergeben  (Tastatur: 2)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1152,7 +1152,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenRedCardModal(pupil);
                           }}
-                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
                           title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
                         >
                           <ShieldAlertIcon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1164,7 +1164,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'timeout');
                           }}
-                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
                           title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -1176,13 +1176,27 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'cooldown');
                           }}
-                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
                           title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich)  (Tastatur: 5)"
                         >
                           <Snowflake className="w-3.5 h-3.5 text-sky-300" />
                           <span>COOL-DOWN</span>
                         </button>
 
+                      </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedPupilId(isExpanded ? null : pupil.id);
+                          }}
+                          className="hidden min-h-[56px] w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800/80 text-[9px] font-bold leading-none text-slate-400 transition hover:bg-slate-700 hover:text-slate-50 sm:inline-flex"
+                          aria-expanded={isExpanded}
+                          title={isExpanded ? 'Details ausblenden' : 'Details einblenden'}
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          <span>Details</span>
+                        </button>
                       </div>
                     </div>
 
