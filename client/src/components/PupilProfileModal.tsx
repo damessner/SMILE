@@ -539,6 +539,11 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                           <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold ${ti.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'}`}>
                             {ti.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out Einsatz'}
                           </span>
+                          {ti.retroactive && (
+                            <span className="rounded-md bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-200">
+                              Nachtrag
+                            </span>
+                          )}
                           <span className="text-slate-400 text-[11px]">
                             {new Date(ti.sent_at).toLocaleDateString('de-AT')} um{' '}
                             {new Date(ti.sent_at).toLocaleTimeString('de-AT', {

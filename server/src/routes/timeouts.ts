@@ -24,6 +24,7 @@ type Identity,
 } from '../lib/guards.js';
 import { canActOnTimeout, timeoutVisibility } from '../lib/lw-duty.js';
 import { timeoutExpiry } from '../lib/period-times.js';
+import { resolveRetroactiveOccurrence } from '../lib/retroactive-timeout.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 import { queueRedCardRankChange } from '../lib/teams.js';
 import {
@@ -57,6 +58,9 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
             classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
             kind: { enum: ['timeout', 'cooldown'] },
             taskAssignment: { type: 'string', nullable: true, maxLength: 2000 },
+            retroactive: { type: 'boolean' },
+            retroactiveDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+            retroactivePeriod: { type: 'integer', minimum: 1, maximum: 10 },
           },
         },
       },
@@ -65,17 +69,46 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const { pupilId, classId, kind: rawKind, taskAssignment } = (request.body ?? {}) as {
+    const {
+      pupilId,
+      classId,
+      kind: rawKind,
+      taskAssignment,
+      retroactive,
+      retroactiveDate,
+      retroactivePeriod,
+    } = (request.body ?? {}) as {
       pupilId?: number;
       classId?: number;
       kind?: 'timeout' | 'cooldown';
       taskAssignment?: string | null;
+      retroactive?: boolean;
+      retroactiveDate?: string;
+      retroactivePeriod?: number;
     };
     const kind = rawKind ?? 'timeout';
     const isCooldown = kind === 'cooldown';
+    const isRetroactive = retroactive === true;
 
     if (!pupilId || !classId) {
       return badRequest(reply, 'Schüler*in und Klasse sind zwingend erforderlich.');
+    }
+    if (isRetroactive && isCooldown) {
+      return badRequest(reply, 'Ein Cool-Down kann nicht nachträglich erfasst werden.');
+    }
+    let occurrence = null;
+    if (isRetroactive) {
+      if (!retroactiveDate || !retroactivePeriod) {
+        return badRequest(reply, 'Für einen Nachtrag sind Datum und Schulstunde erforderlich.');
+      }
+      const resolved = resolveRetroactiveOccurrence(
+        retroactiveDate,
+        retroactivePeriod,
+        new Date(),
+        config.retroactiveTimeoutMaxDays,
+      );
+      if (!resolved.ok) return badRequest(reply, resolved.error);
+      occurrence = resolved.occurrence;
     }
     const cleanTask = taskAssignment?.trim() ?? '';
     if (!isCooldown && !cleanTask) {
@@ -134,6 +167,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
             teacherId: actorId,
             cardType: 'red',
             note: `[TIME-OUT LW] Arbeitsauftrag: ${cleanTask}`,
+            ...(isRetroactive && occurrence ? { createdAt: occurrence.occurredAt } : {}),
           })
           .returning();
         redCard = card ?? null;
@@ -147,9 +181,19 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           sentByTeacherId: actorId,
           taskAssignment: storedTask,
           kind,
-          status: 'active',
+          status: isRetroactive ? 'resolved' : 'active',
           redCardId: redCard?.id ?? null,
-          expiresAt: timeoutExpiry(),
+          ...(isRetroactive && occurrence
+            ? {
+                sentAt: occurrence.occurredAt,
+                recordedAt: new Date(),
+                retroactive: true,
+                resolvedAt: occurrence.periodEnd,
+                resolvedBy: actorId,
+                resolutionNote: 'Nachträglich erfasst',
+                expiresAt: occurrence.periodEnd,
+              }
+            : { expiresAt: timeoutExpiry() }),
         })
         .returning();
 
@@ -170,7 +214,11 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
 
       await tx.insert(auditLogs).values({
         actorId: safeTeacherId(user.teacherId),
-        action: isCooldown ? 'COOLDOWN_ISSUED' : 'TIMEOUT_ISSUED',
+        action: isCooldown
+          ? 'COOLDOWN_ISSUED'
+          : isRetroactive
+            ? 'TIMEOUT_RETROACTIVE_RECORDED'
+            : 'TIMEOUT_ISSUED',
         entity: 'pupil',
         entityId: String(pupilId),
         payload: {
@@ -181,6 +229,14 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           cooldownCardId: cooldownCard?.id ?? null,
           totalTimeouts,
           isEscalationTriggered,
+          retroactive: isRetroactive,
+          ...(occurrence
+            ? {
+                period: occurrence.period,
+                occurredAt: occurrence.occurredAt.toISOString(),
+                recordedAt: new Date().toISOString(),
+              }
+            : {}),
         },
       });
 
@@ -198,8 +254,10 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         classId,
         actorTeacherId: actorId,
         direction: 'issued',
-        source: 'Time-Out',
+        source: isRetroactive ? 'Time-Out (Nachtrag)' : 'Time-Out',
         note: storedTask,
+        occurredAt: occurrence?.occurredAt,
+        retroactive: isRetroactive,
       });
       queueClassEventNotification({
         type: 'timeout',
@@ -207,6 +265,8 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         pupilName: pupil.fullName,
         teacherId: actorId,
         note: storedTask,
+        occurredAt: occurrence?.occurredAt,
+        retroactive: isRetroactive,
       });
     }
     if (result.cooldownCard) {
@@ -230,6 +290,8 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         teacherId: actorId,
         totalTimeouts: result.totalTimeouts,
         note: storedTask,
+        occurredAt: occurrence?.occurredAt,
+        retroactive: isRetroactive,
       });
     }
     broadcastToClass(classId, {
@@ -254,6 +316,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(201).send({
       success: true,
       kind,
+      retroactive: isRetroactive,
       incident: result.incident,
       redCard: result.redCard,
       cooldownCard: result.cooldownCard,
@@ -409,6 +472,8 @@ error:
               ti.class_id,
               ti.sent_by_teacher_id,
               ti.sent_at,
+              ti.recorded_at,
+              ti.retroactive,
               ti.task_assignment,
               ti.kind,
               ti.status,
@@ -424,9 +489,10 @@ error:
          JOIN school_classes sc ON sc.id = ti.class_id
          LEFT JOIN teachers t  ON t.id  = ti.sent_by_teacher_id
          LEFT JOIN teachers rt ON rt.id = ti.resolved_by
-        WHERE ti.sent_at >= NOW() - INTERVAL '48 hours'
+        WHERE (ti.sent_at >= NOW() - INTERVAL '48 hours'
+               OR (ti.retroactive = true AND ti.recorded_at >= NOW() - INTERVAL '48 hours'))
           AND ($1::int[] IS NULL OR sc.id = ANY($1::int[]))
-        ORDER BY ti.sent_at DESC
+        ORDER BY ti.recorded_at DESC, ti.sent_at DESC
         LIMIT 50`,
       [global.classIds],
     );

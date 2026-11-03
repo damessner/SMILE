@@ -9,6 +9,7 @@ const message: RedCardMessage = {
   actorName: 'Lehrerin Beispiel (LBE)',
   source: 'Rote Karte',
   rankChange: { from: 'Geselle', to: 'Lehrling' },
+  retroactive: false,
   note: 'Störte den Unterricht trotz Ermahnung.',
   occurredAt: new Date('2026-11-03T10:00:00Z'),
 };
@@ -39,6 +40,7 @@ describe('buildRedCardEmail', () => {
       ...message,
       direction: 'revoked',
       rankChange: { from: 'Lehrling', to: 'Geselle' },
+      retroactive: false,
     });
 
     expect(mail.subject).toBe('Schüler Anna Muster (3a) Lehrling ---> Geselle');

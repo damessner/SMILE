@@ -308,3 +308,38 @@ describe('Schulalltag per-subject panel, red card modal, and configured rubric',
     expect(within(bellaRow).queryByText(/D 0\/0/)).toBeNull();
   });
 });
+
+describe('Schulalltag retroactive Time-Out', () => {
+  it('sends date and period when the teacher records a past lesson', async () => {
+    const api = await import('../services/api');
+    const anna = pupil(1, 'Anna Retro');
+    renderSchulalltag([anna]);
+
+    const row = (await screen.findByText('Anna Retro')).closest<HTMLElement>('div.cursor-pointer')!;
+    await userEvent.click(
+      within(row).getByTitle(/Ins Time-Out \(Lernwerkstatt\) schicken/),
+    );
+
+    await userEvent.click(
+      screen.getByLabelText(/Time-Out nachträglich erfassen/),
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/Aufgaben oder Arbeitsblätter/),
+      'Arbeitsblatt nachholen',
+    );
+    await userEvent.selectOptions(screen.getByLabelText('Schulstunde'), '3');
+    await userEvent.click(
+      screen.getByRole('button', { name: /Time-Out nachtragen/i }),
+    );
+
+    await waitFor(() => {
+      expect(api.sendToTimeout).toHaveBeenCalledWith(
+        1,
+        CLASS_ID,
+        'Arbeitsblatt nachholen',
+        expect.objectContaining({ period: 3, date: expect.any(String) }),
+      );
+    });
+  });
+});
+

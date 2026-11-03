@@ -345,6 +345,8 @@ export const config = {
   yellowCardAlertWindowDays: readInt('YELLOW_CARD_ALERT_WINDOW_DAYS', 7),
   /** Timeout counts that trigger a headmaster escalation (3, 6, 9, ...). */
   escalationStep: readInt('ESCALATION_STEP', 3),
+  /** How far back a teacher may record a Time-Out after the lesson. */
+  retroactiveTimeoutMaxDays: readInt('RETROACTIVE_TIMEOUT_MAX_DAYS', 7),
 
   // --- Statistics visibility -------------------------------------------------
   /**
@@ -435,6 +437,7 @@ export function assertServerConfig(): void {
     ['YELLOW_CARD_ALERT_THRESHOLD', config.yellowCardAlertThreshold],
     ['YELLOW_CARD_ALERT_WINDOW_DAYS', config.yellowCardAlertWindowDays],
     ['ESCALATION_STEP', config.escalationStep],
+    ['RETROACTIVE_TIMEOUT_MAX_DAYS', config.retroactiveTimeoutMaxDays],
   ];
   for (const [name, value] of positiveSettings) {
     if (value <= 0) {

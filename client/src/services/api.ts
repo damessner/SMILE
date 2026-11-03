@@ -447,10 +447,21 @@ export async function getCurrentTimetable(day?: number, period?: number) {
 
 // --- Time-outs --------------------------------------------------------------
 
-export async function sendToTimeout(pupilId: number, classId: number, taskAssignment: string) {
+export async function sendToTimeout(
+  pupilId: number,
+  classId: number,
+  taskAssignment: string,
+  retroactive?: { date: string; period: number },
+) {
   const res = await apiFetch('/timeouts', {
     method: 'POST',
-    body: JSON.stringify({ pupilId, classId, kind: 'timeout', taskAssignment }),
+    body: JSON.stringify({
+      pupilId,
+      classId,
+      kind: 'timeout',
+      taskAssignment,
+      ...(retroactive ? { retroactive: true, retroactiveDate: retroactive.date, retroactivePeriod: retroactive.period } : {}),
+    }),
   });
   return unwrap(res);
 }

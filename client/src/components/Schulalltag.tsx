@@ -53,12 +53,29 @@ interface BehaviorCardItem {
   created_at: string;
 }
 
+const RETROACTIVE_TIMEOUT_DAYS = 7;
+
+function localDateKey(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function earliestRetroactiveDateKey(): string {
+  const date = new Date();
+  date.setDate(date.getDate() - (RETROACTIVE_TIMEOUT_DAYS - 1));
+  return localDateKey(date);
+}
+
 interface TimeoutItem {
   id: string;
   pupil_id: number;
   class_id: number;
   sent_by_teacher_id: number;
   sent_at: string;
+  recorded_at?: string;
+  retroactive?: boolean;
   task_assignment: string;
   kind?: 'timeout' | 'cooldown';
   status: 'active' | 'resolved';
@@ -136,6 +153,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     kind: 'timeout' | 'cooldown';
   } | null>(null);
   const [timeoutTask, setTimeoutTask] = useState('');
+  const [timeoutRetroactive, setTimeoutRetroactive] = useState(false);
+  const [timeoutRetroDate, setTimeoutRetroDate] = useState(localDateKey());
+  const [timeoutRetroPeriod, setTimeoutRetroPeriod] = useState(1);
   const [submittingTimeout, setSubmittingTimeout] = useState(false);
 
   // Quick inline note state per pupil
@@ -454,6 +474,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       kind,
     });
     setTimeoutTask('');
+    setTimeoutRetroactive(false);
+    setTimeoutRetroDate(localDateKey());
+    const currentPeriod = Number(timetableData?.period ?? 1);
+    setTimeoutRetroPeriod(Math.max(1, Math.min(10, currentPeriod - 1)));
   };
 
   // Confirm sending pupil to Time-Out or Cool-Down
@@ -468,15 +492,30 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     setSubmittingTimeout(true);
     const target = timeoutTarget;
     const task = timeoutTask.trim();
+    const isRetroactive = !isCooldown && timeoutRetroactive;
     try {
       const res = isCooldown
         ? await sendToCooldown(target.pupilId, currentClass.id, task || undefined)
-        : await sendToTimeout(target.pupilId, currentClass.id, task);
+        : await sendToTimeout(
+            target.pupilId,
+            currentClass.id,
+            task,
+            isRetroactive
+              ? { date: timeoutRetroDate, period: timeoutRetroPeriod }
+              : undefined,
+          );
       await loadClassCards(currentClass.id);
       await loadTimeoutsData();
       onRefreshClassData();
       setTimeoutTarget(null);
       setTimeoutTask('');
+
+      if (isRetroactive) {
+        toast.success(
+          `${target.pupilName}: Time-Out nachgetragen (${timeoutRetroDate}, ${timeoutRetroPeriod}. Stunde). Rote Karte eingetragen.`,
+        );
+        return;
+      }
 
       // Undo has to undo every record the action created. A Cool-Down creates no
       // red card, so there is no rank loss to reverse there.
@@ -969,6 +1008,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
                           {h.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out'}
                         </span>
+                        {h.retroactive && (
+                          <span className="ml-1 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-200">
+                            Nachtrag
+                          </span>
+                        )}
                         <span className="ml-2 text-slate-500 font-normal">
                           von {h.sent_by_short} am {new Date(h.sent_at).toLocaleDateString('de-AT')} um {new Date(h.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -1638,9 +1682,67 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   <p className="text-slate-300 leading-relaxed">
                     {isCooldown
                       ? 'Der Schüler wird zur Beruhigung in die Lernwerkstatt geschickt. Es gibt keine Rote Karte, keinen Rangverlust und keine Eskalationsstufe. Eine Notiz ist optional.'
-                      : 'Dieses Time-Out gilt verbindlich als Rote Karte (Instant Rank Loss) und leitet den Schüler mit dem unten stehenden Arbeitsauftrag direkt an die Aufsicht in der Lernwerkstatt (LW) weiter.'}
+                      : timeoutRetroactive
+                        ? 'Dieses Time-Out wird nachträglich für die gewählte Stunde erfasst. Es gilt als Rote Karte (Instant Rank Loss), wird aber als bereits beendeter Lernwerkstatt-Aufenthalt gespeichert.'
+                        : 'Dieses Time-Out gilt verbindlich als Rote Karte (Instant Rank Loss) und leitet den Schüler mit dem unten stehenden Arbeitsauftrag direkt an die Aufsicht in der Lernwerkstatt (LW) weiter.'}
                   </p>
                 </div>
+
+                {!isCooldown && (
+                  <div className="rounded-2xl border border-slate-700 bg-slate-950/40 p-3.5 space-y-3">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={timeoutRetroactive}
+                        onChange={(event) => setTimeoutRetroactive(event.target.checked)}
+                        className="h-4 w-4 accent-amber-500"
+                      />
+                      Time-Out nachträglich erfassen (vergangene Stunde)
+                    </label>
+                    {timeoutRetroactive && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">
+                              Datum
+                            </label>
+                            <input
+                              type="date"
+                              aria-label="Datum"
+                              value={timeoutRetroDate}
+                              min={earliestRetroactiveDateKey()}
+                              max={localDateKey()}
+                              onChange={(event) => setTimeoutRetroDate(event.target.value)}
+                              className="min-h-[42px] w-full rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs text-slate-50 focus:border-amber-400 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">
+                              Schulstunde
+                            </label>
+                            <select
+                              aria-label="Schulstunde"
+                              value={timeoutRetroPeriod}
+                              onChange={(event) => setTimeoutRetroPeriod(Number(event.target.value))}
+                              className="min-h-[42px] w-full rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs text-slate-50 focus:border-amber-400 focus:outline-none"
+                            >
+                              {Array.from({ length: 10 }, (_, index) => index + 1).map((period) => (
+                                <option key={period} value={period}>
+                                  {period}. Stunde
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-slate-400">
+                          Nur die letzten {RETROACTIVE_TIMEOUT_DAYS} Tage. Der Eintrag wird als
+                          bereits beendet gespeichert und erscheint nicht als aktiver
+                          Lernwerkstatt-Aufenthalt.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className={`text-[11px] font-bold uppercase ${isCooldown ? 'text-sky-300' : 'text-amber-300'} block mb-1.5`}>
@@ -1675,7 +1777,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   </button>
                   <button
                     onClick={handleConfirmTimeout}
-                    disabled={submittingTimeout || (!isCooldown && !timeoutTask.trim())}
+                    disabled={
+                      submittingTimeout ||
+                      (!isCooldown && !timeoutTask.trim()) ||
+                      (!isCooldown && timeoutRetroactive && (!timeoutRetroDate || !timeoutRetroPeriod))
+                    }
                     className={`px-5 py-2.5 rounded-xl ${isCooldown ? 'bg-sky-500 hover:bg-sky-400 text-slate-950' : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950'} font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40`}
                   >
                     {isCooldown ? <Snowflake className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
@@ -1684,7 +1790,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         ? 'Übermittle...'
                         : isCooldown
                           ? 'Cool-Down senden'
-                          : 'Ins Time-Out schicken & Rote Karte eintragen'}
+                          : timeoutRetroactive
+                            ? 'Time-Out nachtragen & Rote Karte eintragen'
+                            : 'Ins Time-Out schicken & Rote Karte eintragen'}
                     </span>
                   </button>
                 </div>

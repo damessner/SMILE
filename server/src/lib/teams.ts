@@ -46,6 +46,10 @@ export interface RedCardRankChangeEvent {
   source: string;
   /** The note / incident description the teacher entered on the card. */
   note?: string | null;
+  /** Original lesson time for a retroactive entry; defaults to now. */
+  occurredAt?: Date;
+  /** True when the entry was recorded after the lesson. */
+  retroactive?: boolean;
 }
 
 /** A pupil-level rank change, never a per-subject change. */
@@ -62,6 +66,7 @@ export interface RedCardMessage {
   source: string;
   rankChange: PupilRankChange;
   note: string | null;
+  retroactive: boolean;
   occurredAt: Date;
 }
 
@@ -77,9 +82,9 @@ export interface TeamsWebhookPayload {
 /** Build the Adaptive Card exactly as the Teams Workflow webhook expects it. */
 export function buildRedCardCard(event: RedCardMessage): TeamsWebhookPayload {
   const isIssued = event.direction === 'issued';
-  const title = isIssued
+  const title = `${isIssued
     ? 'Rote Karte – Rangverlust'
-    : 'Rote Karte zurückgezogen – Rang wiederhergestellt';
+    : 'Rote Karte zurückgezogen – Rang wiederhergestellt'}${event.retroactive ? ' (Nachtrag)' : ''}`;
 
   const body: Record<string, unknown>[] = [
     {
@@ -379,7 +384,8 @@ async function loadRedCardMessage(
     source: event.source,
     rankChange,
     note: cleanTeacherNote(event.note),
-    occurredAt: new Date(),
+    retroactive: event.retroactive === true,
+    occurredAt: event.occurredAt ?? new Date(),
   };
 }
 

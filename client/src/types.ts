@@ -167,6 +167,8 @@ export interface PupilBehaviorProfile {
   timeouts: Array<{
     id: string;
     sent_at: string;
+    recorded_at?: string | null;
+    retroactive?: boolean;
     task_assignment: string;
     kind?: 'timeout' | 'cooldown';
     status: string;

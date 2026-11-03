@@ -17,6 +17,7 @@ const payload = buildRedCardCard({
   actorName: 'SMILE Test',
   source: 'Testnachricht',
   rankChange: { from: 'Geselle', to: 'Lehrling' },
+  retroactive: false,
   note: 'Dies ist eine Testnotiz der Lehrkraft.',
   occurredAt: new Date(),
 });

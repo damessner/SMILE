@@ -59,7 +59,7 @@ export function isEmailConfigured(): boolean {
 
 export function buildRedCardEmail(message: RedCardMessage): EmailContent {
   const isIssued = message.direction === 'issued';
-  const action = isIssued ? 'Rote Karte' : 'Rote Karte zurückgezogen';
+  const action = `${isIssued ? 'Rote Karte' : 'Rote Karte zurückgezogen'}${message.retroactive ? ' · Nachtrag' : ''}`;
   const subject = `Schüler ${message.pupilName} (${message.className}) ${message.rankChange.from} ---> ${message.rankChange.to}`;
   const time = formatViennaTime(message.occurredAt);
   const note = message.note?.trim() || 'Keine Notiz hinterlegt.';

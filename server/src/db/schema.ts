@@ -298,6 +298,13 @@ export const timeoutIncidents = pgTable('timeout_incidents', {
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
   sentByTeacherId: integer('sent_by_teacher_id').references(() => teachers.id).notNull(),
   sentAt: timestamp('sent_at').defaultNow().notNull(),
+  /**
+   * When the incident was entered. For a normal time-out this is the same moment
+   * as `sentAt`; for a retroactive entry it is later than the lesson.
+   */
+  recordedAt: timestamp('recorded_at').defaultNow().notNull(),
+  /** True when a teacher recorded a past lesson after the fact. */
+  retroactive: boolean('retroactive').default(false).notNull(),
   taskAssignment: text('task_assignment').notNull(), // Arbeitsauftrag / Cool-Down-Notiz
   /** 'timeout' is the disciplinary red-card path; 'cooldown' has no consequence. */
   kind: text('kind', { enum: ['timeout', 'cooldown'] }).default('timeout').notNull(),

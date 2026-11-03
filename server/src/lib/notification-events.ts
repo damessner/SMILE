@@ -28,6 +28,7 @@ export interface ClassEvent {
   teacherId: number | null;
   note?: string | null;
   occurredAt?: Date;
+  retroactive?: boolean;
 }
 
 const EVENT_COLUMN = {
@@ -71,7 +72,7 @@ function eventEmail(
   className: string,
   teacherName: string,
 ): { subject: string; text: string; html: string } {
-  const label = EVENT_LABEL[event.type];
+  const label = `${EVENT_LABEL[event.type]}${event.retroactive ? ' (Nachtrag)' : ''}`;
   const note = event.note?.trim() || 'Keine Notiz hinterlegt.';
   const time = formatViennaTime(event.occurredAt ?? new Date());
   const subject = `SMILE: ${label} – ${event.pupilName} (${className})`;
@@ -139,6 +140,7 @@ export interface TimeoutEscalationEvent {
   totalTimeouts: number;
   note?: string | null;
   occurredAt?: Date;
+  retroactive?: boolean;
 }
 
 /**
@@ -152,8 +154,8 @@ export function queueTimeoutEscalationNotification(event: TimeoutEscalationEvent
     const { className, teacherName } = await resolveNames(event.classId, event.teacherId);
     const time = formatViennaTime(event.occurredAt ?? new Date());
     const note = event.note?.trim() || 'Keine Notiz hinterlegt.';
-    const subject = `SMILE: Time-Out-Eskalation (${event.totalTimeouts}) – ${event.pupilName} (${className})`;
-    const headline = `${event.pupilName} (${className}) · Time-Out-Eskalation (${event.totalTimeouts}) · ${teacherName} · ${time}`;
+    const subject = `SMILE: Time-Out-Eskalation (${event.totalTimeouts})${event.retroactive ? ' – Nachtrag' : ''} – ${event.pupilName} (${className})`;
+    const headline = `${event.pupilName} (${className}) · Time-Out-Eskalation (${event.totalTimeouts})${event.retroactive ? ' (Nachtrag)' : ''} · ${teacherName} · ${time}`;
 
     const text = [
       headline,

@@ -244,7 +244,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get timeouts
     const timeoutRows = await getPool().query(
-      `SELECT ti.id, ti.sent_at, ti.task_assignment, ti.kind, ti.status, ti.resolved_at, ti.resolution_note,
+      `SELECT ti.id, ti.sent_at, ti.recorded_at, ti.retroactive, ti.task_assignment, ti.kind, ti.status, ti.resolved_at, ti.resolution_note,
               t.short_name AS sent_by_short
          FROM timeout_incidents ti
          LEFT JOIN teachers t ON t.id = ti.sent_by_teacher_id

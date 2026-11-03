@@ -40,6 +40,7 @@ describe('buildRedCardCard', () => {
     actorName: 'Lehrerin Beispiel (LBE)',
     source: 'Rote Karte',
     rankChange: { from: 'Geselle', to: 'Lehrling' },
+    retroactive: false,
     note: 'Störte den Unterricht trotz Ermahnung.',
     occurredAt: new Date('2026-11-03T10:00:00Z'),
   };
@@ -104,6 +105,7 @@ describe('postTeamsCard', () => {
     actorName: 'LBE',
     source: 'Rote Karte',
     rankChange: { from: 'Geselle', to: 'Lehrling' },
+    retroactive: false,
     note: 'Testnotiz',
     occurredAt: new Date('2026-11-03T10:00:00Z'),
   };
