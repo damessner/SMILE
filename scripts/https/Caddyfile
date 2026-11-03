@@ -10,10 +10,9 @@ https://172.16.1.11, https://smile.schule.intern {
 
 	encode zstd gzip
 
-	reverse_proxy 127.0.0.1:3000 {
-		header_up X-Forwarded-Proto {scheme}
-		header_up X-Forwarded-Host {host}
-	}
+	# Caddy forwards X-Forwarded-Proto/Host itself; adding header_up here
+	# duplicates the defaults and produces misleading warnings.
+	reverse_proxy 127.0.0.1:3000
 
 	header {
 		-Server

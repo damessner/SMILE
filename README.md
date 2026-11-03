@@ -28,6 +28,21 @@ There is intentionally no root vitest config; run the workspace scripts via
 throwaway `smile_db_test` database) or an explicit
 `SKIP_POSTGRES_INTEGRATION=true`.
 
+## HTTPS
+
+Caddy on LXC 115 terminates internal TLS:
+
+```text
+https://172.16.1.11
+https://smile.schule.intern   (after the DNS A record is added)
+```
+
+The Caddy internal CA root is `docs/smile-internal-ca.crt`; install it in the
+device trust store before using the HTTPS URL. See `docs/HTTPS.md` for Windows,
+macOS, iPadOS, Android, Linux and cut-over instructions.
+
+Port `3000` remains reachable over HTTP during the transition.
+
 ## Deployment
 
 `python3 scripts/deploy.py` builds the bundle, takes a database and app snapshot,
