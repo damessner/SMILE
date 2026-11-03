@@ -76,7 +76,7 @@ export function AppHeader({
         `safe-top` insets it below the status bar when installed to the Home
         Screen with viewport-fit=cover.
       */
-      <header className="material-bar sticky top-0 z-40 safe-top px-4 md:px-6 py-2.5 md:py-3 flex items-center justify-between gap-3">
+      <header className="material-bar sticky top-0 z-40 safe-top px-4 md:px-6 py-2.5 md:py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 md:gap-4 min-w-0">
           <div data-tour="welcome-logo" className="flex items-center gap-2 text-slate-50 font-semibold text-base tracking-tight shrink-0">
             <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
@@ -100,6 +100,7 @@ export function AppHeader({
                     key={key}
                     onClick={() => setActiveTab(key)}
                     aria-current={activeTab === key}
+                    title={label}
                     className={`pressable focus-ring min-h-[40px] px-3 md:px-3.5 py-1.5 rounded-md text-xs font-semibold
                       flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                         activeTab === key
@@ -108,7 +109,7 @@ export function AppHeader({
                       }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span className="hidden md:inline">{label}</span>
+                    <span className="hidden 2xl:inline">{label}</span>
                     <span className="md:hidden">{label.split(' ')[0]}</span>
                   </button>
                 ))}
@@ -138,12 +139,12 @@ export function AppHeader({
               {showAllModules ? (
                 <>
                   <EyeOff className="w-4 h-4" />
-                  <span className="hidden xl:inline text-[11px] font-semibold text-slate-300">Ausblenden</span>
+                  <span className="hidden 2xl:inline text-[11px] font-semibold text-slate-300">Ausblenden</span>
                 </>
               ) : (
                 <>
                   <LayoutGrid className="w-4 h-4" />
-                  <span className="hidden xl:inline text-[11px] font-semibold text-slate-300">Module</span>
+                  <span className="hidden 2xl:inline text-[11px] font-semibold text-slate-300">Module</span>
                 </>
               )}
             </button>
@@ -151,7 +152,7 @@ export function AppHeader({
         </div>
 
         {/* Action Controls & User Profile */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
           {/* Live Status Pill */}
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
             <span
@@ -173,7 +174,7 @@ export function AppHeader({
               title="Klassenkonferenz & Notenbeschluss im Vollbildmodus (Schulleitung & Klassenvorstände)"
             >
               <Scale className="w-3.5 h-3.5" />
-              <span>Konferenz-Modus</span>
+              <span className="hidden 2xl:inline">Konferenz-Modus</span>
             </button>
           )}
 
@@ -185,8 +186,8 @@ export function AppHeader({
               title="Gesamtexport aller Klassen (1 Seite pro Klasse) vor und nach der Konferenz als PDF"
             >
               <FileText className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden xl:inline">Gesamtexport (PDF)</span>
-              <span className="xl:hidden">Alle PDF</span>
+              <span className="hidden 2xl:inline">Gesamtexport (PDF)</span>
+              <span className="2xl:hidden">Alle PDF</span>
             </button>
           )}
 
@@ -198,7 +199,7 @@ export function AppHeader({
               title="Konten ansehen und einmalige Zugangsdaten übergeben"
             >
               <KeyRound className="w-3.5 h-3.5 text-accent" />
-              <span className="hidden lg:inline">Konten</span>
+              <span className="hidden 2xl:inline">Konten</span>
             </button>
           )}
 
@@ -209,7 +210,7 @@ export function AppHeader({
               title="System-Wiederherstellung (Backup einspielen)"
             >
               <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden lg:inline">Wiederherstellen</span>
+              <span className="hidden 2xl:inline">Wiederherstellen</span>
             </button>
           )}
 
@@ -220,7 +221,7 @@ export function AppHeader({
               title="Time-Out Eskalationen & Elternvereinbarungen (Mahnstufen 3, 6, 9...)"
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>Time-Out</span>
+              <span className="hidden 2xl:inline">Time-Out</span>
               {pendingTimeoutCount > 0 && (
                 <span className="w-4 h-4 rounded-full bg-white text-rose-600 text-[10px] font-bold flex items-center justify-center animate-pulse">
                   {pendingTimeoutCount}

@@ -43,6 +43,14 @@ function evaluation(subjectCode: string, items: Evaluation['items'] = []): Evalu
   };
 }
 
+function submittedEvaluation(
+  subjectCode: string,
+  proposedStatus: 'Lehrling' | 'Geselle' | 'Meister',
+  items: Evaluation['items'] = [],
+): Evaluation {
+  return { ...evaluation(subjectCode, items), proposedStatus, isSubmitted: true };
+}
+
 function pupil(id: number, fullName: string, evaluations: Evaluation[] = []): PupilWithData {
   return {
     id,
@@ -143,6 +151,25 @@ describe('Schulalltag subject-scoped results and independent red card demotions'
     const row = (await screen.findByText('Anna Multi')).closest<HTMLElement>('div.cursor-pointer')!;
 
     await waitFor(() => expect(within(row).getByText('Meister')).toBeInTheDocument());
+  });
+
+  it('uses submitted teacher votes for the pupil-level tile, not one subject rank', async () => {
+    const lowItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-low-${i}`,
+      itemKey: `item_${i + 1}`,
+      rating: i < 6 ? 'smile' : 'struggle',
+      updatedAt: '2026-10-01T10:00:00Z',
+    }));
+    const anna = pupil(1, 'Anna Multi', [
+      submittedEvaluation('D', 'Meister', lowItems as any),
+      submittedEvaluation('M', 'Meister', lowItems as any),
+    ]);
+
+    renderSchulalltag([anna]);
+    const row = (await screen.findByText('Anna Multi')).closest<HTMLElement>('div.cursor-pointer')!;
+
+    await waitFor(() => expect(within(row).getByText('Meister')).toBeInTheDocument());
+    expect(within(row).queryByText('Lehrling')).toBeNull();
   });
 
   it('applies red card demotion independently per subject', async () => {

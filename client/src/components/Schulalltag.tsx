@@ -270,11 +270,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   };
 
   const getPupilRank = (p: PupilWithData) => {
-    // Per-subject results only. A pupil-level rank is deliberately not derived:
-    // with subject-scoped scoring there is no single rank to read off `results[0]`
-    // (that fabricates one whenever the subject order changes), and every consumer
-    // below works per subject - the modal from `subjectResults`, the detail panel
-    // from the same list. `hasRedCardDemotion` is likewise per subject only.
+    // The tile shows a pupil-level rank. Submitted teacher votes are the same
+    // source the conference uses; `subjectResults` remains only as a fallback for
+    // pupils without submitted votes, and for the expandable evidence panel.
     const results = getPupilSubjectResults(p);
     const pupilCards = Array.isArray(cards) ? cards.filter((c) => c.pupil_id === p.id) : [];
     const activeRedCards = pupilCards.filter((c) => c.card_type === 'red');
@@ -284,6 +282,50 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       redCardCount: activeRedCards.length,
       subjectResults: results,
     };
+  };
+
+  const demoteRank = (rank: AssessmentRank): AssessmentRank => {
+    if (rank === 'Meister') return 'Geselle';
+    if (rank === 'Geselle') return 'Lehrling';
+    return 'Lehrling';
+  };
+
+  /**
+   * Pupil-level rank from the submitted teacher votes. A strict plurality wins;
+   * a tie or no votes falls back to the current lesson subject's rubric rank so
+   * the row never invents a rank. A red card demotes the pupil rank one step.
+   */
+  const getDisplayedRank = (
+    p: PupilWithData,
+    subjectResults: Array<{ subjectCode: string; rank: AssessmentRank | null }>,
+    hasRedCard: boolean,
+  ): AssessmentRank | null => {
+    const votes: Record<AssessmentRank, number> = {
+      Lehrling: 0,
+      Geselle: 0,
+      Meister: 0,
+    };
+    for (const evaluation of p.evaluations) {
+      if (!evaluation.isSubmitted || !evaluation.proposedStatus) continue;
+      votes[evaluation.proposedStatus] += 1;
+    }
+
+    const top = Math.max(votes.Lehrling, votes.Geselle, votes.Meister);
+    if (top > 0) {
+      const leaders = (['Lehrling', 'Geselle', 'Meister'] as AssessmentRank[]).filter(
+        (rank) => votes[rank] === top,
+      );
+      if (leaders.length === 1) {
+        const votedRank = leaders[0]!;
+        return hasRedCard ? demoteRank(votedRank) : votedRank;
+      }
+    }
+
+    const fallback =
+      subjectResults.find((result) => result.subjectCode === lessonSubjectCode) ??
+      subjectResults[0] ??
+      null;
+    return fallback?.rank ?? null;
   };
 
   // Submit standard card (green or yellow)
@@ -621,9 +663,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     isLwView,
   ]);
 
-  // The class tile is ranked for the subject of the lesson running now — but only
-  // when the teacher is actually looking at that lesson's class. If they switch to
-  // another class, use that class's first subject instead of a foreign rank.
+  // The tile shows the pupil-level vote rank. This subject is only the fallback
+  // for pupils without submitted votes, and the evidence panel below still shows
+  // every subject's rubric result.
   const currentLesson = timetableData?.currentLesson ?? null;
   const currentLessonClassName =
     currentLesson?.className || currentLesson?.class_name || null;
@@ -645,10 +687,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const filteredPupils = useMemo(() => {
     return pupils.filter((p) => {
       const matchesSearch = p.fullName.toLowerCase().includes(searchQuery.toLowerCase());
-      const pResults = getPupilSubjectResults(p);
-      const displayed =
-        pResults.find((r) => r.subjectCode === lessonSubjectCode) ?? pResults[0] ?? null;
-      const matchesRank = filterRank === 'all' || displayed?.rank === filterRank;
+      const { hasRedCard, subjectResults } = getPupilRank(p);
+      const displayedRank = getDisplayedRank(p, subjectResults, hasRedCard);
+      const matchesRank = filterRank === 'all' || displayedRank === filterRank;
       return matchesSearch && matchesRank;
     });
   }, [
@@ -1028,11 +1069,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 const yellowCards = pupilCards.filter((c) => c.card_type === 'yellow');
                 const isYellowAlert = yellowCards.length >= 2;
                 const activeTimeoutIncident = activeTimeouts.find((ti) => ti.pupil_id === pupil.id);
-                const currentResult =
-                  subjectResults.find((sr) => sr.subjectCode === lessonSubjectCode) ??
-                  subjectResults[0] ??
-                  null;
-                const currentRank = currentResult?.rank ?? null;
+                const currentRank = getDisplayedRank(pupil, subjectResults, hasRedCard);
                 const rankLabel = currentRank ?? 'Ausstehend';
                 const rankBoxClass =
                   currentRank === 'Meister'
