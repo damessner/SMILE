@@ -30,14 +30,13 @@ For a rank-changing red card:
 - source (`Rote Karte` or `Time-Out`),
 - issuing or revoking teacher,
 - timestamp,
-- affected subjects and the rank change, e.g. `D (Deutsch): Meister → Geselle`,
+- the pupil-level rank change, e.g. `Geselle → Lehrling`,
+- the note / incident description the teacher entered on the red card,
 - a link to SMILE.
 
-The red-card note / incident description is **not** sent.
-
-No message is sent when the effective rank does not change (for example a red
-card for a pupil who is already `Lehrling` in every rated subject, or a second
-red card while one is already active).
+Ranks are pupil-level, never per subject. No message is sent when the effective
+pupil rank does not change (for example a red card for a pupil who is already
+`Lehrling`, or a second red card while one is already active).
 
 ## Admin setup
 
@@ -122,8 +121,9 @@ To test one explicit address without changing `NOTIFICATION_EMAIL_TO`:
 sudo -u smile node /opt/smile/scripts/test-email-notification.mjs name@example.org
 ```
 
-The same red-card rules apply: full pupil name, class, source, teacher, subject
-rank changes; no red-card note; no message when the rank does not change.
+The same red-card rules apply: full pupil name, class, source, teacher,
+pupil-level rank change, and the teacher's note; no message when the rank does
+not change.
 
 ## Failure behaviour
 

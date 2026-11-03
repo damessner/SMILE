@@ -195,6 +195,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         actorTeacherId: actorId,
         direction: 'issued',
         source: 'Time-Out',
+        note: storedTask,
       });
     }
     if (result.cooldownCard) {

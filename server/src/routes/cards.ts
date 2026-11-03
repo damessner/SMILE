@@ -162,6 +162,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
         actorTeacherId: actorId,
         direction: 'issued',
         source: 'Rote Karte',
+        note: cleanNote ?? null,
       });
     }
 
@@ -235,6 +236,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
         actorTeacherId: user.teacherId ?? null,
         direction: 'revoked',
         source: 'Rote Karte',
+        note: existing.note,
       });
     }
 

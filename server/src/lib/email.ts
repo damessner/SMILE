@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { config } from '../config.js';
 import type { RedCardMessage } from './teams.js';
-import { formatViennaTime, subjectLabel } from './notification-format.js';
+import { formatViennaTime } from './notification-format.js';
 
 /**
  * SMTP e-mail transport for the same red-card rank-change message the Teams
@@ -9,8 +9,8 @@ import { formatViennaTime, subjectLabel } from './notification-format.js';
  * policy while the school already has a working Microsoft 365 SMTP account.
  *
  * The recipient can be a staff distribution list or a Teams channel e-mail
- * address (which turns the mail into a channel post). The red-card note is
- * never included.
+ * address (which turns the mail into a channel post). The teacher's red-card
+ * note is included for staff, as requested.
  */
 
 export interface EmailContent {
@@ -66,12 +66,10 @@ export function buildRedCardEmail(message: RedCardMessage): EmailContent {
     `Quelle: ${message.source}`,
     `${isIssued ? 'Ausgestellt von' : 'Zurückgezogen von'}: ${message.actorName}`,
     `Zeit: ${formatViennaTime(message.occurredAt)}`,
+    `Rang: ${message.rankChange.from} → ${message.rankChange.to}`,
     '',
-    'Rangänderung:',
-    ...message.changes.map(
-      (change) =>
-        `- ${subjectLabel(change.subjectCode)}: ${change.from} → ${change.to}`,
-    ),
+    'Notiz der Lehrkraft:',
+    message.note?.trim() || 'Keine Notiz hinterlegt.',
   ];
 
   if (config.teams.appUrl) {
@@ -87,6 +85,7 @@ export function buildRedCardEmail(message: RedCardMessage): EmailContent {
       message.actorName,
     ],
     ['Zeit', formatViennaTime(message.occurredAt)],
+    ['Rang', `${message.rankChange.from} → ${message.rankChange.to}`],
   ];
 
   const html = `
@@ -100,15 +99,8 @@ export function buildRedCardEmail(message: RedCardMessage): EmailContent {
           )
           .join('')}
       </table>
-      <h3 style="margin:0 0 6px">Rangänderung</h3>
-      <ul style="margin:0 0 16px;padding-left:20px">
-        ${message.changes
-          .map(
-            (change) =>
-              `<li><strong>${escapeHtml(subjectLabel(change.subjectCode))}:</strong> ${escapeHtml(change.from)} → ${escapeHtml(change.to)}</li>`,
-          )
-          .join('')}
-      </ul>
+      <h3 style="margin:0 0 6px">Notiz der Lehrkraft</h3>
+      <div style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(message.note?.trim() || 'Keine Notiz hinterlegt.')}</div>
       ${
         config.teams.appUrl
           ? `<p><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>`

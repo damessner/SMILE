@@ -19,10 +19,8 @@ const message = {
   className: 'Testklasse',
   actorName: 'SMILE Test',
   source: 'Testnachricht',
-  changes: [
-    { subjectCode: 'D', from: 'Meister', to: 'Geselle' },
-    { subjectCode: 'M', from: 'Geselle', to: 'Lehrling' },
-  ],
+  rankChange: { from: 'Geselle', to: 'Lehrling' },
+  note: 'Dies ist eine Testnotiz der Lehrkraft.',
   occurredAt: new Date(),
 };
 

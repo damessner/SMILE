@@ -1,23 +1,22 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { config } from '../config.js';
-import { db } from '../db/index.js';
+import { db, getPool } from '../db/index.js';
 import {
   behaviorCards,
-  evaluationItems,
-  evaluations,
+  finalRanks,
   pupils,
   schoolClasses,
   teachers,
 } from '../db/schema.js';
-import {
-  demote,
-  rankFromScore,
-  summarizeRatings,
-  type Rank,
-} from './ranking.js';
+import { demote, type Rank } from './ranking.js';
 import { getLatestRound } from './rounds.js';
-import { formatViennaTime, subjectLabel } from './notification-format.js';
+import { formatViennaTime } from './notification-format.js';
 import { isEmailConfigured, sendRedCardEmail } from './email.js';
+import {
+  summarizeSubmittedTeacherVotes,
+  type ConferenceTeacherVote,
+} from './conference-rank.js';
+import { normalizeSubject } from '../utils/subject.js';
 
 /**
  * Staff notifications for red-card rank changes.
@@ -45,10 +44,12 @@ export interface RedCardRankChangeEvent {
   direction: RedCardDirection;
   /** Human-readable cause, e.g. "Rote Karte" or "Time-Out". */
   source: string;
+  /** The note / incident description the teacher entered on the card. */
+  note?: string | null;
 }
 
-export interface RankChange {
-  subjectCode: string;
+/** A pupil-level rank change, never a per-subject change. */
+export interface PupilRankChange {
   from: Rank;
   to: Rank;
 }
@@ -59,7 +60,8 @@ export interface RedCardMessage {
   className: string;
   actorName: string;
   source: string;
-  changes: RankChange[];
+  rankChange: PupilRankChange;
+  note: string | null;
   occurredAt: Date;
 }
 
@@ -70,29 +72,6 @@ export interface TeamsWebhookPayload {
     contentUrl: null;
     content: Record<string, unknown>;
   }>;
-}
-
-/**
- * Pure demotion/restore mapping. A red card is a single one-step demotion, not one
- * step per card, matching `calculateRank` and the client's per-subject display.
- */
-export function rankChangesForSubjects(
-  subjects: Array<{ subjectCode: string; baseRank: Rank }>,
-  beforeHasRedCard: boolean,
-  afterHasRedCard: boolean,
-): RankChange[] {
-  if (beforeHasRedCard === afterHasRedCard) return [];
-
-  return subjects
-    .map((subject) => {
-      const from = beforeHasRedCard ? demote(subject.baseRank) : subject.baseRank;
-      const to = afterHasRedCard ? demote(subject.baseRank) : subject.baseRank;
-      return from === to
-        ? null
-        : { subjectCode: subject.subjectCode, from, to };
-    })
-    .filter((change): change is RankChange => change !== null)
-    .sort((a, b) => a.subjectCode.localeCompare(b.subjectCode, 'de'));
 }
 
 /** Build the Adaptive Card exactly as the Teams Workflow webhook expects it. */
@@ -122,21 +101,23 @@ export function buildRedCardCard(event: RedCardMessage): TeamsWebhookPayload {
           value: event.actorName,
         },
         { title: 'Zeit', value: formatViennaTime(event.occurredAt) },
+        {
+          title: 'Rang',
+          value: `${event.rankChange.from} → ${event.rankChange.to}`,
+        },
       ],
     },
     {
       type: 'TextBlock',
-      text: 'Rangänderung',
+      text: 'Notiz der Lehrkraft',
       weight: 'Bolder',
       spacing: 'Medium',
       wrap: true,
     },
     {
-      type: 'FactSet',
-      facts: event.changes.map((change) => ({
-        title: subjectLabel(change.subjectCode),
-        value: `${change.from} → ${change.to}`,
-      })),
+      type: 'TextBlock',
+      text: event.note?.trim() || 'Keine Notiz hinterlegt.',
+      wrap: true,
     },
   ];
 
@@ -218,67 +199,116 @@ async function activeRedCardCount(pupilId: number): Promise<number> {
 }
 
 /**
- * Compute the ranked subjects whose displayed rank differs under the red-card
- * state before/after. Only subjects with at least one counted rating participate;
- * a pupil with no ratings has no rank to demote.
+ * Compute the pupil-level conference rank before and after the red-card state.
+ *
+ * Ranks are a pupil property, not a per-subject value. The base is the
+ * hours-weighted suggestion from submitted teacher votes; a red card demotes
+ * that suggestion one step. A confirmed final rank is official and is never
+ * demoted again, so it produces no notification.
  */
-export async function computeRedCardRankChanges(
+export async function computePupilRankChange(
   pupilId: number,
   classId: number,
   beforeHasRedCard: boolean,
   afterHasRedCard: boolean,
-): Promise<RankChange[]> {
-  if (beforeHasRedCard === afterHasRedCard) return [];
+): Promise<PupilRankChange | null> {
+  if (beforeHasRedCard === afterHasRedCard) return null;
 
   const round = await getLatestRound();
-  if (!round) return [];
+  if (!round) return null;
 
-  const evaluationRows = await db
-    .select({ id: evaluations.id, subjectCode: evaluations.subjectCode })
-    .from(evaluations)
+  const confirmed = await db
+    .select({ rank: finalRanks.rank })
+    .from(finalRanks)
     .where(
       and(
-        eq(evaluations.roundId, round.id),
-        eq(evaluations.pupilId, pupilId),
-        eq(evaluations.classId, classId),
+        eq(finalRanks.roundId, round.id),
+        eq(finalRanks.pupilId, pupilId),
+        eq(finalRanks.classId, classId),
       ),
-    );
+    )
+    .limit(1);
+  if (confirmed.length > 0) return null;
 
-  if (evaluationRows.length === 0) return [];
+  const evals = await getPool().query<{
+    teacher_id: number | null;
+    subject_code: string;
+    proposed_status: string | null;
+    is_submitted: boolean;
+  }>(
+    `SELECT teacher_id, subject_code, proposed_status, is_submitted
+       FROM evaluations
+      WHERE pupil_id = $1 AND class_id = $2 AND round_id = $3`,
+    [pupilId, classId, round.id],
+  );
+  if (evals.rows.length === 0) return null;
 
-  const itemRows = await db
-    .select({
-      evaluationId: evaluationItems.evaluationId,
-      itemKey: evaluationItems.itemKey,
-      rating: evaluationItems.rating,
-      updatedAt: evaluationItems.updatedAt,
-    })
-    .from(evaluationItems)
-    .where(inArray(evaluationItems.evaluationId, evaluationRows.map((row) => row.id)));
-
-  const itemsByEvaluation = new Map<string, typeof itemRows>();
-  for (const item of itemRows) {
-    const list = itemsByEvaluation.get(item.evaluationId) ?? [];
-    list.push(item);
-    itemsByEvaluation.set(item.evaluationId, list);
+  const hoursRes = await getPool().query<{
+    teacher_id: number;
+    subject_code: string;
+    hours: number;
+  }>(
+    `SELECT teacher_id, UPPER(TRIM(subject_code)) AS subject_code, COUNT(*)::int AS hours
+       FROM timetable_lessons
+      WHERE class_id = $1
+      GROUP BY teacher_id, UPPER(TRIM(subject_code))`,
+    [classId],
+  );
+  const hoursMap = new Map<string, number>();
+  for (const row of hoursRes.rows) {
+    hoursMap.set(`${row.teacher_id}_${row.subject_code}`, row.hours);
   }
 
-  const subjects: Array<{ subjectCode: string; baseRank: Rank }> = [];
-  for (const evaluation of evaluationRows) {
-    const summary = summarizeRatings([
-      {
-        evaluationId: evaluation.id,
-        items: itemsByEvaluation.get(evaluation.id) ?? [],
-      },
-    ]);
-    if (summary.totalRated === 0) continue;
-    subjects.push({
-      subjectCode: evaluation.subjectCode,
-      baseRank: rankFromScore(summary.scoreForThreshold),
-    });
+  const totalHoursRes = await getPool().query<{
+    teacher_id: number;
+    total_hours: number;
+  }>(
+    `SELECT teacher_id, COUNT(*)::int AS total_hours
+       FROM timetable_lessons
+      WHERE class_id = $1
+      GROUP BY teacher_id`,
+    [classId],
+  );
+  const totalHoursMap = new Map<number, number>();
+  for (const row of totalHoursRes.rows) {
+    totalHoursMap.set(row.teacher_id, row.total_hours);
   }
 
-  return rankChangesForSubjects(subjects, beforeHasRedCard, afterHasRedCard);
+  const votes: ConferenceTeacherVote[] = evals.rows.map((row) => {
+    const normalized = normalizeSubject(row.subject_code);
+    const upperSubject = row.subject_code.trim().toUpperCase();
+    const hours =
+      (row.teacher_id !== null
+        ? hoursMap.get(`${row.teacher_id}_${upperSubject}`)
+        : undefined) ??
+      (row.teacher_id !== null
+        ? hoursMap.get(`${row.teacher_id}_${normalized.code}`)
+        : undefined) ??
+      (row.teacher_id !== null ? totalHoursMap.get(row.teacher_id) : undefined) ??
+      (normalized.isCoreSmile ? 4 : 2);
+
+    return {
+      teacherId: row.teacher_id,
+      teacherShort: '',
+      teacherName: '',
+      subjectCode: row.subject_code,
+      proposedStatus: row.proposed_status,
+      isSubmitted: row.is_submitted,
+      submittedAt: null,
+      positiveCount: 0,
+      totalRated: 0,
+      hours,
+      weight: hours,
+      isTeamTeaching: normalized.isCoreSmile,
+    };
+  });
+
+  const suggestion = summarizeSubmittedTeacherVotes(votes).suggestedRankByHours;
+  if (!suggestion) return null;
+
+  const from = beforeHasRedCard ? demote(suggestion) : suggestion;
+  const to = afterHasRedCard ? demote(suggestion) : suggestion;
+  return from === to ? null : { from, to };
 }
 
 async function loadRedCardMessage(
@@ -314,13 +344,13 @@ async function loadRedCardMessage(
   const beforeHasRedCard = isIssued ? activeCards > 1 : true;
   const afterHasRedCard = activeCards > 0;
 
-  const changes = await computeRedCardRankChanges(
+  const rankChange = await computePupilRankChange(
     event.pupilId,
     event.classId,
     beforeHasRedCard,
     afterHasRedCard,
   );
-  if (changes.length === 0) return null;
+  if (!rankChange) return null;
 
   return {
     direction: event.direction,
@@ -328,7 +358,8 @@ async function loadRedCardMessage(
     className: schoolClass?.name ?? '—',
     actorName,
     source: event.source,
-    changes,
+    rankChange,
+    note: event.note?.trim() || null,
     occurredAt: new Date(),
   };
 }

@@ -2,36 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildRedCardCard,
   postTeamsCard,
-  rankChangesForSubjects,
   type RedCardMessage,
 } from './teams.js';
-
-describe('rankChangesForSubjects', () => {
-  const subjects = [
-    { subjectCode: 'D', baseRank: 'Meister' as const },
-    { subjectCode: 'M', baseRank: 'Geselle' as const },
-    { subjectCode: 'E', baseRank: 'Lehrling' as const },
-  ];
-
-  it('demotes every subject above Lehrling exactly one step', () => {
-    expect(rankChangesForSubjects(subjects, false, true)).toEqual([
-      { subjectCode: 'D', from: 'Meister', to: 'Geselle' },
-      { subjectCode: 'M', from: 'Geselle', to: 'Lehrling' },
-    ]);
-  });
-
-  it('restores the same ranks when the last red card is revoked', () => {
-    expect(rankChangesForSubjects(subjects, true, false)).toEqual([
-      { subjectCode: 'D', from: 'Geselle', to: 'Meister' },
-      { subjectCode: 'M', from: 'Lehrling', to: 'Geselle' },
-    ]);
-  });
-
-  it('does nothing when the effective red-card state is unchanged', () => {
-    expect(rankChangesForSubjects(subjects, true, true)).toEqual([]);
-    expect(rankChangesForSubjects(subjects, false, false)).toEqual([]);
-  });
-});
 
 describe('buildRedCardCard', () => {
   const message: RedCardMessage = {
@@ -40,14 +12,12 @@ describe('buildRedCardCard', () => {
     className: '3a',
     actorName: 'Lehrerin Beispiel (LBE)',
     source: 'Rote Karte',
-    changes: [
-      { subjectCode: 'D', from: 'Meister', to: 'Geselle' },
-      { subjectCode: 'M', from: 'Geselle', to: 'Lehrling' },
-    ],
+    rankChange: { from: 'Geselle', to: 'Lehrling' },
+    note: 'Störte den Unterricht trotz Ermahnung.',
     occurredAt: new Date('2026-11-03T10:00:00Z'),
   };
 
-  it('carries the full pupil name, class, cause and rank changes', () => {
+  it('carries the pupil-level rank change and the teacher note', () => {
     const payload = buildRedCardCard(message);
     const content = payload.attachments[0]!.content as any;
 
@@ -63,12 +33,17 @@ describe('buildRedCardCard', () => {
       title: 'Ausgestellt von',
       value: 'Lehrerin Beispiel (LBE)',
     });
+    expect(facts).toContainEqual({ title: 'Rang', value: 'Geselle → Lehrling' });
 
-    const rankFacts = content.body[3].facts as Array<{ title: string; value: string }>;
-    expect(rankFacts).toEqual([
-      { title: 'D (Deutsch)', value: 'Meister → Geselle' },
-      { title: 'M (Mathematik)', value: 'Geselle → Lehrling' },
-    ]);
+    expect(content.body[2].text).toBe('Notiz der Lehrkraft');
+    expect(content.body[3].text).toBe('Störte den Unterricht trotz Ermahnung.');
+  });
+
+  it('never lists a subject code in the rank change', () => {
+    const payload = JSON.stringify(buildRedCardCard(message));
+    expect(payload).not.toContain('Deutsch');
+    expect(payload).not.toContain('Mathematik');
+    expect(payload).not.toContain('D (');
   });
 
   it('uses a positive title and colour when the rank is restored', () => {
@@ -85,31 +60,35 @@ describe('buildRedCardCard', () => {
     });
   });
 
-  it('never includes the red-card note', () => {
-    const payload = JSON.stringify(buildRedCardCard(message));
-    expect(payload).not.toContain('Vorfall');
-    expect(payload).not.toContain('note');
+  it('falls back when no note was entered', () => {
+    const payload = buildRedCardCard({ ...message, note: null });
+    const content = payload.attachments[0]!.content as any;
+    expect(content.body[3].text).toBe('Keine Notiz hinterlegt.');
   });
 });
 
 describe('postTeamsCard', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  const message: RedCardMessage = {
+    direction: 'issued',
+    pupilName: 'Anna Muster',
+    className: '3a',
+    actorName: 'LBE',
+    source: 'Rote Karte',
+    rankChange: { from: 'Geselle', to: 'Lehrling' },
+    note: 'Testnotiz',
+    occurredAt: new Date('2026-11-03T10:00:00Z'),
+  };
+
   it('posts the Adaptive Card envelope to the webhook', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('', { status: 200 }));
-    const payload = buildRedCardCard({
-      direction: 'issued',
-      pupilName: 'Anna Muster',
-      className: '3a',
-      actorName: 'LBE',
-      source: 'Rote Karte',
-      changes: [{ subjectCode: 'D', from: 'Meister', to: 'Geselle' }],
-      occurredAt: new Date('2026-11-03T10:00:00Z'),
-    });
 
-    await expect(postTeamsCard(payload, 'https://example.test/webhook')).resolves.toBe(true);
+    await expect(
+      postTeamsCard(buildRedCardCard(message), 'https://example.test/webhook'),
+    ).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -129,20 +108,8 @@ describe('postTeamsCard', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await expect(
-      postTeamsCard(
-        buildRedCardCard({
-          direction: 'issued',
-          pupilName: 'Anna Muster',
-          className: '3a',
-          actorName: 'LBE',
-          source: 'Rote Karte',
-          changes: [{ subjectCode: 'D', from: 'Meister', to: 'Geselle' }],
-          occurredAt: new Date(),
-        }),
-        'https://example.test/webhook',
-      ),
+      postTeamsCard(buildRedCardCard(message), 'https://example.test/webhook'),
     ).resolves.toBe(false);
-
     expect(warn).toHaveBeenCalledWith(
       '[teams] webhook rejected the card with HTTP 500',
     );
@@ -153,20 +120,8 @@ describe('postTeamsCard', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await expect(
-      postTeamsCard(
-        buildRedCardCard({
-          direction: 'issued',
-          pupilName: 'Anna Muster',
-          className: '3a',
-          actorName: 'LBE',
-          source: 'Rote Karte',
-          changes: [{ subjectCode: 'D', from: 'Meister', to: 'Geselle' }],
-          occurredAt: new Date(),
-        }),
-        'https://example.test/webhook',
-      ),
+      postTeamsCard(buildRedCardCard(message), 'https://example.test/webhook'),
     ).resolves.toBe(false);
-
     expect(warn).toHaveBeenCalledWith('[teams] webhook delivery failed (TypeError)');
   });
 });
