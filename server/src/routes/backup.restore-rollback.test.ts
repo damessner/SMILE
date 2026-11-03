@@ -228,10 +228,15 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
     expect(res.statusCode).toBe(500);
     const body = res.json();
     expect(body.rollback).toEqual({ attempted: true, succeeded: false });
+    expect(body.maintenanceMode).toBe(true);
+    expect(body.liveSyncReopened).toBe(false);
     expect(body.error).toContain('manuell');
     expect(body.preRestoreBackup).toMatch(/^pre-restore-safety-.*\.dump$/);
     expect(fs.existsSync(path.join(testBackupDir, body.preRestoreBackup))).toBe(true);
-    expect(isRestoreInProgress()).toBe(false);
+    // A failed rollback must leave the restore gate closed: the database is in
+    // an unknown state and must not accept writes until an operator intervenes.
+    expect(isRestoreInProgress()).toBe(true);
+    resetRestoreGateForTests();
     // Even a failed rollback is recorded, with the honest outcome.
     const failureAudit = auditEntries.find((e) => e.action === 'DATABASE_RESTORE_FAILED');
     expect(failureAudit).toBeDefined();

@@ -587,7 +587,10 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
               liveSyncReopened: true,
             });
           }
-          return failAfterDestructiveStep(err);
+          // `return await` is essential: the outer finally releases the restore
+          // gate, and a bare `return promise` would run it before the rollback
+          // had a chance to set keepGateHeld.
+          return await failAfterDestructiveStep(err);
         }
 
         try {
@@ -620,7 +623,7 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
           await invalidateAfterRestore();
         } catch (err) {
           // A failure after the data was replaced is still a failed restore; it rolls back too.
-          return failAfterDestructiveStep(err);
+          return await failAfterDestructiveStep(err);
         }
 
         return reply.send({

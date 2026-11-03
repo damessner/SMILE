@@ -249,6 +249,42 @@ by an `INNER JOIN teachers`; that is now a `LEFT JOIN`.
 
 ---
 
+## 2026-11-03 hardening pass
+
+The following were changed and covered by the local suite:
+
+- Admin login no longer treats the deliberate `active: false` placeholder teacher
+  row as a deactivated account. Migration `0009` moves old placeholders (the live
+  database had `ADM-315`) into the reserved `9,000,000+` range and repoints every
+  foreign key.
+- Logout now revokes the presented session (and the parked view-as session) by
+  incrementing `session_version`, invalidating caches and closing WebSockets.
+- The session guard resolves role/teacher/pupil identity from the durable user row,
+  so a demotion or reassignment takes effect on the next request.
+- A headmaster can no longer mint credentials for, or force-reset, the `admin`
+  account. `request-reset` now records `requested_by`.
+- Restore keeps the maintenance gate closed when the safety rollback fails, and
+  invalidates sessions/caches after a successful restore. Failed-rollback
+  responses report `maintenanceMode: true`.
+- Rating writes re-check the class conference lock under a transaction-scoped
+  advisory lock; submitted ballots cannot be changed without `/reopen`.
+- Group-scoped subjects enforce `pupil_subject_teachers` on the server, not only in
+  the grid filter.
+- Backup fixes: login rate limit is per username+IP; M365 report dependencies are
+  preflighted/installed; the 19:10–19:50 runs no longer masquerade as daily
+  archives; dumps are `0600`; the M365 passphrase is escrowed on the host; the
+  GDrive `cryptcheck` call takes both remotes; the restore drill uses
+  `--exit-on-error`.
+- Client fixes: class switches no longer render the previous roster; conference
+  approvals use the hours-weighted suggestion instead of `null`; all-class export
+  is blocked when a class failed to load; logout failure keeps the user signed in
+  rather than showing a false logout; modal state is reset on identity changes.
+
+Residual items intentionally not changed in this pass: plain HTTP on the school
+LAN, AES-CBC (not authenticated) at rest for the M365 payload, and the stale
+Drizzle meta snapshots for migrations `0002`–`0009`. Treat those as follow-up
+work, not silently accepted.
+
 ## Known limitations
 
 - **No TLS.** The app serves plain HTTP on the school LAN, as originally specified. The

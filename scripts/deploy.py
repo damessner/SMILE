@@ -381,20 +381,6 @@ EOF_ENV
   echo "NOTICE: M365_PASSWORD is empty. Fill it in /etc/smile/backup.env before the backup can run."
 fi
 
-# Escrow the M365 passphrase outside the LXC. Without this a lost container
-# also loses the only copy of the key that decrypts every cloud backup. The
-# host copy is a recovery path, not a substitute for the two sealed envelopes.
-if [ ! -f /etc/smile-security/m365-backup-passphrase ]; then
-  KEY=$(pct exec "$CID" -- grep -E '^BACKUP_ENCRYPTION_PASSPHRASE=' /etc/smile/backup.env | cut -d= -f2- | tr -d '"')
-  if [ -n "$KEY" ]; then
-    mkdir -p /etc/smile-security
-    chmod 700 /etc/smile-security
-    printf '%s\n' "$KEY" > /etc/smile-security/m365-backup-passphrase
-    chmod 600 /etc/smile-security/m365-backup-passphrase
-    echo "NOTICE: M365 backup passphrase escrowed at /etc/smile-security/m365-backup-passphrase (host)."
-  fi
-fi
-
 if sudo -u smile /usr/bin/python3 /opt/smile/scripts/backup_m365.py --check; then
   systemctl enable --now smile-m365-backup.timer
   echo "M365 backup timer armed."
@@ -403,7 +389,7 @@ else
   echo "WARN: preflight failed - timer installed but NOT started."
 fi
 
-if pct exec "$CID" -- test -f /etc/smile/independent_backup.cert.pem; then
+if test -f /etc/smile/independent_backup.cert.pem; then
   systemctl enable --now smile-independent-backup.timer
   echo "Independent backup timer armed."
 else
@@ -412,7 +398,7 @@ else
   echo "      Run scripts/setup_independent_keys.py, then start smile-independent-backup.timer."
 fi
 
-if pct exec "$CID" -- bash -c 'ls /var/backups/smile/smile_db_*.dump >/dev/null 2>&1'; then
+if ls /var/backups/smile/smile_db_*.dump >/dev/null 2>&1; then
   systemctl enable --now smile-restore-drill.timer
   echo "Restore drill timer armed."
 else
@@ -630,6 +616,21 @@ def deploy(bundle_path, stamp, sha, branch, dirty):
         remote.ex('journalctl -u smile.service --since "-3 min" --no-pager | grep -iE "error|fail|migrat" | head -20 || true',
                   check=False, label='8. recent log warnings')
         remote.ex(render(TIMERS_SH), timeout=600, check=False, label='9. backup timers')
+
+        # Host-level key escrow. This must run on the Proxmox host, not inside
+        # the container script: if LXC 115 is lost, a key that only exists in the
+        # container's /etc/smile/backup.env is lost with it.
+        remote.host(
+            'mkdir -p /etc/smile-security && chmod 700 /etc/smile-security; '
+            'if [ ! -f /etc/smile-security/m365-backup-passphrase ]; then '
+            f'KEY=$(pct exec {CID} -- grep -E "^BACKUP_ENCRYPTION_PASSPHRASE=" /etc/smile/backup.env | cut -d= -f2- | tr -d \'"\'); '
+            'if [ -n "$KEY" ]; then printf "%s\\n" "$KEY" > /etc/smile-security/m365-backup-passphrase; '
+            'chmod 600 /etc/smile-security/m365-backup-passphrase; '
+            'echo "NOTICE: M365 backup passphrase escrowed on host at /etc/smile-security/m365-backup-passphrase."; fi; fi',
+            timeout=60,
+            check=False,
+            label='9a. escrow M365 backup passphrase',
+        )
         remote.ex(TIMER_STATUS_SH, check=False, label='9b. timer status (visibility only)')
 
         print(f'\n✓ DEPLOYMENT SUCCESSFUL  release={stamp}  sha={sha}  branch={branch}'

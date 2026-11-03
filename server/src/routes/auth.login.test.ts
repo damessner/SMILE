@@ -123,6 +123,28 @@ afterEach(() => {
   dateNowSpy = null;
 });
 
+describe('administrator login', () => {
+  it('allows an admin linked to the inactive placeholder teacher actor', async () => {
+    state.users = [
+      makeUser({
+        username: 'admin',
+        role: 'admin',
+        teacherId: 9_000_000,
+        mustChangePassword: false,
+      }),
+    ];
+    state.teachers = [
+      { id: 9_000_000, shortName: 'ADM-9000000', fullName: 'Administratorkonto admin', active: false },
+    ];
+
+    const res = await login('admin', PASSWORD);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['set-cookie']).toBeTruthy();
+    expect(res.json()).toMatchObject({ user: { username: 'admin', role: 'admin' } });
+  });
+});
+
 describe('start-password expiry at login', () => {
   it('refuses a correct start password issued more than 14 days ago, with no session', async () => {
     const now = Date.now();

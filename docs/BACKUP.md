@@ -1,4 +1,15 @@
-# Encrypted Google Drive Backup — SMILE
+# Encrypted Backup — SMILE
+
+> **Current deployment (2026-11-03):** the primary cloud destination is
+> **Microsoft 365 OneDrive** (`scripts/backup_m365.py`, `smile-m365-backup.timer`,
+> every 10 minutes 06:00–19:00). The independent off-host RSA copy
+> (`scripts/backup_independent.py`) and weekly restore drill are the recovery
+> proof. The Google Drive/rclone path below is optional and is not installed by
+> `deploy.py`; keep it only if you actually operate it.
+>
+> On 2026-11-03 the M365 passphrase is also escrowed on the Proxmox host at
+> `/etc/smile-security/m365-backup-passphrase` (0600). That protects against loss
+> of LXC 115, not loss of the Proxmox host: keep the two sealed custodial copies.
 
 Replaces the previous situation, which had **no working restore path at all**. The
 in-app JSON export remains a convenience download; it is not a backup.
@@ -163,9 +174,12 @@ incremental snapshots (restic), not more frequent full dumps.
 | Weekly | weeks 5–16 | newest per week |
 | Monthly | beyond 16 weeks | newest per month |
 
-Older than 112 days: nothing.
+Monthly retention now runs to `KEEP_MONTHLY_MONTHS` (default 12 months); the
+previous script deleted everything beyond the 112-day weekly horizon despite
+this table. Tunable in `/etc/smile/backup.env`.
 
-Roughly 3–4 GB on Drive at steady state. Tunable in `/etc/smile/backup.env`.
+The M365 path keeps a single 19:00 Tagesschluss per day plus the configured
+intraday window; the 19:10–19:50 runs are pruned like any other intraday copy.
 
 ---
 
