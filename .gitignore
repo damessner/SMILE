@@ -26,8 +26,8 @@ pupil_group_mappings.json
 *.dump.enc
 *.sql.gz
 *.zip
-backup_*
-pre-restore-safety-*
+/backup_*
+/pre-restore-safety-*
 
 # Agent/tool state and local scratch files
 .pi/
