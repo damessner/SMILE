@@ -10,6 +10,12 @@
 > On 2026-11-03 the M365 passphrase is also escrowed on the Proxmox host at
 > `/etc/smile-security/m365-backup-passphrase` (0600). That protects against loss
 > of LXC 115, not loss of the Proxmox host: keep the two sealed custodial copies.
+>
+> | Unit | Schedule | Purpose |
+> |---|---|---|
+> | `smile-m365-backup.timer` | every 10 min, 06:00–19:00 | primary encrypted M365 copy |
+> | `smile-independent-backup.timer` | daily 19:30 | RSA-encrypted off-host copy |
+> | `smile-restore-drill.timer` | weekly Sunday 05:30 | proves the newest dump restores |
 
 Replaces the previous situation, which had **no working restore path at all**. The
 in-app JSON export remains a convenience download; it is not a backup.
