@@ -59,61 +59,29 @@ export function isEmailConfigured(): boolean {
 
 export function buildRedCardEmail(message: RedCardMessage): EmailContent {
   const isIssued = message.direction === 'issued';
-  const title = isIssued
-    ? 'Rote Karte – Rangverlust'
-    : 'Rote Karte zurückgezogen – Rang wiederhergestellt';
-
+  const action = isIssued ? 'Rote Karte' : 'Rote Karte zurückgezogen';
   const subject = `Schüler ${message.pupilName} (${message.className}) ${message.rankChange.from} ---> ${message.rankChange.to}`;
+  const time = formatViennaTime(message.occurredAt);
+  const note = message.note?.trim() || 'Keine Notiz hinterlegt.';
+  const headline = `${message.pupilName} (${message.className}) ${message.rankChange.from} ---> ${message.rankChange.to} · ${action} · ${message.actorName} · ${time}`;
 
-  const textLines = [
-    title,
-    '',
-    `Schüler*in: ${message.pupilName}`,
-    `Klasse: ${message.className}`,
-    `Quelle: ${message.source}`,
-    `${isIssued ? 'Ausgestellt von' : 'Zurückgezogen von'}: ${message.actorName}`,
-    `Zeit: ${formatViennaTime(message.occurredAt)}`,
-    `Rang: ${message.rankChange.from} → ${message.rankChange.to}`,
-    '',
-    'Notiz der Lehrkraft:',
-    message.note?.trim() || 'Keine Notiz hinterlegt.',
-  ];
+  const textLines = [headline, '', note];
 
   if (config.teams.appUrl) {
     textLines.push('', `In SMILE öffnen: ${config.teams.appUrl}`);
   }
-
-  const facts: Array<[string, string]> = [
-    ['Schüler*in', message.pupilName],
-    ['Klasse', message.className],
-    ['Quelle', message.source],
-    [
-      isIssued ? 'Ausgestellt von' : 'Zurückgezogen von',
-      message.actorName,
-    ],
-    ['Zeit', formatViennaTime(message.occurredAt)],
-    ['Rang', `${message.rankChange.from} → ${message.rankChange.to}`],
-  ];
+  textLines.push('', 'Automatisch gesendet von SMILE.');
 
   const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5">
-      <h2 style="margin:0 0 12px;color:${isIssued ? '#b91c1c' : '#15803d'}">${escapeHtml(title)}</h2>
-      <table style="border-collapse:collapse;margin:0 0 16px">
-        ${facts
-          .map(
-            ([label, value]) =>
-              `<tr><td style="padding:2px 16px 2px 0;color:#6b7280">${escapeHtml(label)}</td><td style="padding:2px 0;font-weight:600">${escapeHtml(value)}</td></tr>`,
-          )
-          .join('')}
-      </table>
-      <h3 style="margin:0 0 6px">Notiz der Lehrkraft</h3>
-      <div style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(message.note?.trim() || 'Keine Notiz hinterlegt.')}</div>
+    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5;max-width:640px">
+      <p style="font-size:16px;font-weight:700;margin:0 0 12px">${escapeHtml(headline)}</p>
+      <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</p>
       ${
         config.teams.appUrl
-          ? `<p><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>`
+          ? `<p style="margin:0 0 12px"><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>`
           : ''
       }
-      <p style="color:#6b7280;font-size:12px;margin-top:24px">Automatisch gesendet von SMILE.</p>
+      <p style="color:#9ca3af;font-size:11px;margin:16px 0 0">Automatisch gesendet von SMILE.</p>
     </div>
   `.trim();
 

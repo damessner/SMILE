@@ -22,10 +22,11 @@ describe('buildEventEmail', () => {
     expect(mail.subject).toContain(label);
     expect(mail.subject).toContain('Anna Muster');
     expect(mail.subject).toContain('3a');
-    expect(mail.text).toContain(`Schüler*in: Anna Muster`);
-    expect(mail.text).toContain('Klasse: 3a');
-    expect(mail.text).toContain('Lehrkraft: Lehrerin Beispiel (LBE)');
+    expect(mail.text).toContain(
+      `Anna Muster (3a) · ${label} · Lehrerin Beispiel (LBE)`,
+    );
     expect(mail.text).toContain('Störte den Unterricht trotz Ermahnung.');
+    expect(mail.html).not.toContain('<table');
   });
 
   it('escapes HTML in names and notes', () => {

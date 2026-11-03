@@ -18,13 +18,13 @@ describe('buildRedCardEmail', () => {
     const mail = buildRedCardEmail(message);
 
     expect(mail.subject).toBe('Schüler Anna Muster (3a) Geselle ---> Lehrling');
-    expect(mail.text).toContain('Schüler*in: Anna Muster');
-    expect(mail.text).toContain('Klasse: 3a');
-    expect(mail.text).toContain('Quelle: Rote Karte');
-    expect(mail.text).toContain('Rang: Geselle → Lehrling');
-    expect(mail.text).toContain('Notiz der Lehrkraft:');
+    expect(mail.text).toContain(
+      'Anna Muster (3a) Geselle ---> Lehrling · Rote Karte · Lehrerin Beispiel (LBE)',
+    );
     expect(mail.text).toContain('Störte den Unterricht trotz Ermahnung.');
-    expect(mail.html).toContain('Rote Karte – Rangverlust');
+    expect(mail.html).toContain('Anna Muster (3a)');
+    expect(mail.html).toContain('Geselle ---&gt; Lehrling');
+    expect(mail.html).not.toContain('<table');
   });
 
   it('does not enumerate subjects', () => {
@@ -42,8 +42,9 @@ describe('buildRedCardEmail', () => {
     });
 
     expect(mail.subject).toBe('Schüler Anna Muster (3a) Lehrling ---> Geselle');
-    expect(mail.text).toContain('Zurückgezogen von: Lehrerin Beispiel (LBE)');
-    expect(mail.html).toContain('Rang wiederhergestellt');
+    expect(mail.text).toContain(
+      'Anna Muster (3a) Lehrling ---> Geselle · Rote Karte zurückgezogen',
+    );
   });
 
   it('escapes HTML in names and notes, and falls back when no note exists', () => {

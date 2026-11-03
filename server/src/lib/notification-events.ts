@@ -75,33 +75,23 @@ function eventEmail(
   const note = event.note?.trim() || 'Keine Notiz hinterlegt.';
   const time = formatViennaTime(event.occurredAt ?? new Date());
   const subject = `SMILE: ${label} – ${event.pupilName} (${className})`;
+  const headline = `${event.pupilName} (${className}) · ${label} · ${teacherName} · ${time}`;
 
   const text = [
-    label,
+    headline,
     '',
-    `Schüler*in: ${event.pupilName}`,
-    `Klasse: ${className}`,
-    `Lehrkraft: ${teacherName}`,
-    `Zeit: ${time}`,
-    '',
-    'Notiz der Lehrkraft:',
     note,
     ...(config.teams.appUrl ? ['', `In SMILE öffnen: ${config.teams.appUrl}`] : []),
+    '',
+    'Automatisch gesendet von SMILE.',
   ].join('\n');
 
   const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5">
-      <h2 style="margin:0 0 12px">${escapeHtml(label)}</h2>
-      <table style="border-collapse:collapse;margin:0 0 16px">
-        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Schüler*in</td><td style="padding:2px 0;font-weight:600">${escapeHtml(event.pupilName)}</td></tr>
-        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Klasse</td><td style="padding:2px 0;font-weight:600">${escapeHtml(className)}</td></tr>
-        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Lehrkraft</td><td style="padding:2px 0;font-weight:600">${escapeHtml(teacherName)}</td></tr>
-        <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Zeit</td><td style="padding:2px 0;font-weight:600">${escapeHtml(time)}</td></tr>
-      </table>
-      <h3 style="margin:0 0 6px">Notiz der Lehrkraft</h3>
-      <div style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</div>
-      ${config.teams.appUrl ? `<p><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
-      <p style="color:#6b7280;font-size:12px;margin-top:24px">Automatisch gesendet von SMILE.</p>
+    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5;max-width:640px">
+      <p style="font-size:16px;font-weight:700;margin:0 0 12px">${escapeHtml(headline)}</p>
+      <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</p>
+      ${config.teams.appUrl ? `<p style="margin:0 0 12px"><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
+      <p style="color:#9ca3af;font-size:11px;margin:16px 0 0">Automatisch gesendet von SMILE.</p>
     </div>
   `.trim();
 
@@ -163,33 +153,23 @@ export function queueTimeoutEscalationNotification(event: TimeoutEscalationEvent
     const time = formatViennaTime(event.occurredAt ?? new Date());
     const note = event.note?.trim() || 'Keine Notiz hinterlegt.';
     const subject = `SMILE: Time-Out-Eskalation (${event.totalTimeouts}) – ${event.pupilName} (${className})`;
+    const headline = `${event.pupilName} (${className}) · Time-Out-Eskalation (${event.totalTimeouts}) · ${teacherName} · ${time}`;
 
     const text = [
-      `Time-Out-Eskalation: ${event.totalTimeouts}. Time-Out`,
+      headline,
       '',
-      `Schüler*in: ${event.pupilName}`,
-      `Klasse: ${className}`,
-      `Lehrkraft: ${teacherName}`,
-      `Zeit: ${time}`,
-      '',
-      'Arbeitsauftrag / Notiz:',
       note,
       ...(config.teams.appUrl ? ['', `In SMILE öffnen: ${config.teams.appUrl}`] : []),
+      '',
+      'Automatisch gesendet von SMILE.',
     ].join('\n');
 
     const html = `
-      <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5">
-        <h2 style="margin:0 0 12px;color:#b91c1c">Time-Out-Eskalation: ${event.totalTimeouts}. Time-Out</h2>
-        <table style="border-collapse:collapse;margin:0 0 16px">
-          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Schüler*in</td><td style="padding:2px 0;font-weight:600">${escapeHtml(event.pupilName)}</td></tr>
-          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Klasse</td><td style="padding:2px 0;font-weight:600">${escapeHtml(className)}</td></tr>
-          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Lehrkraft</td><td style="padding:2px 0;font-weight:600">${escapeHtml(teacherName)}</td></tr>
-          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Zeit</td><td style="padding:2px 0;font-weight:600">${escapeHtml(time)}</td></tr>
-        </table>
-        <h3 style="margin:0 0 6px">Arbeitsauftrag / Notiz</h3>
-        <div style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</div>
-        ${config.teams.appUrl ? `<p><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
-        <p style="color:#6b7280;font-size:12px;margin-top:24px">Automatisch gesendet von SMILE.</p>
+      <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5;max-width:640px">
+        <p style="font-size:16px;font-weight:700;margin:0 0 12px;color:#b91c1c">${escapeHtml(headline)}</p>
+        <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</p>
+        ${config.teams.appUrl ? `<p style="margin:0 0 12px"><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
+        <p style="color:#9ca3af;font-size:11px;margin:16px 0 0">Automatisch gesendet von SMILE.</p>
       </div>
     `.trim();
 
