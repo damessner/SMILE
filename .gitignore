@@ -40,3 +40,7 @@ tmp/
 # Python bytecode
 __pycache__/
 *.pyc
+/data
+/reports
+/antigravity-report
+/pupil_group_mappings.json
