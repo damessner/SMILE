@@ -1,0 +1,39 @@
+{
+  "name": "smile-platform",
+  "version": "2.0.0",
+  "private": true,
+  "description": "SMILE - Teacher Collaborative Assessment & Grading Platform",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run client",
+    "client": "vite --config client/vite.config.ts",
+    "build": "npm run build --workspaces",
+    "start": "npm run start --workspace=server",
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "seed": "npm run seed --workspace=server",
+    "db:generate": "npm run db:generate --workspace=server",
+    "db:migrate": "npm run db:migrate --workspace=server",
+    "db:studio": "npm run db:studio --workspace=server",
+    "postinstall": "node scripts/verify-env.mjs"
+  },
+  "keywords": [
+    "smile",
+    "education",
+    "grading",
+    "assessment"
+  ],
+  "author": "MS Telfs Weissenbach",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

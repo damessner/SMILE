@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the SMILE Independent Encrypted Backup Daily at 19:30
+Documentation=file:/opt/smile/docs/SECURITY.md
+
+[Timer]
+OnCalendar=*-*-* 19:30:00
+RandomizedDelaySec=300
+Persistent=true
+Unit=smile-independent-backup.service
+
+[Install]
+WantedBy=timers.target

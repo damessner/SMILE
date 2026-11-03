@@ -1,0 +1,46 @@
+# Weekly restore drill.
+#
+# Proves the encrypted backups are actually restorable by performing a real
+# restore into a throwaway database and checking the data landed. A backup that
+# has never been restored is not a backup.
+#
+#   journalctl -u smile-restore-drill.service
+#
+# Exit 0 = passed, 1 = FAILED (alert on this), 2 = no backup exists yet.
+
+[Unit]
+Description=SMILE restore drill (proves backups are restorable)
+Documentation=file:/opt/smile/docs/SECURITY.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=smile
+Group=smile
+
+EnvironmentFile=/etc/smile/backup.env
+
+ExecStart=/usr/bin/python3 /opt/smile/scripts/restore_drill.py
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/postgresql /tmp /var/backups/smile
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+# The drill can need to create and drop a database, so allow the connection.
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

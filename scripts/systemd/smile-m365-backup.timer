@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the SMILE M365 10-minute backup (06:00 - 19:00)
+
+[Timer]
+OnCalendar=*-*-* 06..19:00/10:00
+Persistent=true
+Unit=smile-m365-backup.service
+
+[Install]
+WantedBy=timers.target

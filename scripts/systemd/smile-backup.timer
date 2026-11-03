@@ -1,0 +1,21 @@
+# Hourly encrypted backup to Google Drive.
+#
+#   sudo systemctl enable --now smile-backup.timer
+#   systemctl list-timers smile-backup.timer
+#   journalctl -u smile-backup.service -f
+#
+# Persistent=true means a backup missed while the machine was off runs on the
+# next boot rather than being silently skipped.
+
+[Unit]
+Description=Run the SMILE encrypted backup hourly
+Documentation=file:/opt/smile/docs/SECURITY.md
+
+[Timer]
+OnCalendar=*-*-* *:07:00
+RandomizedDelaySec=180
+Persistent=true
+Unit=smile-backup.service
+
+[Install]
+WantedBy=timers.target

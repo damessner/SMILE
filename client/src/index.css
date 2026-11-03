@@ -1,0 +1,390 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   SMILE design system
+
+   Targets iPadOS: SF-family type, a restrained radius scale, materials
+   instead of borders, and continuous (squircle) corners where supported.
+
+   Everything here is a token. Components should consume tokens rather than
+   re-deriving values, so the whole app can be re-themed from this file.
+   ========================================================================== */
+
+@theme {
+  /* --- Type -------------------------------------------------------------
+     -apple-system resolves to SF Pro on iOS/iPadOS and Segoe UI on Windows.
+     system-ui first would pick the browser default rather than the platform's
+     intended face on some Windows installs. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+
+  /*
+    Font sizes.
+
+    The previous UI used `text-xs` (12px) for 232 occurrences and `text-[10px]`
+    for another 64 — well below the legibility floor for a tablet held at arm's
+    length during a lesson.
+
+    Note: `text-xs` is a stock Tailwind utility and is NOT redefined here. It is
+    deliberately left at 12px so existing markup does not silently shift, while
+    the steps below (`text-sm`, `text-base`, `text-lg`, ...) are set to the larger
+    iPad-appropriate sizes. Migrating the 232 `text-xs` call sites to the scale is
+    a follow-up task, not something to change underneath them.
+  */
+  --text-sm: 0.8125rem;    /* 13px — dense labels */
+  --text-base: 0.9375rem;  /* 15px — body copy */
+  --text-lg: 1.0625rem;    /* 17px — pupil names, card titles */
+  --text-xl: 1.375rem;     /* 22px — modal titles */
+  --text-2xl: 1.75rem;     /* 28px — page titles */
+  --text-3xl: 2.25rem;     /* 36px — hero / beamer mode */
+
+  /* --- Radius ----------------------------------------------------------
+     One scale, not six arbitrary values. iOS leans on generous continuous
+     corners; the UI previously mixed lg/xl/2xl/3xl at random. */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 22px;
+  --radius-3xl: 28px;
+
+  /* --- Material --------------------------------------------------------
+     Four elevation levels, expressed as surface + border + shadow rather
+     than 145 ad-hoc border-slate-8xx declarations. */
+  --color-surface-0: #080b12;   /* app background */
+  --color-surface-1: #0e1320;   /* cards, rows */
+  --color-surface-2: #161d2e;   /* raised: expanded row, inputs */
+  --color-surface-3: #1e2637;   /* floating: modals, toasts */
+
+  --color-hairline: #232c40;    /* the 1px separator */
+  --color-hairline-strong: #33405a;
+
+  /* Brand: warm amber, matching the school identity. */
+  --color-accent: #f5b83d;
+  --color-accent-dim: #d99b26;
+
+  /* Semantic, tuned for dark surfaces so they do not vibrate. */
+  --color-positive: #34d399;
+  --color-caution: #fbbf24;
+  --color-critical: #fb7185;
+  --color-info: #60a5fa;
+
+  /* --- Motion ----------------------------------------------------------
+     Apple-style easing. The default Tailwind transition is fine but linear-ish
+     in feel; these give movement a slight settle. */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 8px 24px -6px rgb(0 0 0 / 0.55);
+  --shadow-xl: 0 20px 48px -12px rgb(0 0 0 / 0.65);
+}
+
+@layer base {
+  html, body {
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+    background-color: var(--color-surface-0);
+    color: var(--color-slate-200);
+    font-family: var(--font-sans);
+    /* iPadOS: prevent accidental text selection when tapping controls, but
+       keep it selectable in content areas where a teacher may want to copy. */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Prevent the rubber-band overscroll that reveals a white background. */
+    min-height: 100dvh;
+  }
+
+  /* Content that should be selectable, e.g. pupil names, notes, comments. */
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /*
+    Respect the OS "reduce motion" setting. The toast entry animation is the only
+    motion in the app that fires on a routine action, and for some pupils and
+    staff a sudden animation is uncomfortable.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /*
+    iPadOS: an installed web app (added to Home Screen) runs edge-to-edge. Without
+    these insets the top bar sits under the status bar and the bottom content
+    under the home indicator.
+  */
+  .safe-top    { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* Firefox / older Safari: graceful fallback when env() is unsupported. */
+  @supports not (padding: env(safe-area-inset-top)) {
+    .safe-top    { padding-top: 12px; }
+    .safe-bottom { padding-bottom: 12px; }
+  }
+
+  /* Dark is the default: this is used in bright classrooms and on a beamer. */
+  :root { color-scheme: dark; }
+
+  /*
+    ==========================================================================
+    LIGHT THEME
+
+    Tailwind v4 resolves every colour utility through a CSS variable
+    (`.bg-slate-900 { background-color: var(--color-slate-900) }`). That means the
+    entire palette can be remapped under one attribute selector and all ~1,300
+    colour declarations in the UI follow, with no component changes.
+
+    The remapping is semantic rather than a mechanical inversion: in the dark
+    theme a high slate number means "darker, closer to the background", so in the
+    light theme a high number must mean "lighter, closer to the background".
+
+    Muted text is the constraint that matters. text-slate-400 is the most-used
+    colour in the app (123 uses), so it maps to #64748b, which is 4.76:1 on white
+    and clears WCAG AA for normal text. The dimmer shades deliberately fall below
+    that and are used only for decorative counts and separators.
+    ==========================================================================
+  */
+}
+
+@layer base {
+  [data-theme='light'] {
+    color-scheme: light;
+
+    /* --- Neutral ramp -------------------------------------------------- */
+    --color-slate-50: #0f172a;
+    --color-slate-100: #1e293b;
+    --color-slate-200: #334155;
+    --color-slate-300: #475569;
+    --color-slate-400: #64748b; /* muted text — 4.76:1 on white (WCAG AA) */
+    --color-slate-500: #94a3b8; /* decorative only */
+    --color-slate-600: #cbd5e1;
+    --color-slate-700: #dde3ec; /* border strong / hover */
+    --color-slate-800: #eef2f7; /* border + button surface */
+    --color-slate-900: #ffffff; /* card — raised above the page */
+    --color-slate-950: #f4f7fb; /* page background */
+
+    /* --- Surfaces ------------------------------------------------------ */
+    --color-surface-0: #f4f7fb;
+    --color-surface-1: #ffffff;
+    --color-surface-2: #f8fafc;
+    --color-surface-3: #ffffff;
+    --color-hairline: #e2e8f0;
+    --color-hairline-strong: #cbd5e1;
+
+    /* --- Brand --------------------------------------------------------- */
+    --color-accent: #b45309;
+    --color-accent-dim: #92400e;
+
+    /* --- Semantic, darkened for legibility on white -------------------- */
+    --color-positive: #047857;
+    --color-caution: #b45309;
+    --color-critical: #be123c;
+    --color-info: #1d4ed8;
+
+    /* Shadows read far too heavy on a light background. */
+    --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+    --shadow-md: 0 2px 8px -2px rgb(15 23 42 / 0.08);
+    --shadow-lg: 0 8px 24px -6px rgb(15 23 42 / 0.12);
+    --shadow-xl: 0 20px 48px -12px rgb(15 23 42 / 0.18);
+  }
+
+  /*
+    Projection contexts must stay dark regardless of the user's preference: a
+    conference view is shown on a beamer in a darkened room, and washed-out
+    colours on a projector are harder to read, not easier.
+  */
+  [data-force-dark] {
+    color-scheme: dark;
+
+    --color-slate-50: #f8fafc;
+    --color-slate-100: #f1f5f9;
+    --color-slate-200: #e2e8f0;
+    --color-slate-300: #cbd5e1;
+    --color-slate-400: #94a3b8;
+    --color-slate-500: #64748b;
+    --color-slate-600: #475569;
+    --color-slate-700: #334155;
+    --color-slate-800: #1e293b;
+    --color-slate-900: #0f172a;
+    --color-slate-950: #020617;
+
+    --color-surface-0: #080b12;
+    --color-surface-1: #0e1320;
+    --color-surface-2: #161d2e;
+    --color-surface-3: #1e2637;
+    --color-hairline: #232c40;
+    --color-hairline-strong: #33405a;
+    --color-accent: #f5b83d;
+    --color-accent-dim: #d99b26;
+    --color-positive: #34d399;
+    --color-caution: #fbbf24;
+    --color-critical: #fb7185;
+    --color-info: #60a5fa;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 8px 24px -6px rgb(0 0 0 / 0.55);
+    --shadow-xl: 0 20px 48px -12px rgb(0 0 0 / 0.65);
+  }
+
+  /*
+    Coloured accent shades. The 200/300 shades are tuned for a dark background;
+    on white they would be nearly invisible (emerald-300 on white is ~1.6:1), so
+    they are shifted two steps darker in the light theme.
+  */
+  [data-theme='light'] {
+    --color-emerald-200: #065f46;
+    --color-emerald-300: #047857;
+    --color-emerald-400: #059669;
+    --color-amber-200: #92400e;
+    --color-amber-300: #b45309;
+    --color-amber-400: #b45309;
+    --color-rose-200: #9f1239;
+    --color-rose-300: #be123c;
+    --color-rose-400: #be123c;
+    --color-sky-200: #075985;
+    --color-sky-300: #0369a1;
+    --color-sky-400: #0284c7;
+  }
+
+  /* Numeric columns should not jitter as digits change (vote counters, counts). */
+  .tabular { font-variant-numeric: tabular-nums; }
+}
+
+/* ==========================================================================
+   Component primitives
+   ========================================================================== */
+
+@layer components {
+  /*
+    Materials rather than borders. A card reads as a distinct plane because of
+    a surface shift plus a hairline plus a soft shadow, not a 1px grey outline —
+    which is how iOS separates surfaces.
+  */
+  .surface-1 {
+    background-color: var(--color-surface-1);
+    border: 1px solid var(--color-hairline);
+  }
+
+  .surface-2 {
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-hairline);
+  }
+
+  .surface-3 {
+    background-color: var(--color-surface-3);
+    border: 1px solid var(--color-hairline-strong);
+    box-shadow: var(--shadow-xl);
+  }
+
+  /* Translucent bar behind scrolling content. */
+  .material-bar {
+    background-color: color-mix(in srgb, var(--color-surface-0) 82%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  /*
+    Pressable control. Combines the 44px touch target with the slight inset
+    that iOS uses to indicate a press.
+  */
+  .pressable {
+    transition:
+      transform 140ms var(--ease-out-quint),
+      background-color 140ms var(--ease-out-quint),
+      opacity 140ms var(--ease-out-quint);
+    will-change: transform;
+  }
+  .pressable:active:not(:disabled) { transform: scale(0.96); }
+
+  /* Focus ring for keyboard users. iPadOS with a trackpad needs this. */
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+  }
+}
+
+/* ==========================================================================
+   Animations
+   ========================================================================== */
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(0.75rem) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Soft-lock pulse: another teacher is editing this cell. */
+@keyframes softlock-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgb(245 158 11 / 0.7), 0 0 10px rgb(245 158 11 / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgb(245 158 11 / 1), 0 0 16px rgb(245 158 11 / 0.7);
+  }
+}
+
+.cell-softlocked { animation: softlock-pulse 1.6s ease-in-out infinite; }
+
+/* Modal entry. Slight overshoot reads as "materialised" rather than "faded in". */
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-modal-in { animation: modal-in 220ms var(--ease-spring) both; }
+
+/* Backdrop fade. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in { animation: fade-in 180ms ease-out both; }
+
+/* Row expansion. Uses a grid-template-rows trick so it animates to auto height. */
+@keyframes row-reveal {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-row-reveal { animation: row-reveal 200ms var(--ease-out-quint) both; }
+
+/*
+   Continuous ("squircle") corner smoothing, matching iOS. Falls back silently
+   on browsers without support.
+*/
+@supports (corner-shape: squircle) {
+  .continuous { corner-shape: squircle; }
+}
+
+/*
+   iPadOS zooms the page when a focused form control has a font size below 16px.
+   Raising fields to at least 16px on touch devices stops that jump without
+   changing the compact desktop density.
+*/
+@media (pointer: coarse) {
+  input, select, textarea { font-size: max(16px, 1em); }
+}
+
+/* Used by the horizontally scrollable chip rows; hides the scrollbar affordance. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: #fff !important; color: #000 !important; }
+  header, nav, .no-print { display: none !important; }
+  .print-class-page { break-after: page; }
+  .print-class-page:last-child { break-after: auto; }
+  a { color: inherit; text-decoration: none; }
+}

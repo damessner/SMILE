@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#
+# backup-to-m365.sh — Delegates to the encrypted, validated Python backup suite.
+#
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "${SCRIPT_DIR}/backup_m365.py" "$@"

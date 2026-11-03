@@ -1,0 +1,45 @@
+name: SMILE CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: smile
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: smile_db_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smile -d smile_db_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgres://smile:password@127.0.0.1:5432/smile_db_test
+      JWT_SECRET: ci-only-secret-that-is-long-enough-to-pass-123456
+      DATABASE_URL: postgres://smile:password@127.0.0.1:5432/smile_db_test
+      SMILE_ENV_FILE: no-such-env-file-for-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Shell syntax
+        run: |
+          for f in scripts/*.sh scripts/test/*.sh; do bash -n "$f"; done
+      - name: Python syntax
+        run: python3 -m py_compile scripts/*.py scripts/test/*.py
+      - run: npm test
+      - run: npm run build

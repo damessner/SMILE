@@ -1,0 +1,48 @@
+# SMILE encrypted database backup to Google Drive.
+#
+# Runs hourly. Retains hourly detail for 3 days, one per day to 31 days,
+# one per week to 16 weeks, one per month to 12 months.
+#
+# Install:
+#   sudo install -m 0644 smile-backup.service /etc/systemd/system/
+#   sudo install -m 0644 smile-backup.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now smile-backup.timer
+
+[Unit]
+Description=SMILE encrypted database backup to Google Drive
+Documentation=file:/opt/smile/docs/SECURITY.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=smile
+Group=smile
+
+# Credentials live here, mode 0600, owned by root:smile
+EnvironmentFile=/etc/smile/backup.env
+
+ExecStart=/opt/smile/scripts/backup-to-gdrive.sh
+
+# The backup job needs nothing else: no listening socket, no privileges.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/postgresql /tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target
