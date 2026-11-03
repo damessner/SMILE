@@ -244,7 +244,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Get timeouts
     const timeoutRows = await getPool().query(
-      `SELECT ti.id, ti.sent_at, ti.task_assignment, ti.status, ti.resolved_at, ti.resolution_note,
+      `SELECT ti.id, ti.sent_at, ti.task_assignment, ti.kind, ti.status, ti.resolved_at, ti.resolution_note,
               t.short_name AS sent_by_short
          FROM timeout_incidents ti
          LEFT JOIN teachers t ON t.id = ti.sent_by_teacher_id
@@ -256,7 +256,10 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
     const greenCount = cardRows.rows.filter((c: any) => c.card_type === 'green').length;
     const yellowCount = cardRows.rows.filter((c: any) => c.card_type === 'yellow').length;
     const redCount = cardRows.rows.filter((c: any) => c.card_type === 'red').length;
-    const timeoutCount = timeoutRows.rows.length;
+    // A consequence-free Cool-Down is not a Time-Out for behaviour staging.
+    const timeoutCount = timeoutRows.rows.filter(
+      (row: { kind?: string | null }) => row.kind !== 'cooldown',
+    ).length;
 
     const calculation = computePupilBehaviorStage(greenCount, yellowCount, redCount, timeoutCount);
 

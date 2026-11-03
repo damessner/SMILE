@@ -28,10 +28,15 @@ import { broadcastToClass } from '../ws/live-sync.js';
 
 export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
   /**
-   * POST /api/timeouts — send a pupil to Time-Out and file the linked red card.
+   * POST /api/timeouts — send a pupil to the Lernwerkstatt.
    *
-   * Writes happen in one transaction so a pupil can never end up with a red card but
-   * no timeout record (the previous two-step write could fail halfway).
+   * `taskAssignment` is required for a disciplinary `timeout` (which also files the
+   * linked red card). A `cooldown` is a consequence-free referral: it records a
+   * note-only card and a Lernwerkstatt incident, creates no red card, and does not
+   * count toward timeout escalation milestones or behaviour stages.
+   *
+   * Writes happen in one transaction so a pupil can never end up with a card but no
+   * Lernwerkstatt record (the previous two-step write could fail halfway).
    */
   fastify.post(
     '/',
@@ -40,12 +45,13 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       schema: {
         body: {
           type: 'object',
-          required: ['pupilId', 'classId', 'taskAssignment'],
+          required: ['pupilId', 'classId'],
           additionalProperties: false,
           properties: {
             pupilId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
             classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
-            taskAssignment: { type: 'string', minLength: 1, maxLength: 2000 },
+            kind: { enum: ['timeout', 'cooldown'] },
+            taskAssignment: { type: 'string', nullable: true, maxLength: 2000 },
           },
         },
       },
@@ -54,20 +60,24 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const { pupilId, classId, taskAssignment } = (request.body ?? {}) as {
+    const { pupilId, classId, kind: rawKind, taskAssignment } = (request.body ?? {}) as {
       pupilId?: number;
       classId?: number;
-      taskAssignment?: string;
+      kind?: 'timeout' | 'cooldown';
+      taskAssignment?: string | null;
     };
+    const kind = rawKind ?? 'timeout';
+    const isCooldown = kind === 'cooldown';
 
-    if (!pupilId || !classId || !taskAssignment?.trim()) {
-      return badRequest(
-        reply,
-        'Schüler*in, Klasse und ein konkreter Arbeitsauftrag für die Lernwerkstatt sind zwingend erforderlich.',
-      );
+    if (!pupilId || !classId) {
+      return badRequest(reply, 'Schüler*in und Klasse sind zwingend erforderlich.');
     }
-    const cleanTask = taskAssignment.trim();
-    if (cleanTask.length > 2000) return badRequest(reply, 'Der Arbeitsauftrag ist zu lang.');
+    const cleanTask = taskAssignment?.trim() ?? '';
+    if (!isCooldown && !cleanTask) {
+      return badRequest(reply, 'Für ein Time-Out ist ein konkreter Arbeitsauftrag erforderlich.');
+    }
+    const storedTask = cleanTask || 'Cool-Down';
+    if (storedTask.length > 2000) return badRequest(reply, 'Der Arbeitsauftrag ist zu lang.');
 
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
@@ -95,16 +105,34 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const result = await db.transaction(async (tx) => {
-      const [redCard] = await tx
-        .insert(behaviorCards)
-        .values({
-          pupilId,
-          classId,
-          teacherId: actorId,
-          cardType: 'red',
-          note: `[TIME-OUT LW] Arbeitsauftrag: ${cleanTask}`,
-        })
-        .returning();
+      let redCard: typeof behaviorCards.$inferSelect | null = null;
+      let cooldownCard: typeof behaviorCards.$inferSelect | null = null;
+
+      if (isCooldown) {
+        const [card] = await tx
+          .insert(behaviorCards)
+          .values({
+            pupilId,
+            classId,
+            teacherId: actorId,
+            cardType: 'cooldown',
+            note: cleanTask ? `[COOL-DOWN LW] ${cleanTask}` : '[COOL-DOWN LW]',
+          })
+          .returning();
+        cooldownCard = card ?? null;
+      } else {
+        const [card] = await tx
+          .insert(behaviorCards)
+          .values({
+            pupilId,
+            classId,
+            teacherId: actorId,
+            cardType: 'red',
+            note: `[TIME-OUT LW] Arbeitsauftrag: ${cleanTask}`,
+          })
+          .returning();
+        redCard = card ?? null;
+      }
 
       const [incident] = await tx
         .insert(timeoutIncidents)
@@ -112,60 +140,89 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           pupilId,
           classId,
           sentByTeacherId: actorId,
-          taskAssignment: cleanTask,
+          taskAssignment: storedTask,
+          kind,
           status: 'active',
-          redCardId: redCard.id,
+          redCardId: redCard?.id ?? null,
           expiresAt: timeoutExpiry(),
         })
         .returning();
 
+      // A Cool-Down is intentionally consequence-free: it must not advance the
+      // 3/6/9 escalation ladder. Only real Time-Outs are counted.
       const [countRow] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(timeoutIncidents)
-        .where(eq(timeoutIncidents.pupilId, pupilId));
-      const totalTimeouts = countRow?.count ?? 1;
+        .where(and(
+          eq(timeoutIncidents.pupilId, pupilId),
+          eq(timeoutIncidents.kind, 'timeout'),
+        ));
+      const totalTimeouts = countRow?.count ?? 0;
+      const isEscalationTriggered =
+        !isCooldown &&
+        totalTimeouts > 0 &&
+        totalTimeouts % config.escalationStep === 0;
 
       await tx.insert(auditLogs).values({
         actorId: safeTeacherId(user.teacherId),
-        action: 'TIMEOUT_ISSUED',
+        action: isCooldown ? 'COOLDOWN_ISSUED' : 'TIMEOUT_ISSUED',
         entity: 'pupil',
         entityId: String(pupilId),
         payload: {
           classId,
-          taskAssignment: cleanTask,
-          redCardId: redCard.id,
+          kind,
+          taskAssignment: storedTask,
+          redCardId: redCard?.id ?? null,
+          cooldownCardId: cooldownCard?.id ?? null,
           totalTimeouts,
-          isEscalationTriggered: totalTimeouts % config.escalationStep === 0,
+          isEscalationTriggered,
         },
       });
 
-      return { redCard, incident, totalTimeouts };
+      return { redCard, cooldownCard, incident, totalTimeouts, isEscalationTriggered };
     });
 
-    const isEscalationTriggered = result.totalTimeouts % config.escalationStep === 0;
-
-    broadcastToClass(classId, { type: 'CARD_ISSUED', card: result.redCard, alertTriggered: true });
+    if (result.redCard) {
+      broadcastToClass(classId, {
+        type: 'CARD_ISSUED',
+        card: result.redCard,
+        alertTriggered: true,
+      });
+    }
+    if (result.cooldownCard) {
+      broadcastToClass(classId, {
+        type: 'CARD_ISSUED',
+        card: result.cooldownCard,
+        alertTriggered: false,
+      });
+    }
     broadcastToClass(classId, {
       type: 'TIMEOUT_ISSUED',
       incident: result.incident,
       redCard: result.redCard,
+      cooldownCard: result.cooldownCard,
+      kind,
       totalTimeouts: result.totalTimeouts,
-      isEscalationTriggered,
+      isEscalationTriggered: result.isEscalationTriggered,
     });
     broadcastToClass(LW_CLASS_ID, {
       type: 'TIMEOUT_ISSUED',
       incident: result.incident,
       redCard: result.redCard,
+      cooldownCard: result.cooldownCard,
+      kind,
       totalTimeouts: result.totalTimeouts,
-      isEscalationTriggered,
+      isEscalationTriggered: result.isEscalationTriggered,
     });
 
     return reply.status(201).send({
       success: true,
+      kind,
       incident: result.incident,
       redCard: result.redCard,
+      cooldownCard: result.cooldownCard,
       totalTimeouts: result.totalTimeouts,
-      isEscalationTriggered,
+      isEscalationTriggered: result.isEscalationTriggered,
     });
   });
 
@@ -202,6 +259,7 @@ ti.sent_by_teacher_id,
 ti.sent_at,
 ti.expires_at,
 ti.task_assignment,
+ti.kind,
 ti.status,
 ti.red_card_id,
 p.full_name AS pupil_name,
@@ -316,6 +374,7 @@ error:
               ti.sent_by_teacher_id,
               ti.sent_at,
               ti.task_assignment,
+              ti.kind,
               ti.status,
               ti.resolved_at,
               ti.resolved_by,
@@ -360,6 +419,7 @@ error:
          FROM timeout_incidents ti
          JOIN pupils p          ON p.id  = ti.pupil_id
          JOIN school_classes sc ON sc.id = ti.class_id
+        WHERE ti.kind = 'timeout'
         GROUP BY p.id, p.full_name, sc.id, sc.name
        HAVING COUNT(ti.id) >= $1
         ORDER BY total_timeouts DESC, p.full_name ASC`,

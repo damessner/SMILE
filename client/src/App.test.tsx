@@ -78,6 +78,9 @@ function renderApp() {
 
 describe('App session and alert recovery', () => {
   beforeEach(() => {
+    // These tests exercise the Bewertung grid; the production default is now
+    // Schulalltag. Preserve the old tab selection for this suite.
+    localStorage.setItem('smile_show_all_modules_v2', 'false');
     vi.mocked(api.getMe).mockResolvedValue(user as any);
     vi.mocked(api.getClasses).mockResolvedValue([] as any);
     vi.mocked(api.getCurrentTimetable).mockResolvedValue({} as any);
@@ -85,7 +88,10 @@ describe('App session and alert recovery', () => {
     vi.mocked(api.getTimeoutEscalations).mockResolvedValue({ totalPendingCount: 0 } as any);
   });
 
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
 
   afterEach(() => resetActiveRubricConfig());
 

@@ -1,22 +1,29 @@
 import { useState } from 'react';
 import type { AppTab } from '../types';
 
-const SHOW_ALL_MODULES_KEY = 'smile_show_all_modules';
+const SHOW_ALL_MODULES_KEY = 'smile_show_all_modules_v2';
 
 /**
- * Tab selection plus the "show all modules" toggle. Schulalltag and Schulstatistik
- * are hidden by default; the toggle persists to localStorage.
+ * Tab selection plus the "show all modules" toggle.
+ *
+ * The first page is now the teacher's current lesson (Schulalltag). The old
+ * key is intentionally not read: a previously hidden-modules preference must
+ * not send every teacher back to the Bewertung tab on the next login.
  */
+function readShowAllModules(): boolean {
+  try {
+    const stored = localStorage.getItem(SHOW_ALL_MODULES_KEY);
+    return stored === null ? true : stored === 'true';
+  } catch {
+    return true;
+  }
+}
+
 export function useModuleVisibility() {
-  // Default to 'bewertung'; Schulalltag & Schulstatistik are hidden by default
-  const [activeTab, setActiveTab] = useState<AppTab>('bewertung');
-  const [showAllModules, setShowAllModules] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(SHOW_ALL_MODULES_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [showAllModules, setShowAllModules] = useState<boolean>(readShowAllModules);
+  const [activeTab, setActiveTab] = useState<AppTab>(() =>
+    readShowAllModules() ? 'schulalltag' : 'bewertung',
+  );
 
   const toggleAllModules = () => {
     setShowAllModules((prev) => {

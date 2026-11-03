@@ -24,6 +24,7 @@ import {
   Crown,
   Wrench,
   Sprout,
+  Snowflake,
   ShieldAlert as ShieldAlertIcon,
 } from 'lucide-react';
 import { SchoolClass, PupilWithData, User, RubricCriterion } from '../types';
@@ -37,6 +38,7 @@ import {
   getClassCards,
   getCurrentTimetable,
   sendToTimeout,
+  sendToCooldown,
   getActiveTimeouts,
   resolveTimeout,
   getTimeoutHistory,
@@ -49,7 +51,7 @@ interface BehaviorCardItem {
   teacher_id: number;
   teacher_short: string;
   teacher_name: string;
-  card_type: 'green' | 'yellow' | 'red';
+  card_type: 'green' | 'yellow' | 'red' | 'cooldown';
   note?: string | null;
   created_at: string;
 }
@@ -61,6 +63,7 @@ interface TimeoutItem {
   sent_by_teacher_id: number;
   sent_at: string;
   task_assignment: string;
+  kind?: 'timeout' | 'cooldown';
   status: 'active' | 'resolved';
   red_card_id?: string;
   pupil_name: string;
@@ -133,6 +136,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const [timeoutTarget, setTimeoutTarget] = useState<{
     pupilId: number;
     pupilName: string;
+    kind: 'timeout' | 'cooldown';
   } | null>(null);
   const [timeoutTask, setTimeoutTask] = useState('');
   const [submittingTimeout, setSubmittingTimeout] = useState(false);
@@ -403,19 +407,21 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     }
   };
 
-  // Open Time-Out Modal
-  const handleOpenTimeoutModal = (pupil: PupilWithData) => {
+  // Open Time-Out / Cool-Down Modal
+  const handleOpenTimeoutModal = (pupil: PupilWithData, kind: 'timeout' | 'cooldown' = 'timeout') => {
     setTimeoutTarget({
       pupilId: pupil.id,
       pupilName: pupil.fullName,
+      kind,
     });
     setTimeoutTask('');
   };
 
-  // Confirm sending pupil to Time-Out
+  // Confirm sending pupil to Time-Out or Cool-Down
   const handleConfirmTimeout = async () => {
     if (!timeoutTarget || !currentClass) return;
-    if (!timeoutTask.trim()) {
+    const isCooldown = timeoutTarget.kind === 'cooldown';
+    if (!isCooldown && !timeoutTask.trim()) {
       toast.error('Bitte geben Sie einen Arbeitsauftrag für die Lernwerkstatt an.');
       return;
     }
@@ -424,39 +430,48 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     const target = timeoutTarget;
     const task = timeoutTask.trim();
     try {
-      const res = await sendToTimeout(target.pupilId, currentClass.id, task);
+      const res = isCooldown
+        ? await sendToCooldown(target.pupilId, currentClass.id, task || undefined)
+        : await sendToTimeout(target.pupilId, currentClass.id, task);
       await loadClassCards(currentClass.id);
       await loadTimeoutsData();
       onRefreshClassData();
       setTimeoutTarget(null);
       setTimeoutTask('');
 
-      // Previously this fired a blocking alert() on SUCCESS, which meant a teacher
-      // had to dismiss a modal before carrying on with the lesson.
-      //
-      // Undo has to undo two records: the timeout incident and the red card it
-      // created. If the card revoke fails, say so rather than implying it worked.
-      toast.success(`${target.pupilName} ist im Time-Out. Rote Karte eingetragen.`, {
-        action: {
-          label: 'Rückgängig',
-          onClick: async () => {
-            try {
-              await resolveTimeout(res.incident.id, 'Rückgängig: Time-Out aufgehoben');
-              if (res.redCard?.id) await revokeCard(res.redCard.id);
-              await loadClassCards(currentClass.id);
-              await loadTimeoutsData();
-              onRefreshClassData();
-              toast.success('Time-Out aufgehoben, Rangverlust zurückgenommen.');
-            } catch (e: any) {
-              toast.error(
-                e.message || 'Rückgängig fehlgeschlagen. Bitte in der LW-Übersicht prüfen.',
-              );
-            }
+      // Undo has to undo every record the action created. A Cool-Down creates no
+      // red card, so there is no rank loss to reverse there.
+      toast.success(
+        isCooldown
+          ? `${target.pupilName} ist im Cool-Down (Lernwerkstatt), kein Rangverlust.`
+          : `${target.pupilName} ist im Time-Out. Rote Karte eingetragen.`,
+        {
+          action: {
+            label: 'Rückgängig',
+            onClick: async () => {
+              try {
+                await resolveTimeout(res.incident.id, 'Rückgängig: Lernwerkstatt-Eintrag aufgehoben');
+                if (res.redCard?.id) await revokeCard(res.redCard.id);
+                if (res.cooldownCard?.id) await revokeCard(res.cooldownCard.id);
+                await loadClassCards(currentClass.id);
+                await loadTimeoutsData();
+                onRefreshClassData();
+                toast.success(
+                  isCooldown
+                    ? 'Cool-Down aufgehoben.'
+                    : 'Time-Out aufgehoben, Rangverlust zurückgenommen.',
+                );
+              } catch (e: any) {
+                toast.error(
+                  e.message || 'Rückgängig fehlgeschlagen. Bitte in der LW-Übersicht prüfen.',
+                );
+              }
+            },
           },
         },
-      });
+      );
     } catch (e: any) {
-      toast.error(e.message || 'Fehler beim Erfassen des Time-Outs');
+      toast.error(e.message || (isCooldown ? 'Fehler beim Cool-Down' : 'Fehler beim Erfassen des Time-Outs'));
     } finally {
       setSubmittingTimeout(false);
     }
@@ -575,7 +590,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         case 'T':
           e.preventDefault();
           setExpandedPupilId(pupil.id);
-          handleOpenTimeoutModal(pupil);
+          handleOpenTimeoutModal(pupil, 'timeout');
+          break;
+        case '5':
+        case 'c':
+        case 'C':
+          e.preventDefault();
+          setExpandedPupilId(pupil.id);
+          handleOpenTimeoutModal(pupil, 'cooldown');
           break;
         default:
           break;
@@ -745,11 +767,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
                   <h2 className="text-xl font-bold text-slate-50">
-                    Lernwerkstatt – Aktive Time-Out Schüler*innen
+                    Lernwerkstatt – Aktive Time-Out &amp; Cool-Down Schüler*innen
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Hier betreuen Sie Schüler*innen, die disziplinär aus den Klassen ins Time-Out geschickt wurden.
+                  Disziplinäre Time-Outs und consequence-free Cool-Downs aus den Klassen.
                 </p>
               </div>
 
@@ -775,9 +797,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               ) : activeTimeouts.length === 0 ? (
                 <div className="py-16 text-center text-slate-400 bg-slate-950/40 rounded-2xl border border-slate-800/80">
                   <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-80" />
-                  <p className="font-bold text-slate-50 text-base">Aktuell keine Schüler im Time-Out!</p>
+                  <p className="font-bold text-slate-50 text-base">Aktuell keine Schüler im Time-Out oder Cool-Down!</p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Sobald eine Lehrkraft eine Schülerin / einen Schüler ins Time-Out schickt, erscheint sie/er hier live mit Arbeitsauftrag.
+                    Sobald eine Lehrkraft eine Schülerin / einen Schüler in die Lernwerkstatt schickt, erscheint sie/er hier live.
                   </p>
                 </div>
               ) : (
@@ -785,15 +807,19 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   {activeTimeouts.map((item) => (
                     <div
                       key={item.id}
-                      className="bg-slate-950 border-2 border-rose-500/50 rounded-3xl p-5 shadow-lg flex flex-col justify-between"
+                      className={`bg-slate-950 border-2 ${item.kind === 'cooldown' ? 'border-sky-500/50' : 'border-rose-500/50'} rounded-3xl p-5 shadow-lg flex flex-col justify-between`}
                     >
                       <div>
                         {/* Header: Pupil Name & Class */}
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[11px] font-bold animate-pulse">
-                                <Clock className="w-3.5 h-3.5 inline" aria-hidden="true" /> Time-Out aktiv
+                              <span className={`px-2.5 py-0.5 rounded-lg border text-[11px] font-bold ${item.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'}`}>
+                                {item.kind === 'cooldown' ? (
+                                  <><Snowflake className="w-3.5 h-3.5 inline" aria-hidden="true" /> Cool-Down aktiv</>
+                                ) : (
+                                  <><Clock className="w-3.5 h-3.5 inline" aria-hidden="true" /> Time-Out aktiv</>
+                                )}
                               </span>
                               <span className="text-xs font-bold text-slate-400">
                                 Klasse {item.class_name}
@@ -817,9 +843,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Arbeitsauftrag Box */}
                         <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 mb-4">
-                          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-300 mb-1.5">
+                          <div className={`flex items-center gap-1.5 text-[11px] font-bold uppercase mb-1.5 ${item.kind === 'cooldown' ? 'text-sky-300' : 'text-amber-300'}`}>
                             <FileText className="w-3.5 h-3.5" />
-                            <span>Arbeitsauftrag der Lehrperson:</span>
+                            <span>{item.kind === 'cooldown' ? 'Notiz / Beobachtung:' : 'Arbeitsauftrag der Lehrperson:'}</span>
                           </div>
                           <p className="text-xs text-slate-50 leading-relaxed font-medium bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
                             &bdquo;{item.task_assignment}&ldquo;
@@ -847,7 +873,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg">
               <h3 className="font-bold text-slate-50 text-sm mb-3 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-400" />
-                <span>Kürzlich erledigte Time-Outs (letzte 48 Stunden)</span>
+                <span>Kürzlich erledigte Lernwerkstatt-Einträge (letzte 48 Stunden)</span>
               </h3>
 
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
@@ -859,6 +885,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     <div>
                       <div className="font-bold text-slate-50">
                         {h.pupil_name} ({h.class_name})
+                        <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
+                          {h.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out'}
+                        </span>
                         <span className="ml-2 text-slate-500 font-normal">
                           von {h.sent_by_short} am {new Date(h.sent_at).toLocaleDateString('de-AT')} um {new Date(h.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -1148,13 +1177,25 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleOpenTimeoutModal(pupil);
+                            handleOpenTimeoutModal(pupil, 'timeout');
                           }}
                           className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
                           title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
                           <span>TIMEOUT</span>
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenTimeoutModal(pupil, 'cooldown');
+                          }}
+                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich)  (Tastatur: 5)"
+                        >
+                          <Snowflake className="w-3.5 h-3.5 text-sky-300" />
+                          <span>COOL-DOWN</span>
                         </button>
 
                         <div className="hidden md:flex pl-1 min-h-[44px] min-w-[44px] items-center justify-center text-slate-500 hover:text-slate-300">
@@ -1195,14 +1236,22 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Active Alerts in Detail */}
                         {activeTimeoutIncident && (
-                          <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2">
-                            <Clock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${activeTimeoutIncident.kind === 'cooldown' ? 'bg-sky-500/10 border-sky-500/40 text-sky-200' : 'bg-amber-500/15 border-amber-500/40 text-amber-200'}`}>
+                            {activeTimeoutIncident.kind === 'cooldown' ? (
+                              <Snowflake className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <Clock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                            )}
                             <div>
-                              <strong>Aktuell im Time-Out (Lernwerkstatt):</strong>
+                              <strong>
+                                {activeTimeoutIncident.kind === 'cooldown'
+                                  ? 'Aktuell im Cool-Down (Lernwerkstatt):'
+                                  : 'Aktuell im Time-Out (Lernwerkstatt):'}
+                              </strong>
                               <div className="mt-0.5 text-slate-300">
-                                Arbeitsauftrag: &bdquo;{activeTimeoutIncident.task_assignment}&ldquo;
+                                {activeTimeoutIncident.kind === 'cooldown' ? 'Notiz' : 'Arbeitsauftrag'}: &bdquo;{activeTimeoutIncident.task_assignment}&ldquo;
                               </div>
-                              <div className="mt-1 text-[11px] text-amber-400">
+                              <div className={`mt-1 text-[11px] ${activeTimeoutIncident.kind === 'cooldown' ? 'text-sky-400' : 'text-amber-400'}`}>
                                 Geschickt von {activeTimeoutIncident.sent_by_short} um {new Date(activeTimeoutIncident.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                               </div>
                             </div>
@@ -1228,6 +1277,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                       ? 'bg-emerald-500/10 border-emerald-500/25 text-slate-200'
                                       : c.card_type === 'yellow'
                                       ? 'bg-amber-500/10 border-amber-500/25 text-slate-200'
+                                      : c.card_type === 'cooldown'
+                                      ? 'bg-sky-500/10 border-sky-500/25 text-slate-200'
                                       : 'bg-rose-500/15 border-rose-500/35 text-rose-200'
                                   }`}
                                 >
@@ -1240,6 +1291,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                               ? 'bg-emerald-400'
                                               : c.card_type === 'yellow'
                                               ? 'bg-amber-400'
+                                              : c.card_type === 'cooldown'
+                                              ? 'bg-sky-400'
                                               : 'bg-rose-400'
                                           }`}
                                           aria-hidden="true"
@@ -1248,6 +1301,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                           ? 'Grüne Karte'
                                           : c.card_type === 'yellow'
                                           ? 'Gelbe Karte'
+                                          : c.card_type === 'cooldown'
+                                          ? 'Cool-Down'
                                           : 'Rote Karte'}
                                       </span>
                                       <span className="text-[11px] text-slate-400 font-normal">
@@ -1510,73 +1565,101 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         </div>
       )}
 
-      {/* Modal: TIMEOUT (Ins Time-Out / Lernwerkstatt schicken) */}
-      {timeoutTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="bg-slate-900 border-2 border-amber-500/60 rounded-3xl w-full max-w-lg p-6 shadow-lg shadow-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-amber-500/20 mb-4">
-              <div className="flex items-center gap-2 text-amber-400">
-                <Clock className="w-5 h-5 flex-shrink-0 animate-pulse" />
-                <h3 className="font-bold text-slate-50 text-base">
-                  Schüler*in ins Time-Out (Lernwerkstatt) schicken
-                </h3>
-              </div>
-              <button
-                onClick={() => setTimeoutTarget(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-xs text-amber-200">
-                <p className="font-bold text-amber-300 mb-1">
-                  <ShieldAlertIcon className="w-5 h-5 inline align-text-bottom" aria-hidden="true" /> Disziplinäres Time-Out für {timeoutTarget.pupilName} (Klasse {currentClass.name})
-                </p>
-                <p className="text-slate-300 leading-relaxed">
-                  Dieses Time-Out gilt verbindlich als <strong>Rote Karte (Instant Rank Loss)</strong> und leitet den Schüler mit dem unten stehenden Arbeitsauftrag direkt an die Aufsicht in der Lernwerkstatt (LW) weiter.
-                </p>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold uppercase text-amber-300 block mb-1.5">
-                  Arbeitsauftrag für das Time-Out (zwingend erforderlich):
-                </label>
-                <textarea
-                  rows={4}
-                  value={timeoutTask}
-                  onChange={(e) => setTimeoutTask(e.target.value)}
-                  placeholder="Geben Sie hier die Aufgaben oder Arbeitsblätter an, die der Schüler in der Lernwerkstatt bearbeiten muss..."
-                  className="w-full p-3.5 rounded-2xl bg-slate-950 border border-amber-500/40 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-                />
-                {timeoutTask.trim().length === 0 && (
-                  <span className="text-[10px] text-amber-400 mt-1 block">
-                    * Ein konkreter Arbeitsauftrag ist zwingend erforderlich.
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
+      {/* Modal: Time-Out or consequence-free Cool-Down */}
+      {timeoutTarget && (() => {
+        const isCooldown = timeoutTarget.kind === 'cooldown';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+            <div className={`bg-slate-900 border-2 ${isCooldown ? 'border-sky-500/60' : 'border-amber-500/60'} rounded-3xl w-full max-w-lg p-6 shadow-lg shadow-sm`}>
+              <div className={`flex items-center justify-between pb-3 border-b ${isCooldown ? 'border-sky-500/20' : 'border-amber-500/20'} mb-4`}>
+                <div className={`flex items-center gap-2 ${isCooldown ? 'text-sky-300' : 'text-amber-400'}`}>
+                  {isCooldown ? (
+                    <Snowflake className="w-5 h-5 flex-shrink-0" />
+                  ) : (
+                    <Clock className="w-5 h-5 flex-shrink-0 animate-pulse" />
+                  )}
+                  <h3 className="font-bold text-slate-50 text-base">
+                    {isCooldown
+                      ? 'Cool-Down (Lernwerkstatt) – kein Rangverlust'
+                      : 'Schüler*in ins Time-Out (Lernwerkstatt) schicken'}
+                  </h3>
+                </div>
                 <button
                   onClick={() => setTimeoutTarget(null)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                  className="p-1.5 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 transition"
                 >
-                  Abbrechen
+                  <X className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={handleConfirmTimeout}
-                  disabled={submittingTimeout || !timeoutTask.trim()}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{submittingTimeout ? 'Übermittle...' : 'Ins Time-Out schicken & Rote Karte eintragen'}</span>
-                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className={`${isCooldown ? 'bg-sky-500/10 border-sky-500/30 text-sky-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'} border rounded-2xl p-3.5 text-xs`}>
+                  <p className={`font-bold ${isCooldown ? 'text-sky-300' : 'text-amber-300'} mb-1`}>
+                    {isCooldown ? (
+                      <Snowflake className="w-5 h-5 inline align-text-bottom" aria-hidden="true" />
+                    ) : (
+                      <ShieldAlertIcon className="w-5 h-5 inline align-text-bottom" aria-hidden="true" />
+                    )}{' '}
+                    {isCooldown ? 'Cool-Down für' : 'Disziplinäres Time-Out für'} {timeoutTarget.pupilName} (Klasse {currentClass.name})
+                  </p>
+                  <p className="text-slate-300 leading-relaxed">
+                    {isCooldown
+                      ? 'Der Schüler wird zur Beruhigung in die Lernwerkstatt geschickt. Es gibt keine Rote Karte, keinen Rangverlust und keine Eskalationsstufe. Eine Notiz ist optional.'
+                      : 'Dieses Time-Out gilt verbindlich als Rote Karte (Instant Rank Loss) und leitet den Schüler mit dem unten stehenden Arbeitsauftrag direkt an die Aufsicht in der Lernwerkstatt (LW) weiter.'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className={`text-[11px] font-bold uppercase ${isCooldown ? 'text-sky-300' : 'text-amber-300'} block mb-1.5`}>
+                    {isCooldown
+                      ? 'Notiz / Beobachtung (optional):'
+                      : 'Arbeitsauftrag für das Time-Out (zwingend erforderlich):'}
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={timeoutTask}
+                    onChange={(e) => setTimeoutTask(e.target.value)}
+                    placeholder={
+                      isCooldown
+                        ? 'z.B. Kurze Auszeit zur Beruhigung, kurze Beobachtung...'
+                        : 'Geben Sie hier die Aufgaben oder Arbeitsblätter an, die der Schüler in der Lernwerkstatt bearbeiten muss...'
+                    }
+                    className={`w-full p-3.5 rounded-2xl bg-slate-950 border ${isCooldown ? 'border-sky-500/40 focus:border-sky-400 focus:ring-sky-400' : 'border-amber-500/40 focus:border-amber-400 focus:ring-amber-400'} text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-1`}
+                  />
+                  {!isCooldown && timeoutTask.trim().length === 0 && (
+                    <span className="text-[10px] text-amber-400 mt-1 block">
+                      * Ein konkreter Arbeitsauftrag ist zwingend erforderlich.
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setTimeoutTarget(null)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={handleConfirmTimeout}
+                    disabled={submittingTimeout || (!isCooldown && !timeoutTask.trim())}
+                    className={`px-5 py-2.5 rounded-xl ${isCooldown ? 'bg-sky-500 hover:bg-sky-400 text-slate-950' : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950'} font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40`}
+                  >
+                    {isCooldown ? <Snowflake className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                    <span>
+                      {submittingTimeout
+                        ? 'Übermittle...'
+                        : isCooldown
+                          ? 'Cool-Down senden'
+                          : 'Ins Time-Out schicken & Rote Karte eintragen'}
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modal: Schüler-Verhaltensprofil & Stufenpyramide */}
       {activeProfilePupilId && (

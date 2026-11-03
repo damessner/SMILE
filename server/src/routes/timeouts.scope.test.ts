@@ -250,6 +250,34 @@ describe('POST /api/timeouts/:id/resolve — the duty supervisor is not refused'
   });
 });
 
+describe('consequence-free Cool-Down', () => {
+  const postCooldown = (body: Record<string, unknown> = {}) =>
+    app!.inject({
+      method: 'POST',
+      url: '/api/timeouts',
+      payload: { pupilId: 5, classId: 3, kind: 'cooldown', taskAssignment: 'Kurz beruhigen', ...body },
+    });
+
+  it('creates a note-only cooldown card and Lernwerkstatt incident, never a red card', async () => {
+    currentUser = { id: 'u2', username: 'teacher', role: 'teacher', teacherId: 42 };
+    dbSelectMock.mockReturnValue([{ count: 3 }]);
+
+    const res = await postCooldown();
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ kind: 'cooldown', redCard: null });
+    expect(res.json().cooldownCard).toBeTruthy();
+
+    const rows = dbInsertValuesMock.mock.calls.map(([row]) => row as any);
+    expect(rows.some((row) => row?.cardType === 'cooldown')).toBe(true);
+    expect(rows.some((row) => row?.cardType === 'red')).toBe(false);
+    expect(rows.some((row) => row?.kind === 'cooldown')).toBe(true);
+    const audit = rows.find((row) => row?.action === 'COOLDOWN_ISSUED');
+    expect(audit).toBeDefined();
+    expect(audit.payload).toMatchObject({ kind: 'cooldown', isEscalationTriggered: false });
+  });
+});
+
 describe('administrative writes fail closed when the account has no teacher record', () => {
   const issueTimeout = (body: Record<string, unknown>) =>
     app!.inject({ method: 'POST', url: '/api/timeouts', payload: body });

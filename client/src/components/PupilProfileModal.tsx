@@ -457,6 +457,8 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                             ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-200'
                             : c.card_type === 'yellow'
                             ? 'bg-amber-950/20 border-amber-500/30 text-slate-200'
+                            : c.card_type === 'cooldown'
+                            ? 'bg-sky-950/25 border-sky-500/40 text-slate-200'
                             : 'bg-rose-950/25 border-rose-500/40 text-slate-200'
                         }`}
                       >
@@ -469,6 +471,8 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                                     ? 'bg-emerald-400'
                                     : c.card_type === 'yellow'
                                     ? 'bg-amber-400'
+                                    : c.card_type === 'cooldown'
+                                    ? 'bg-sky-400'
                                     : 'bg-rose-400'
                                 }`}
                               />
@@ -476,6 +480,8 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                                 ? 'Grüne Karte (Lob)'
                                 : c.card_type === 'yellow'
                                 ? 'Gelbe Karte (Verwarnung)'
+                                : c.card_type === 'cooldown'
+                                ? 'Cool-Down (kein Rangverlust)'
                                 : 'Rote Karte (Rangverlust)'}
                             </span>
                             <span className="text-[11px] text-slate-400 font-normal">
@@ -520,18 +526,18 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
                 {timeouts.length === 0 ? (
                   <p className="text-xs text-slate-500 italic py-2">
-                    Keine Time-Outs für diesen Schüler verzeichnet.
+                    Keine Time-Outs oder Cool-Downs für diesen Schüler verzeichnet.
                   </p>
                 ) : (
                   <div className="space-y-3">
                     {timeouts.map((ti) => (
                       <div
                         key={ti.id}
-                        className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-xs space-y-2"
+                        className={`p-4 rounded-2xl border text-xs space-y-2 ${ti.kind === 'cooldown' ? 'bg-sky-950/20 border-sky-500/30' : 'bg-rose-950/20 border-rose-500/30'}`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold">
-                            Time-Out Einsatz
+                          <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold ${ti.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'}`}>
+                            {ti.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out Einsatz'}
                           </span>
                           <span className="text-slate-400 text-[11px]">
                             {new Date(ti.sent_at).toLocaleDateString('de-AT')} um{' '}
@@ -544,7 +550,9 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                         </div>
 
                         <div>
-                          <strong className="text-slate-300">Arbeitsauftrag:</strong>
+                          <strong className="text-slate-300">
+                            {ti.kind === 'cooldown' ? 'Notiz:' : 'Arbeitsauftrag:'}
+                          </strong>
                           <p className="text-slate-200 mt-0.5 italic">
                             &bdquo;{ti.task_assignment}&ldquo;
                           </p>

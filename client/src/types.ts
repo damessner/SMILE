@@ -73,7 +73,7 @@ export interface BehaviorCard {
   pupilId: number;
   classId: number;
   teacherId: number;
-  cardType: 'green' | 'yellow';
+  cardType: 'green' | 'yellow' | 'red' | 'cooldown';
   note?: string | null;
   createdAt: string;
   revokedAt?: string | null;
@@ -142,7 +142,7 @@ export interface PupilBehaviorProfile {
   calculation: PupilStageResult;
   cards: Array<{
     id: string;
-    card_type: 'green' | 'yellow' | 'red';
+    card_type: 'green' | 'yellow' | 'red' | 'cooldown';
     note?: string | null;
     created_at: string;
     teacher_short?: string;
@@ -152,6 +152,7 @@ export interface PupilBehaviorProfile {
     id: string;
     sent_at: string;
     task_assignment: string;
+    kind?: 'timeout' | 'cooldown';
     status: string;
     resolved_at?: string | null;
     resolution_note?: string | null;

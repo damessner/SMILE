@@ -71,6 +71,13 @@
       "when": 1793695068197,
       "tag": "0009_admin_actor_reserved_id",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793699933142,
+      "tag": "0010_cooldown_kind",
+      "breakpoints": true
     }
   ]
 }

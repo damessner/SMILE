@@ -445,7 +445,19 @@ export async function getCurrentTimetable(day?: number, period?: number) {
 export async function sendToTimeout(pupilId: number, classId: number, taskAssignment: string) {
   const res = await apiFetch('/timeouts', {
     method: 'POST',
-    body: JSON.stringify({ pupilId, classId, taskAssignment }),
+    body: JSON.stringify({ pupilId, classId, kind: 'timeout', taskAssignment }),
+  });
+  return unwrap(res);
+}
+
+/**
+ * Consequence-free Lernwerkstatt referral. It records a note-only Cool-Down card
+ * and an active LW incident, but no red card and no rank/behaviour consequence.
+ */
+export async function sendToCooldown(pupilId: number, classId: number, note?: string) {
+  const res = await apiFetch('/timeouts', {
+    method: 'POST',
+    body: JSON.stringify({ pupilId, classId, kind: 'cooldown', taskAssignment: note }),
   });
   return unwrap(res);
 }

@@ -177,7 +177,10 @@ export const behaviorCards = pgTable('behavior_cards', {
   pupilId: integer('pupil_id').references(() => pupils.id).notNull(),
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
   teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
-  cardType: text('card_type', { enum: ['green', 'yellow', 'red'] }).notNull(),
+  // 'cooldown' is a note-only Lernwerkstatt referral: it is recorded for the
+  // pupil's history but carries no rank/card consequence and is excluded from
+  // behaviour-stage and timeout-escalation counts.
+  cardType: text('card_type', { enum: ['green', 'yellow', 'red', 'cooldown'] }).notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   revokedAt: timestamp('revoked_at'),
@@ -245,7 +248,9 @@ export const timeoutIncidents = pgTable('timeout_incidents', {
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
   sentByTeacherId: integer('sent_by_teacher_id').references(() => teachers.id).notNull(),
   sentAt: timestamp('sent_at').defaultNow().notNull(),
-  taskAssignment: text('task_assignment').notNull(), // Arbeitsauftrag
+  taskAssignment: text('task_assignment').notNull(), // Arbeitsauftrag / Cool-Down-Notiz
+  /** 'timeout' is the disciplinary red-card path; 'cooldown' has no consequence. */
+  kind: text('kind', { enum: ['timeout', 'cooldown'] }).default('timeout').notNull(),
   status: text('status', { enum: ['active', 'resolved'] }).default('active').notNull(),
   resolvedAt: timestamp('resolved_at'),
   resolvedBy: integer('resolved_by').references(() => teachers.id),
