@@ -258,6 +258,32 @@ describe('consequence-free Cool-Down', () => {
       payload: { pupilId: 5, classId: 3, kind: 'cooldown', taskAssignment: 'Kurz beruhigen', ...body },
     });
 
+  it('records a timeout without creating a red card', async () => {
+    currentUser = { id: 'u2', username: 'teacher', role: 'teacher', teacherId: 42 };
+    dbSelectMock.mockReturnValue([{ count: 3 }]);
+
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/api/timeouts',
+      payload: {
+        pupilId: 5,
+        classId: 3,
+        kind: 'timeout',
+        taskAssignment: 'Arbeitsblatt nachholen',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ kind: 'timeout', redCard: null });
+
+    const rows = dbInsertValuesMock.mock.calls.map(([row]) => row as any);
+    expect(rows.some((row) => row?.cardType === 'red')).toBe(false);
+    expect(rows.some((row) => row?.kind === 'timeout')).toBe(true);
+    const audit = rows.find((row) => row?.action === 'TIMEOUT_ISSUED');
+    expect(audit).toBeDefined();
+    expect(audit.payload).toMatchObject({ kind: 'timeout', redCardId: null });
+  });
+
   it('creates a note-only cooldown card and Lernwerkstatt incident, never a red card', async () => {
     currentUser = { id: 'u2', username: 'teacher', role: 'teacher', teacherId: 42 };
     dbSelectMock.mockReturnValue([{ count: 3 }]);

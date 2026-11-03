@@ -26,7 +26,6 @@ import { canActOnTimeout, timeoutVisibility } from '../lib/lw-duty.js';
 import { timeoutExpiry } from '../lib/period-times.js';
 import { resolveRetroactiveOccurrence } from '../lib/retroactive-timeout.js';
 import { broadcastToClass } from '../ws/live-sync.js';
-import { queueRedCardRankChange } from '../lib/teams.js';
 import {
   queueClassEventNotification,
   queueTimeoutEscalationNotification,
@@ -164,7 +163,8 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const result = await db.transaction(async (tx) => {
-      let redCard: typeof behaviorCards.$inferSelect | null = null;
+      // A Time-Out is its own consequence. It does NOT create a red card:
+      // only an explicit red card demotes the rank.
       let cooldownCard: typeof behaviorCards.$inferSelect | null = null;
 
       if (isCooldown) {
@@ -179,19 +179,6 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           })
           .returning();
         cooldownCard = card ?? null;
-      } else {
-        const [card] = await tx
-          .insert(behaviorCards)
-          .values({
-            pupilId,
-            classId,
-            teacherId: actorId,
-            cardType: 'red',
-            note: `[TIME-OUT LW] Arbeitsauftrag: ${cleanTask}`,
-            ...(isRetroactive && occurrence ? { createdAt: occurrence.occurredAt } : {}),
-          })
-          .returning();
-        redCard = card ?? null;
       }
 
       const [incident] = await tx
@@ -203,7 +190,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           taskAssignment: storedTask,
           kind,
           status: isRetroactive ? 'resolved' : 'active',
-          redCardId: redCard?.id ?? null,
+          redCardId: null,
           ...(isRetroactive && occurrence
             ? {
                 sentAt: occurrence.occurredAt,
@@ -246,7 +233,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           classId,
           kind,
           taskAssignment: storedTask,
-          redCardId: redCard?.id ?? null,
+          redCardId: null,
           cooldownCardId: cooldownCard?.id ?? null,
           totalTimeouts,
           isEscalationTriggered,
@@ -261,25 +248,10 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return { redCard, cooldownCard, incident, totalTimeouts, isEscalationTriggered };
+      return { cooldownCard, incident, totalTimeouts, isEscalationTriggered };
     });
 
-    if (result.redCard) {
-      broadcastToClass(classId, {
-        type: 'CARD_ISSUED',
-        card: result.redCard,
-        alertTriggered: true,
-      });
-      queueRedCardRankChange({
-        pupilId,
-        classId,
-        actorTeacherId: actorId,
-        direction: 'issued',
-        source: isRetroactive ? 'Time-Out (Nachtrag)' : 'Time-Out',
-        note: storedTask,
-        occurredAt: occurrence?.occurredAt,
-        retroactive: isRetroactive,
-      });
+    if (!isCooldown) {
       queueClassEventNotification({
         type: 'timeout',
         classId,
@@ -318,7 +290,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     broadcastToClass(classId, {
       type: 'TIMEOUT_ISSUED',
       incident: result.incident,
-      redCard: result.redCard,
+      redCard: null,
       cooldownCard: result.cooldownCard,
       kind,
       totalTimeouts: result.totalTimeouts,
@@ -327,7 +299,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     broadcastToClass(LW_CLASS_ID, {
       type: 'TIMEOUT_ISSUED',
       incident: result.incident,
-      redCard: result.redCard,
+      redCard: null,
       cooldownCard: result.cooldownCard,
       kind,
       totalTimeouts: result.totalTimeouts,
@@ -339,7 +311,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       kind,
       retroactive: isRetroactive,
       incident: result.incident,
-      redCard: result.redCard,
+      redCard: null,
       cooldownCard: result.cooldownCard,
       totalTimeouts: result.totalTimeouts,
       isEscalationTriggered: result.isEscalationTriggered,

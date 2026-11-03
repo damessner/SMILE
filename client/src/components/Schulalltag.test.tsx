@@ -172,6 +172,15 @@ describe('Schulalltag subject-scoped results and independent red card demotions'
     expect(within(row).queryByText('Lehrling')).toBeNull();
   });
 
+  it('uses the confirmed final rank when the class already has a conference decision', async () => {
+    const anna = { ...pupil(1, 'Anna Final'), finalRank: 'Meister' as const };
+    renderSchulalltag([anna]);
+
+    const row = (await screen.findByText('Anna Final')).closest<HTMLElement>('div.cursor-pointer')!;
+    await waitFor(() => expect(within(row).getByText('Meister')).toBeInTheDocument());
+    expect(within(row).queryByText('Ausstehend')).toBeNull();
+  });
+
   it('applies red card demotion independently per subject', async () => {
     const dItems = Array.from({ length: 18 }, (_, i) => ({
       id: `it-d-${i}`,

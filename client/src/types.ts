@@ -105,6 +105,8 @@ export interface PupilWithData {
   greenCardCount: number;
   yellowCardCount: number;
   redCardCount?: number;
+  /** Official conference rank for this round, when already confirmed. */
+  finalRank?: 'Lehrling' | 'Geselle' | 'Meister' | null;
   assignedTeachers?: Record<string, number[]>;
   assignedGroups?: Record<string, string>;
 }

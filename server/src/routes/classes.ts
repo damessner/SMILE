@@ -8,6 +8,7 @@ import {
   behaviorCards,
   evaluationItems,
   evaluations,
+  finalRanks,
   pupils,
   rubricCriteria,
   schoolClasses,
@@ -268,8 +269,17 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
     let classEvaluations: Array<typeof evaluations.$inferSelect> = [];
     const itemsByEvaluationId: Record<string, Array<typeof evaluationItems.$inferSelect>> = {};
+    const finalRankByPupil = new Map<number, string>();
 
     if (round && classPupils.length > 0) {
+      const confirmedRanks = await db
+        .select({ pupilId: finalRanks.pupilId, rank: finalRanks.rank })
+        .from(finalRanks)
+        .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.classId, cid)));
+      for (const row of confirmedRanks) {
+        finalRankByPupil.set(row.pupilId, row.rank);
+      }
+
       classEvaluations = await db
         .select()
         .from(evaluations)
@@ -346,6 +356,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         greenCardCount: pupilCards.filter((c) => c.cardType === 'green').length,
         yellowCardCount: pupilCards.filter((c) => c.cardType === 'yellow').length,
         redCardCount: pupilCards.filter((c) => c.cardType === 'red').length,
+        finalRank: finalRankByPupil.get(p.id) ?? null,
         assignedTeachers: pupilTeachersMap.get(p.id) ?? {},
         assignedGroups: pupilGroupsMap.get(p.id) ?? {},
       };

@@ -27,7 +27,7 @@ For a rank-changing red card:
 
 - pupil full name,
 - class,
-- source (`Rote Karte` or `Time-Out`),
+- source (`Rote Karte`),
 - issuing or revoking teacher,
 - timestamp,
 - the pupil-level rank change, e.g. `Geselle → Lehrling`,

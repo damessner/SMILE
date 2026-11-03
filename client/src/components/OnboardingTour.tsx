@@ -173,8 +173,8 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         },
         {
           icon: '●',
-          title: 'Rote Karte & TIMEOUT',
-          text: 'Schwerer Verstoß (kostet sofort einen Rang). Bei Bedarf kann der Schüler in den Time-Out-Raum geschickt werden.',
+          title: 'Rote Karte & Time-Out',
+          text: 'Die Rote Karte kostet sofort einen Rang. Ein Time-Out ist eine zusätzliche Konsequenz und erzeugt keine Rote Karte.',
           border: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
         },
         {

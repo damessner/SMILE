@@ -320,6 +320,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     subjectResults: Array<{ subjectCode: string; rank: AssessmentRank | null }>,
     hasRedCard: boolean,
   ): AssessmentRank | null => {
+    if (
+      p.finalRank === 'Lehrling' ||
+      p.finalRank === 'Geselle' ||
+      p.finalRank === 'Meister'
+    ) {
+      return p.finalRank;
+    }
+
     const votes: Record<AssessmentRank, number> = {
       Lehrling: 0,
       Geselle: 0,
@@ -512,7 +520,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
       if (isRetroactive) {
         toast.success(
-          `${target.pupilName}: Time-Out nachgetragen (${timeoutRetroDate}, ${timeoutRetroPeriod}. Stunde). Rote Karte eingetragen.`,
+          `${target.pupilName}: Time-Out nachgetragen (${timeoutRetroDate}, ${timeoutRetroPeriod}. Stunde).`,
         );
         return;
       }
@@ -522,7 +530,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       toast.success(
         isCooldown
           ? `${target.pupilName} ist im Cool-Down (Lernwerkstatt), kein Rangverlust.`
-          : `${target.pupilName} ist im Time-Out. Rote Karte eingetragen.`,
+          : `${target.pupilName} ist im Time-Out. Keine Rote Karte, kein Rangverlust.`,
         {
           action: {
             label: 'Rückgängig',
@@ -537,7 +545,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 toast.success(
                   isCooldown
                     ? 'Cool-Down aufgehoben.'
-                    : 'Time-Out aufgehoben, Rangverlust zurückgenommen.',
+                    : 'Time-Out aufgehoben.',
                 );
               } catch (e: any) {
                 toast.error(
@@ -1683,8 +1691,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     {isCooldown
                       ? 'Der Schüler wird zur Beruhigung in die Lernwerkstatt geschickt. Es gibt keine Rote Karte, keinen Rangverlust und keine Eskalationsstufe. Eine Notiz ist optional.'
                       : timeoutRetroactive
-                        ? 'Dieses Time-Out wird nachträglich für die gewählte Stunde erfasst. Es gilt als Rote Karte (Instant Rank Loss), wird aber als bereits beendeter Lernwerkstatt-Aufenthalt gespeichert.'
-                        : 'Dieses Time-Out gilt verbindlich als Rote Karte (Instant Rank Loss) und leitet den Schüler mit dem unten stehenden Arbeitsauftrag direkt an die Aufsicht in der Lernwerkstatt (LW) weiter.'}
+                        ? 'Dieses Time-Out wird nachträglich für die gewählte Stunde erfasst. Es ist eine eigenständige Konsequenz; eine Rote Karte wird dadurch nicht ausgestellt.'
+                        : 'Dieses Time-Out ist eine eigenständige Konsequenz. Es wird keine Rote Karte ausgestellt; eine Rote Karte würde den Rang separat senken.'}
                   </p>
                 </div>
 
@@ -1791,8 +1799,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         : isCooldown
                           ? 'Cool-Down senden'
                           : timeoutRetroactive
-                            ? 'Time-Out nachtragen & Rote Karte eintragen'
-                            : 'Ins Time-Out schicken & Rote Karte eintragen'}
+                            ? 'Time-Out nachtragen'
+                            : 'Ins Time-Out schicken'}
                     </span>
                   </button>
                 </div>
