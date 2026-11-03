@@ -142,6 +142,27 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    if (isRetroactive && occurrence) {
+      const [duplicate] = await db
+        .select({ id: timeoutIncidents.id })
+        .from(timeoutIncidents)
+        .where(
+          and(
+            eq(timeoutIncidents.pupilId, pupilId),
+            eq(timeoutIncidents.classId, classId),
+            eq(timeoutIncidents.kind, 'timeout'),
+            eq(timeoutIncidents.sentAt, occurrence.occurredAt),
+          ),
+        )
+        .limit(1);
+      if (duplicate) {
+        return reply.status(409).send({
+          error: 'Für diese Stunde ist für diesen Schüler bereits ein Time-Out erfasst.',
+          code: 'TIMEOUT_ALREADY_RECORDED',
+        });
+      }
+    }
+
     const result = await db.transaction(async (tx) => {
       let redCard: typeof behaviorCards.$inferSelect | null = null;
       let cooldownCard: typeof behaviorCards.$inferSelect | null = null;
