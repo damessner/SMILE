@@ -689,7 +689,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                                 </span>
                                 {p.hasRedCardDemotion && (
                                   <span className="block text-[8px] font-bold text-rose-600">
-                                    (Rangabzug Karte)
+                                    (Rangabzug Karten)
                                   </span>
                                 )}
                               </td>

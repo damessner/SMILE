@@ -54,6 +54,7 @@ interface BehaviorCardItem {
 }
 
 const RETROACTIVE_TIMEOUT_DAYS = 7;
+const YELLOW_RANK_LOSS_THRESHOLD = 3;
 
 function localDateKey(date: Date = new Date()): string {
   const year = date.getFullYear();
@@ -243,6 +244,26 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     [criteria],
   );
 
+  const demoteRank = (rank: AssessmentRank): AssessmentRank => {
+    if (rank === 'Meister') return 'Geselle';
+    if (rank === 'Geselle') return 'Lehrling';
+    return 'Lehrling';
+  };
+
+  const applyDemotion = (rank: AssessmentRank | null, steps: number): AssessmentRank | null => {
+    if (!rank) return null;
+    let current = rank;
+    for (let i = 0; i < steps; i += 1) current = demoteRank(current);
+    return current;
+  };
+
+  const getDemotionSteps = (p: PupilWithData, pupilCards: Array<{ card_type: string }>): number => {
+    if (typeof p.rankDemotionSteps === 'number') return p.rankDemotionSteps;
+    const redCount = pupilCards.filter((c) => c.card_type === 'red').length;
+    const yellowCount = pupilCards.filter((c) => c.card_type === 'yellow').length;
+    return (redCount > 0 ? 1 : 0) + Math.floor(yellowCount / YELLOW_RANK_LOSS_THRESHOLD);
+  };
+
   const getPupilSubjectResults = (p: PupilWithData) => {
     const subjectsToScore =
       currentClass?.mySubjects && currentClass.mySubjects.length > 0
@@ -253,26 +274,13 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           }));
 
     const pupilCards = Array.isArray(cards) ? cards.filter((c) => c.pupil_id === p.id) : [];
-    const activeRedCards = pupilCards.filter((c) => c.card_type === 'red');
-    const hasRedCard = activeRedCards.length > 0;
+    const demotionSteps = getDemotionSteps(p, pupilCards);
 
     return subjectsToScore.map((s) => {
       const scored = scoreSubject(p.evaluations, s.code, rubricItemKeys);
       const baseRank = scored.rank;
-      let rank: AssessmentRank | null = baseRank;
-      let hasRedCardDemotion = false;
-
-      if (hasRedCard && baseRank) {
-        if (baseRank === 'Meister') {
-          rank = 'Geselle';
-          hasRedCardDemotion = true;
-        } else if (baseRank === 'Geselle') {
-          rank = 'Lehrling';
-          hasRedCardDemotion = true;
-        } else {
-          rank = 'Lehrling';
-        }
-      }
+      const rank = applyDemotion(baseRank, demotionSteps);
+      const hasCardDemotion = rank !== null && rank !== baseRank;
 
       const displayRank = rank ?? 'Ausstehend';
       const label = `${s.code} ${scored.positiveCount}/${rubricItemKeys.length} ${displayRank}`;
@@ -283,7 +291,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         totalRated: scored.totalRated,
         baseRank,
         rank,
-        hasRedCardDemotion,
+        hasRedCardDemotion: hasCardDemotion,
         label,
       };
     });
@@ -293,32 +301,28 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     // The tile shows a pupil-level rank. Submitted teacher votes are the same
     // source the conference uses; `subjectResults` remains only as a fallback for
     // pupils without submitted votes, and for the expandable evidence panel.
-    const results = getPupilSubjectResults(p);
     const pupilCards = Array.isArray(cards) ? cards.filter((c) => c.pupil_id === p.id) : [];
+    const results = getPupilSubjectResults(p);
     const activeRedCards = pupilCards.filter((c) => c.card_type === 'red');
 
     return {
       hasRedCard: activeRedCards.length > 0,
       redCardCount: activeRedCards.length,
+      demotionSteps: getDemotionSteps(p, pupilCards),
       subjectResults: results,
     };
-  };
-
-  const demoteRank = (rank: AssessmentRank): AssessmentRank => {
-    if (rank === 'Meister') return 'Geselle';
-    if (rank === 'Geselle') return 'Lehrling';
-    return 'Lehrling';
   };
 
   /**
    * Pupil-level rank from the submitted teacher votes. A strict plurality wins;
    * a tie or no votes falls back to the current lesson subject's rubric rank so
-   * the row never invents a rank. A red card demotes the pupil rank one step.
+   * the row never invents a rank. Card consequences demote the pupil rank:
+   * one step for a red card, one per three active yellow cards.
    */
   const getDisplayedRank = (
     p: PupilWithData,
     subjectResults: Array<{ subjectCode: string; rank: AssessmentRank | null }>,
-    hasRedCard: boolean,
+    demotionSteps: number,
   ): AssessmentRank | null => {
     if (
       p.finalRank === 'Lehrling' ||
@@ -344,8 +348,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         (rank) => votes[rank] === top,
       );
       if (leaders.length === 1) {
-        const votedRank = leaders[0]!;
-        return hasRedCard ? demoteRank(votedRank) : votedRank;
+        return applyDemotion(leaders[0]!, demotionSteps);
       }
     }
 
@@ -734,8 +737,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const filteredPupils = useMemo(() => {
     return pupils.filter((p) => {
       const matchesSearch = p.fullName.toLowerCase().includes(searchQuery.toLowerCase());
-      const { hasRedCard, subjectResults } = getPupilRank(p);
-      const displayedRank = getDisplayedRank(p, subjectResults, hasRedCard);
+      const { demotionSteps, subjectResults } = getPupilRank(p);
+      const displayedRank = getDisplayedRank(p, subjectResults, demotionSteps);
       const matchesRank = filterRank === 'all' || displayedRank === filterRank;
       return matchesSearch && matchesRank;
     });
@@ -1116,12 +1119,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             ) : (
               filteredPupils.map((pupil, index) => {
                 const isExpanded = expandedPupilId === pupil.id;
-                const { hasRedCard, subjectResults } = getPupilRank(pupil);
+                const { hasRedCard, demotionSteps, subjectResults } = getPupilRank(pupil);
                 const pupilCards = cards.filter((c) => c.pupil_id === pupil.id);
                 const yellowCards = pupilCards.filter((c) => c.card_type === 'yellow');
                 const isYellowAlert = yellowCards.length >= 2;
                 const activeTimeoutIncident = activeTimeouts.find((ti) => ti.pupil_id === pupil.id);
-                const currentRank = getDisplayedRank(pupil, subjectResults, hasRedCard);
+                const currentRank = getDisplayedRank(pupil, subjectResults, demotionSteps);
                 const rankLabel = currentRank ?? 'Ausstehend';
                 const rankBoxClass =
                   currentRank === 'Meister'
@@ -1299,7 +1302,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                               <span key={sr.subjectCode} className="text-slate-400">
                                 {sr.subjectCode}: {sr.positiveCount}/{rubricItemKeys.length} positiv ·
                                 Basis-Rang: {sr.baseRank ?? 'Ausstehend'}
-                                {sr.hasRedCardDemotion && ` (herabgestuft auf ${sr.rank} durch Rote Karte)`}
+                                {sr.hasRedCardDemotion && ` (herabgestuft auf ${sr.rank} durch Karten)`}
                               </span>
                             ))}
                           </div>

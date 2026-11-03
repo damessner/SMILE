@@ -105,6 +105,8 @@ export interface PupilWithData {
   greenCardCount: number;
   yellowCardCount: number;
   redCardCount?: number;
+  /** Precomputed red/yellow demotion steps for the current observation round. */
+  rankDemotionSteps?: number;
   /** Official conference rank for this round, when already confirmed. */
   finalRank?: 'Lehrling' | 'Geselle' | 'Meister' | null;
   assignedTeachers?: Record<string, number[]>;

@@ -119,7 +119,7 @@ describe('buildConferenceExportHtml', () => {
 
     expect(html).toContain('1 L (33%)');
     expect(html).toContain('1 M (67%)');
-    expect(html).toContain('(Rangabzug Karte)');
+    expect(html).toContain('(Rangabzug Karten)');
     expect(html).toContain('✓ Geselle');
   });
 

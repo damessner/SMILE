@@ -87,7 +87,7 @@ function voteBar(pupil: ConferenceExportPupil): string {
 }
 
 function pupilRow(pupil: ConferenceExportPupil): string {
-  const suggestion = `${escapeHtml(pupil.suggestedRank ?? 'Ausstehend')}${pupil.hasRedCardDemotion ? ' (Rangabzug Karte)' : ''}`;
+  const suggestion = `${escapeHtml(pupil.suggestedRank ?? 'Ausstehend')}${pupil.hasRedCardDemotion ? ' (Rangabzug Karten)' : ''}`;
   const decision = pupil.confirmedRank
     ? `✓ ${escapeHtml(pupil.confirmedRank)}`
     : '○ Ausstehend';

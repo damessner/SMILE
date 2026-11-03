@@ -343,6 +343,8 @@ export const config = {
   /** Behaviour-card counts that trigger an alert. */
   yellowCardAlertThreshold: readInt('YELLOW_CARD_ALERT_THRESHOLD', 2),
   yellowCardAlertWindowDays: readInt('YELLOW_CARD_ALERT_WINDOW_DAYS', 7),
+  /** Every N active yellow cards in the current round demote the pupil one step. */
+  yellowCardRankLossThreshold: readInt('YELLOW_CARD_RANK_LOSS_THRESHOLD', 3),
   /** Timeout counts that trigger a headmaster escalation (3, 6, 9, ...). */
   escalationStep: readInt('ESCALATION_STEP', 3),
   /** How far back a teacher may record a Time-Out after the lesson. */
@@ -436,6 +438,7 @@ export function assertServerConfig(): void {
     ['RUBRIC_ITEM_COUNT', config.rubricItemCount],
     ['YELLOW_CARD_ALERT_THRESHOLD', config.yellowCardAlertThreshold],
     ['YELLOW_CARD_ALERT_WINDOW_DAYS', config.yellowCardAlertWindowDays],
+    ['YELLOW_CARD_RANK_LOSS_THRESHOLD', config.yellowCardRankLossThreshold],
     ['ESCALATION_STEP', config.escalationStep],
     ['RETROACTIVE_TIMEOUT_MAX_DAYS', config.retroactiveTimeoutMaxDays],
   ];

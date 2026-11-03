@@ -8,27 +8,27 @@ import {
 
 describe('rankChangeFromSuggestion', () => {
   it('demotes a Geselle to Lehrling and a Meister to Geselle', () => {
-    expect(rankChangeFromSuggestion('Geselle', false, true)).toEqual({
+    expect(rankChangeFromSuggestion('Geselle', 0, 1)).toEqual({
       from: 'Geselle',
       to: 'Lehrling',
     });
-    expect(rankChangeFromSuggestion('Meister', false, true)).toEqual({
+    expect(rankChangeFromSuggestion('Meister', 0, 1)).toEqual({
       from: 'Meister',
       to: 'Geselle',
     });
   });
 
   it('restores the rank when the last red card is revoked', () => {
-    expect(rankChangeFromSuggestion('Geselle', true, false)).toEqual({
+    expect(rankChangeFromSuggestion('Geselle', 1, 0)).toEqual({
       from: 'Lehrling',
       to: 'Geselle',
     });
   });
 
   it('sends nothing for a Lehrling or an unchanged red-card state', () => {
-    expect(rankChangeFromSuggestion('Lehrling', false, true)).toBeNull();
-    expect(rankChangeFromSuggestion('Geselle', true, true)).toBeNull();
-    expect(rankChangeFromSuggestion(null, false, true)).toBeNull();
+    expect(rankChangeFromSuggestion('Lehrling', 0, 1)).toBeNull();
+    expect(rankChangeFromSuggestion('Geselle', 1, 1)).toBeNull();
+    expect(rankChangeFromSuggestion(null, 0, 1)).toBeNull();
   });
 });
 

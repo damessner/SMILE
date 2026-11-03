@@ -181,6 +181,27 @@ describe('Schulalltag subject-scoped results and independent red card demotions'
     expect(within(row).queryByText('Ausstehend')).toBeNull();
   });
 
+  it('demotes one step after three active yellow cards', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce(
+      Array.from({ length: 3 }, (_, i) => ({
+        id: `yellow-${i}`,
+        pupil_id: 1,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'yellow' as const,
+        created_at: '2026-11-01T10:00:00Z',
+      })),
+    );
+    const anna = pupil(1, 'Anna Yellow', [submittedEvaluation('D', 'Meister')]);
+    renderSchulalltag([anna]);
+
+    const row = (await screen.findByText('Anna Yellow')).closest<HTMLElement>('div.cursor-pointer')!;
+    await waitFor(() => expect(within(row).getByText('Geselle')).toBeInTheDocument());
+  });
+
   it('applies red card demotion independently per subject', async () => {
     const dItems = Array.from({ length: 18 }, (_, i) => ({
       id: `it-d-${i}`,

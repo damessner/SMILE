@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
+import { totalCardDemotionSteps } from '../lib/rank-demotion.js';
 import {
   assessmentRubrics,
   behaviorCards,
@@ -356,6 +357,15 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         greenCardCount: pupilCards.filter((c) => c.cardType === 'green').length,
         yellowCardCount: pupilCards.filter((c) => c.cardType === 'yellow').length,
         redCardCount: pupilCards.filter((c) => c.cardType === 'red').length,
+        rankDemotionSteps: totalCardDemotionSteps(
+          pupilCards.filter((c) => c.cardType === 'red').length,
+          pupilCards.filter(
+            (c) =>
+              c.cardType === 'yellow' &&
+              (!round?.startsOn || c.createdAt >= round.startsOn) &&
+              (!round?.endsOn || c.createdAt <= round.endsOn),
+          ).length,
+        ),
         finalRank: finalRankByPupil.get(p.id) ?? null,
         assignedTeachers: pupilTeachersMap.get(p.id) ?? {},
         assignedGroups: pupilGroupsMap.get(p.id) ?? {},

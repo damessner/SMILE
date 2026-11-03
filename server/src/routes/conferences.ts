@@ -15,7 +15,7 @@ import {
   safeTeacherId,
   type AuthUser,
 } from '../lib/guards.js';
-import { demote, summarizeRatings, type Rank, type RatingLike } from '../lib/ranking.js';
+import { demoteBy, summarizeRatings, type Rank, type RatingLike } from '../lib/ranking.js';
 import { buildSubjectEvidence } from '../lib/subject-evidence.js';
 import { normalizeSubject } from '../utils/subject.js';
 import { broadcastToClass } from '../ws/live-sync.js';
@@ -27,6 +27,7 @@ import {
   type ConferenceTeacherVote,
   type SubmittedTeacherVoteSummary,
 } from '../lib/conference-rank.js';
+import { yellowDemotionSteps } from '../lib/rank-demotion.js';
 import type { ClassAccess, Identity } from '../lib/guards.js';
 
 export { hoursWeightedSuggestion, summarizeSubmittedTeacherVotes };
@@ -77,17 +78,26 @@ export function presentRank(
   confirmedRank: Rank | null | undefined,
   suggestion: Rank | null,
   hasActiveRedCard: boolean,
-): { presentedRank: Rank | null; suggestedRank: Rank | null; hasRedCardDemotion: boolean } {
+  extraDemotionSteps = 0,
+): {
+  presentedRank: Rank | null;
+  suggestedRank: Rank | null;
+  hasRedCardDemotion: boolean;
+  rankDemotionSteps: number;
+} {
   // A confirmed rank is the official conference decision and is stored exactly
-  // as the chair confirmed it. A red card demotes the *suggestion* shown before
-  // confirmation; applying it again to the confirmed value would demote twice
+  // as the chair confirmed it. Active cards demote the *suggestion* shown before
+  // confirmation; applying them again to the confirmed value would demote twice
   // when the chair accepts the already-demoted suggestion.
+  const demotionSteps = (hasActiveRedCard ? 1 : 0) + Math.max(0, extraDemotionSteps);
   const presentedRank = confirmedRank ?? null;
-  const suggestedRank = hasActiveRedCard && suggestion ? demote(suggestion) : suggestion;
+  const suggestedRank = suggestion ? demoteBy(suggestion, demotionSteps) : null;
   return {
     presentedRank,
     suggestedRank,
-    hasRedCardDemotion: hasActiveRedCard && (presentedRank !== null || suggestedRank !== null),
+    hasRedCardDemotion:
+      demotionSteps > 0 && (presentedRank !== null || suggestedRank !== null),
+    rankDemotionSteps: demotionSteps,
   };
 }
 
@@ -728,6 +738,13 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       // figures, not a score.
       const redCards = mapCards('red');
       const hasRedCard = redCards.length > 0;
+      const yellowCardCount = pupilCards.filter(
+        (card) =>
+          card.card_type === 'yellow' &&
+          (!round?.startsOn || card.created_at >= round.startsOn) &&
+          (!round?.endsOn || card.created_at <= round.endsOn),
+      ).length;
+      const yellowSteps = yellowDemotionSteps(yellowCardCount);
 
       const subjectEvidence = buildSubjectEvidence(
         pupilEvals.map((e) => {
@@ -748,10 +765,11 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       // accepts an already-demoted suggestion.
       const confirmed = confirmedRanks.find((r) => r.pupil_id === p.id);
       const confirmedRank = (confirmed?.rank as Rank | undefined) ?? null;
-      const { presentedRank, suggestedRank, hasRedCardDemotion } = presentRank(
+      const { presentedRank, suggestedRank, hasRedCardDemotion, rankDemotionSteps } = presentRank(
         confirmedRank,
         suggestedRankByHours,
         hasRedCard,
+        yellowSteps,
       );
 
       return {
@@ -763,6 +781,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         finalRank: presentedRank,
         suggestedRank,
         hasRedCardDemotion,
+        rankDemotionSteps,
         isConfirmed: !!confirmed,
         confirmedAt: confirmed?.confirmed_at || null,
         overrideReason: confirmed?.override_reason || null,

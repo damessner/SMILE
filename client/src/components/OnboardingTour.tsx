@@ -168,7 +168,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         {
           icon: '▲',
           title: 'Gelbe Karte (Verwarnung)',
-          text: 'Bei Regelverstößen. Ab 2 Gelben Karten schlägt das System automatisch Alarm beim Klassenvorstand.',
+          text: 'Bei Regelverstößen. Ab 2 Gelben Karten schlägt das System Alarm beim Klassenvorstand; ab 3, 6, 9 aktiven Gelben gibt es zusätzlich einen Rangverlust.',
           border: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
         },
         {

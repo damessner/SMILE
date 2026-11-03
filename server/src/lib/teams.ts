@@ -8,7 +8,7 @@ import {
   schoolClasses,
   teachers,
 } from '../db/schema.js';
-import { demote, type Rank } from './ranking.js';
+import { demoteBy, type Rank } from './ranking.js';
 import { getLatestRound } from './rounds.js';
 import { formatViennaTime } from './notification-format.js';
 import { isEmailConfigured, sendRedCardEmail } from './email.js';
@@ -16,6 +16,7 @@ import {
   summarizeSubmittedTeacherVotes,
   type ConferenceTeacherVote,
 } from './conference-rank.js';
+import { countActiveYellowCards, yellowDemotionSteps } from './rank-demotion.js';
 import { normalizeSubject } from '../utils/subject.js';
 
 /**
@@ -204,35 +205,35 @@ async function activeRedCardCount(pupilId: number): Promise<number> {
 }
 
 /**
- * Apply the red-card state to one pupil-level suggestion. A card is a single
- * one-step demotion; a Lehrling stays Lehrling, so no notification is emitted.
+ * Apply card demotion steps to one pupil-level suggestion. A Lehrling stays
+ * Lehrling, so no notification is emitted for a no-op.
  */
 export function rankChangeFromSuggestion(
   suggestion: Rank | null,
-  beforeHasRedCard: boolean,
-  afterHasRedCard: boolean,
+  beforeDemotionSteps: number,
+  afterDemotionSteps: number,
 ): PupilRankChange | null {
-  if (!suggestion || beforeHasRedCard === afterHasRedCard) return null;
-  const from = beforeHasRedCard ? demote(suggestion) : suggestion;
-  const to = afterHasRedCard ? demote(suggestion) : suggestion;
+  if (!suggestion || beforeDemotionSteps === afterDemotionSteps) return null;
+  const from = demoteBy(suggestion, beforeDemotionSteps);
+  const to = demoteBy(suggestion, afterDemotionSteps);
   return from === to ? null : { from, to };
 }
 
 /**
- * Compute the pupil-level conference rank before and after the red-card state.
+ * Compute the pupil-level conference rank before and after the card state.
  *
  * Ranks are a pupil property, not a per-subject value. The base is the
- * hours-weighted suggestion from submitted teacher votes; a red card demotes
- * that suggestion one step. A confirmed final rank is official and is never
- * demoted again, so it produces no notification.
+ * hours-weighted suggestion from submitted teacher votes; red and yellow card
+ * demotions are applied as steps. A confirmed final rank is official and is
+ * never demoted again, so it produces no notification.
  */
 export async function computePupilRankChange(
   pupilId: number,
   classId: number,
-  beforeHasRedCard: boolean,
-  afterHasRedCard: boolean,
+  beforeDemotionSteps: number,
+  afterDemotionSteps: number,
 ): Promise<PupilRankChange | null> {
-  if (beforeHasRedCard === afterHasRedCard) return null;
+  if (beforeDemotionSteps === afterDemotionSteps) return null;
 
   const round = await getLatestRound();
   if (!round) return null;
@@ -324,7 +325,7 @@ export async function computePupilRankChange(
   });
 
   const suggestion = summarizeSubmittedTeacherVotes(votes).suggestedRankByHours;
-  return rankChangeFromSuggestion(suggestion, beforeHasRedCard, afterHasRedCard);
+  return rankChangeFromSuggestion(suggestion, beforeDemotionSteps, afterDemotionSteps);
 }
 
 function cleanTeacherNote(note: string | null | undefined): string | null {
@@ -365,14 +366,19 @@ async function loadRedCardMessage(
   const isIssued = event.direction === 'issued';
   // An issued card is already committed, so it is included in the count. A revoked
   // card is already excluded; before the revoke it was active by definition.
-  const beforeHasRedCard = isIssued ? activeCards > 1 : true;
-  const afterHasRedCard = activeCards > 0;
+  const beforeRedCount = isIssued ? Math.max(0, activeCards - 1) : activeCards + 1;
+  const afterRedCount = activeCards;
+  const yellowSteps = yellowDemotionSteps(
+    await countActiveYellowCards(event.pupilId, event.classId),
+  );
+  const beforeSteps = (beforeRedCount > 0 ? 1 : 0) + yellowSteps;
+  const afterSteps = (afterRedCount > 0 ? 1 : 0) + yellowSteps;
 
   const rankChange = await computePupilRankChange(
     event.pupilId,
     event.classId,
-    beforeHasRedCard,
-    afterHasRedCard,
+    beforeSteps,
+    afterSteps,
   );
   if (!rankChange) return null;
 

@@ -153,6 +153,13 @@ export function demote(rank: Rank): Rank {
   return 'Lehrling';
 }
 
+/** Apply multiple one-step demotions, never below Lehrling. */
+export function demoteBy(rank: Rank, steps: number): Rank {
+  let current = rank;
+  for (let i = 0; i < Math.max(0, steps); i += 1) current = demote(current);
+  return current;
+}
+
 export interface RankOutcome {
   baseRank: Rank;
   finalRank: Rank;

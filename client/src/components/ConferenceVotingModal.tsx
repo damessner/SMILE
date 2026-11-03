@@ -618,7 +618,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                       {p.hasRedCardDemotion && (
                         <div className="px-3 py-1 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-1.5 animate-pulse">
                           <ShieldAlert className="w-4 h-4 text-rose-400" />
-                          <span>Degradiert durch Rote Karte</span>
+                          <span>Degradiert durch Karten</span>
                         </div>
                       )}
 
@@ -642,7 +642,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                             <span>Vorschlag nach Stunden:</span>
                             <strong className="text-amber-300 font-bold">{p.suggestedRank ?? 'keine Mehrheit'}</strong>
                             {p.hasRedCardDemotion && (
-                              <span className="text-[10px] text-rose-400 font-semibold" title={`Ohne Rote Karte wäre die Einordnung ${p.suggestedRank ?? 'offen'}`}>
+                              <span className="text-[10px] text-rose-400 font-semibold" title={`Ohne Karten wäre die Einordnung ${p.suggestedRank ?? 'offen'}`}>
                                 
                               </span>
                             )}
@@ -1146,7 +1146,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                       </span>
                     )}
                     {pupil.hasRedCardDemotion && (
-                      <span title="Degradiert durch Rote Karte">
+                      <span title="Degradiert durch Karten">
                         <ShieldAlert className="w-4 h-4 text-rose-400 flex-shrink-0" />
                       </span>
                     )}
