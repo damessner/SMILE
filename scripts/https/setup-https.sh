@@ -65,6 +65,14 @@ CA_ROOT="$(find /var/lib/caddy -type f -name root.crt -path '*pki/authorities/lo
 install -d -m 0755 /opt/smile-shared
 install -m 0644 "$CA_ROOT" "$CA_PUBLIC_COPY"
 
+# Ready-to-upload Apple profile: root CA + SMILE Web Clip. MDM/Configurator
+# installation trusts the certificate automatically; manual installs still need
+# the Certificate Trust Settings step on iOS/iPadOS.
+if [ -f "$SCRIPT_DIR/make-apple-profile.py" ]; then
+  python3 "$SCRIPT_DIR/make-apple-profile.py" \
+    "$CA_ROOT" /opt/smile-shared/smile-internal-ca.mobileconfig
+fi
+
 # HTTPS requests carry an https:// Origin while SMILE is still on HTTP behind
 # Caddy. Keep TRUST_PROXY=false (direct port 3000 must not trust spoofed
 # X-Forwarded-* headers) and allow the two HTTPS origins explicitly instead.

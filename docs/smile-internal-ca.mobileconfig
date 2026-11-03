@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadCertificateFileName</key>
+			<string>smile-internal-ca.crt</string>
+			<key>PayloadContent</key>
+			<data>
+			LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJvekNDQVVx
+			Z0F3SUJBZ0lSQUsycERISHFmNEJZeVdXWW1od2JzMVF3Q2dZSUtv
+			Wkl6ajBFQXdJd01ERXUKTUN3R0ExVUVBeE1sUTJGa1pIa2dURzlq
+			WVd3Z1FYVjBhRzl5YVhSNUlDMGdNakF5TmlCRlEwTWdVbTl2ZERB
+			ZQpGdzB5TmpFeE1ETXdPVEV5TlRGYUZ3MHpOakE1TVRFd09URXlO
+			VEZhTURBeExqQXNCZ05WQkFNVEpVTmhaR1I1CklFeHZZMkZzSUVG
+			MWRHaHZjbWwwZVNBdElESXdNallnUlVORElGSnZiM1F3V1RBVEJn
+			Y3Foa2pPUFFJQkJnZ3EKaGtqT1BRTUJCd05DQUFSRmVwcnBQQi9J
+			aElhZkgyeDRER1ZIR2g5SFRSakFCdEZ5ZjhzM0E1STF0KzJMS0dz
+			TwpWcGZzMzB4WEtobHVWcGN5c2p3alR0WFhKemFlVTlxYU5QOURv
+			MFV3UXpBT0JnTlZIUThCQWY4RUJBTUNBUVl3CkVnWURWUjBUQVFI
+			L0JBZ3dCZ0VCL3dJQkFUQWRCZ05WSFE0RUZnUVVMTW82ZlJ3dms1
+			bFRCRUZ5bEUyc2lwS3oKTmxzd0NnWUlLb1pJemowRUF3SURSd0F3
+			UkFJZ1hBR2MyM3VYUEh0LzBsVzkrczlOYnZQNkpUcFU3MG10K3VH
+			VwpBTktYR1dzQ0lIeVhIT0R2RFZxSE02MGswbTBFdmJjTDRERHhL
+			UGJWYjA4M2JBblArdndNCi0tLS0tRU5EIENFUlRJRklDQVRFLS0t
+			LS0K
+			</data>
+			<key>PayloadDescription</key>
+			<string>Root CA for the SMILE HTTPS service.</string>
+			<key>PayloadDisplayName</key>
+			<string>SMILE Internal CA</string>
+			<key>PayloadIdentifier</key>
+			<string>at.ac.ms-weissenbach.smile.ca</string>
+			<key>PayloadType</key>
+			<string>com.apple.security.root</string>
+			<key>PayloadUUID</key>
+			<string>AD9C9BEB-B832-497F-9263-06F8399A5DB7</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>IsRemovable</key>
+			<true/>
+			<key>Label</key>
+			<string>SMILE</string>
+			<key>PayloadDescription</key>
+			<string>SMILE assessment platform.</string>
+			<key>PayloadDisplayName</key>
+			<string>SMILE</string>
+			<key>PayloadIdentifier</key>
+			<string>at.ac.ms-weissenbach.smile.webclip</string>
+			<key>PayloadType</key>
+			<string>com.apple.webClip.managed</string>
+			<key>PayloadUUID</key>
+			<string>A7C134FC-0B3A-448B-9628-9F8F0F458127</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>URL</key>
+			<string>https://172.16.1.11</string>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Installs the SMILE internal root CA and a SMILE home-screen shortcut.</string>
+	<key>PayloadDisplayName</key>
+	<string>SMILE – Internes Zertifikat</string>
+	<key>PayloadIdentifier</key>
+	<string>at.ac.ms-weissenbach.smile.profile</string>
+	<key>PayloadOrganization</key>
+	<string>MS Telfs Weissenbach</string>
+	<key>PayloadRemovalDisallowed</key>
+	<false/>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>0E2326DA-9D24-4B05-927B-268E50653E97</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>
