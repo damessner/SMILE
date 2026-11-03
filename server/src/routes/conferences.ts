@@ -173,15 +173,16 @@ export function presentRank(
   suggestion: Rank | null,
   hasActiveRedCard: boolean,
 ): { presentedRank: Rank | null; suggestedRank: Rank | null; hasRedCardDemotion: boolean } {
-  const demote1 = (rank: Rank | null): Rank | null =>
-    hasActiveRedCard && rank ? demote(rank) : rank;
-
-  const presentedRank = demote1(confirmedRank ?? null);
-  const suggestedRank = demote1(suggestion);
+  // A confirmed rank is the official conference decision and is stored exactly
+  // as the chair confirmed it. A red card demotes the *suggestion* shown before
+  // confirmation; applying it again to the confirmed value would demote twice
+  // when the chair accepts the already-demoted suggestion.
+  const presentedRank = confirmedRank ?? null;
+  const suggestedRank = hasActiveRedCard && suggestion ? demote(suggestion) : suggestion;
   return {
     presentedRank,
     suggestedRank,
-    hasRedCardDemotion: hasActiveRedCard && presentedRank !== null,
+    hasRedCardDemotion: hasActiveRedCard && (presentedRank !== null || suggestedRank !== null),
   };
 }
 
@@ -836,10 +837,10 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         }),
       );
 
-      // A red card demotes by one step. It used to be applied only to the computed
-      // threshold rank, so a pupil confirmed as Meister kept Meister despite an active
-      // red card - which contradicts the rule in README.md. `presentRank` applies it to
-      // whichever rank is presented and reports the demotion so the UI can explain it.
+      // A red card demotes the *suggestion* by one step before the chair confirms
+      // it. The confirmed rank is the official decision and is returned exactly as
+      // stored; demoting it again here would apply the card twice when the chair
+      // accepts an already-demoted suggestion.
       const confirmed = confirmedRanks.find((r) => r.pupil_id === p.id);
       const confirmedRank = (confirmed?.rank as Rank | undefined) ?? null;
       const { presentedRank, suggestedRank, hasRedCardDemotion } = presentRank(

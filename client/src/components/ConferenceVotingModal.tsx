@@ -11,6 +11,7 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  Clock,
   ShieldAlert,
   Flame,
   LayoutGrid,
@@ -166,6 +167,8 @@ interface ConferenceVotingModalProps {
   onClose: () => void;
   onOpenAllClassesExport?: () => void;
   onVotesUpdated?: () => void;
+  /** Test/embedding seam; production defaults to the editable list. */
+  initialViewMode?: 'walkthrough' | 'table';
 }
 
 export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
@@ -175,6 +178,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   onClose,
   onOpenAllClassesExport,
   onVotesUpdated,
+  initialViewMode = 'table',
 }) => {
   const [selectedClassId, setSelectedClassId] = useState<number>(initialClassId);
   const [loading, setLoading] = useState(true);
@@ -186,7 +190,9 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const confirm = useConfirm();
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'walkthrough' | 'table'>('walkthrough');
+  // The editable list is the default working surface; the walkthrough remains
+  // available for the beamer/presentation.
+  const [viewMode, setViewMode] = useState<'walkthrough' | 'table'>(initialViewMode);
 
   // Local state for vote adjustments per pupil before submitting. `null` is a
   // real state for a pupil the conference has not decided yet; it must not be
@@ -347,7 +353,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
         const cur = pupilVotes[p.id];
         return {
           pupilId: p.id,
-          rank: cur?.rank ?? p.suggestedRank ?? null,
+          rank: cur?.rank ?? p.finalRank ?? p.suggestedRank ?? null,
         };
       });
       const undecided = items.filter((item) => !item.rank);
@@ -392,6 +398,9 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   };
 
   const confirmedCount = pupils.filter((p) => p.isConfirmed).length;
+  const rankForPupil = (p: ConferencePupil) =>
+    pupilVotes[p.id]?.rank ?? p.finalRank ?? p.suggestedRank ?? null;
+  const missingRankCount = pupils.filter((p) => !rankForPupil(p)).length;
   const currentPupil = pupils[currentPupilIndex];
 
   return (
@@ -495,10 +504,10 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   ? 'bg-slate-800 text-slate-50 shadow-sm'
                   : 'text-slate-400 hover:text-slate-50'
               }`}
-              title="Tabellarische Gesamtübersicht"
+              title="Liste zum Bearbeiten: Vorschläge vorausgewählt"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Liste</span>
+              <span className="hidden sm:inline">Bearbeiten</span>
             </button>
           </div>
 
@@ -1100,6 +1109,35 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
         /* TABLE OVERVIEW MODE                                                       */
         /* ========================================================================= */
         <div className="flex-1 overflow-y-auto p-6 max-w-7xl w-full mx-auto divide-y divide-slate-800/80">
+          <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-4 border-b border-slate-800 bg-slate-950/95 px-6 py-4 backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-100">
+                  Klasse {currentClass?.name}: Beschlüsse bearbeiten
+                </h3>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Die vorgeschlagenen Ränge sind vorausgewählt. Ändern Sie nur
+                  Abweichungen; danach die ganze Klasse bestätigen.
+                </p>
+                {missingRankCount > 0 && (
+                  <p className="mt-1 text-[11px] font-bold text-amber-300" role="status">
+                    Noch {missingRankCount} Schüler/in(nen) ohne Rangvorschlag —
+                    bitte im Dropdown auswählen.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleAcceptAllProposals()}
+                disabled={loading || batchSubmitting || missingRankCount > 0}
+                className="min-h-[44px] shrink-0 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-extrabold text-slate-950 shadow-lg transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {batchSubmitting
+                  ? 'Speichere...'
+                  : `Klasse bestätigen (${confirmedCount}/${pupils.length})`}
+              </button>
+            </div>
+          </div>
           {pupils.map((pupil, idx) => {
             const cur = pupilVotes[pupil.id] || {
               rank: pupil.finalRank ?? pupil.suggestedRank ?? null,
@@ -1109,8 +1147,6 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
             const participation = describeParticipation(pupil.participation, pupil.voteStats);
 
             const { badgeBg } = getRankVisuals(cur.rank);
-
-            const isSubmitting = submittingId === pupil.id;
 
             return (
               <div
@@ -1188,50 +1224,45 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                 <div className="flex flex-wrap items-center gap-5">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Vorschlag
+                    </div>
+                    <span className={`inline-flex min-w-[110px] items-center rounded-xl border px-2.5 py-1.5 text-[11px] font-bold ${
+                      pupil.suggestedRank
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                        : 'border-slate-700 bg-slate-900 text-slate-400'
+                    }`}>
+                      {pupil.suggestedRank ?? 'keine Mehrheit'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Rang
                     </div>
                     {isAuthorized ? (
-                      <div className="inline-flex items-center p-0.5 bg-slate-950 border border-slate-800 rounded-xl gap-0.5 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => handleRankChange(pupil.id, 'Meister')}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 active:scale-95 ${
-                            cur.rank === 'Meister'
-                              ? 'bg-amber-400 text-slate-950 shadow-sm'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                          }`}
-                        >
-                          <span>👑</span>
-                          <span>Meister</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRankChange(pupil.id, 'Geselle')}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 active:scale-95 ${
-                            cur.rank === 'Geselle'
-                              ? 'bg-blue-500 text-slate-50 shadow-sm'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                          }`}
-                        >
-                          <span>🔵</span>
-                          <span>Geselle</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRankChange(pupil.id, 'Lehrling')}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 active:scale-95 ${
-                            cur.rank === 'Lehrling'
-                              ? 'bg-rose-500 text-slate-50 shadow-sm'
-                              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                          }`}
-                        >
-                          <span>🔴</span>
-                          <span>Lehrling</span>
-                        </button>
-                      </div>
+                      <select
+                        value={cur.rank ?? ''}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value === 'Lehrling' || value === 'Geselle' || value === 'Meister') {
+                            handleRankChange(pupil.id, value);
+                          }
+                        }}
+                        aria-label={`Rang für ${pupil.fullName}`}
+                        className={`min-w-[140px] rounded-xl border px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                          cur.rank
+                            ? 'border-slate-700 bg-slate-950 text-slate-50'
+                            : 'border-amber-500/50 bg-amber-500/10 text-amber-200'
+                        }`}
+                      >
+                        <option value="" disabled>Bitte wählen…</option>
+                        <option value="Lehrling">Lehrling</option>
+                        <option value="Geselle">Geselle</option>
+                        <option value="Meister">Meister</option>
+                      </select>
                     ) : (
                       <span className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${badgeBg}`}>
-                        {cur.rank}
+                        {cur.rank ?? 'offen'}
                       </span>
                     )}
                   </div>
@@ -1274,43 +1305,29 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
                 {/* Right: Angenommen Button & Un-accept toggle */}
                 <div className="flex items-center gap-3">
-                  {pupil.isConfirmed ? (
-                    <div className="text-right">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Angenommen</span>
-                      </span>
-                      <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
-                        {formatTimestamp(pupil.confirmedAt)}
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {isAuthorized && (
-                    <button
-                      onClick={() => handleToggleVoteSingle(pupil)}
-                      disabled={isSubmitting}
-                      className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition ${
-                        pupil.isConfirmed
-                          ? 'bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-slate-700'
-                          : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md font-bold'
-                      }`}
-                    >
-                      {isSubmitting ? (
-                        <span>Speichere...</span>
-                      ) : pupil.isConfirmed ? (
-                        <>
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Zurücknehmen</span>
-                        </>
-                      ) : (
-                        <>
+                  <div className="text-right">
+                    {pupil.isConfirmed ? (
+                      <>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
                           <Check className="w-3.5 h-3.5" />
-                          <span>Angenommen</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+                          <span>Beschluss erfasst</span>
+                        </span>
+                        <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                          {formatTimestamp(pupil.confirmedAt)}
+                        </span>
+                        {cur.rank && cur.rank !== pupil.finalRank && (
+                          <span className="mt-1 block text-[10px] font-bold text-amber-300">
+                            geändert — noch nicht gespeichert
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-xs">
+                        <Clock className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Offen</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );

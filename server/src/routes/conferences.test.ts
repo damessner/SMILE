@@ -341,18 +341,20 @@ describe('presented rank', () => {
     expect(presentRank('Meister', 'Geselle', false).presentedRank).toBe('Meister');
   });
 
-  it('demotes the confirmed rank when a red card is active', async () => {
+  it('keeps a confirmed rank as the official decision and demotes only the suggestion', async () => {
     const { presentRank } = await import('./conferences.js');
-    // The regression: the demotion used to be applied only to the computed threshold
-    // rank, so a pupil confirmed as Meister kept Meister despite an active red card -
-    // contradicting README.md, which states a red card causes an immediate demotion.
-    expect(presentRank('Meister', 'Meister', true).presentedRank).toBe('Geselle');
-    expect(presentRank('Geselle', 'Geselle', true).presentedRank).toBe('Lehrling');
+    // The suggestion is the advice shown before confirmation; it is demoted once.
+    // The stored final rank is the official decision and must not be demoted again
+    // (otherwise accepting a demoted suggestion would lose a second stage).
+    expect(presentRank('Meister', 'Meister', true).presentedRank).toBe('Meister');
+    expect(presentRank('Meister', 'Meister', true).suggestedRank).toBe('Geselle');
+    expect(presentRank('Geselle', 'Geselle', true).presentedRank).toBe('Geselle');
+    expect(presentRank('Geselle', 'Geselle', true).suggestedRank).toBe('Lehrling');
   });
 
-  it('never demotes below Lehrling', async () => {
+  it('never demotes the suggestion below Lehrling', async () => {
     const { presentRank } = await import('./conferences.js');
-    expect(presentRank('Lehrling', 'Lehrling', true).presentedRank).toBe('Lehrling');
+    expect(presentRank(null, 'Lehrling', true).suggestedRank).toBe('Lehrling');
   });
 
   it('reports the demotion so the screen can explain it', async () => {

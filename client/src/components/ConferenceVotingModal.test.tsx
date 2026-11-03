@@ -30,6 +30,7 @@ function renderModal(overrides: Partial<Parameters<typeof ConferenceVotingModal>
       <ConferenceVotingModal
         classes={CLASSES}
         initialClassId={1}
+        initialViewMode="walkthrough"
         currentUser={{ id: 't-1', role: 'teacher', teacherId: 1 } as User}
         onClose={onClose}
         {...overrides}
@@ -182,6 +183,36 @@ describe('ConferenceVotingModal', () => {
     });
   });
 
+  it('starts in the editable list with suggested ranks preselected and confirms the class at once', async () => {
+    mockSummary([
+      pupil({ id: 10, fullName: 'Anna Muster', suggestedRank: 'Meister' }),
+      pupil({ id: 11, fullName: 'Bernd Berger', suggestedRank: 'Geselle' }),
+    ]);
+
+    renderModal({ initialViewMode: 'table' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Beschlüsse bearbeiten/)).toBeInTheDocument();
+    });
+
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    expect(selects).toHaveLength(2);
+    expect(selects[0].value).toBe('Meister');
+    expect(selects[1].value).toBe('Geselle');
+
+    fireEvent.click(screen.getByRole('button', { name: /Klasse bestätigen/i }));
+
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Alle annehmen/i }));
+
+    await waitFor(() => {
+      expect(voteAllConference).toHaveBeenCalledWith(1, [
+        { pupilId: 10, rank: 'Meister' },
+        { pupilId: 11, rank: 'Geselle' },
+      ]);
+    });
+  });
+
   it('switches to the list view and back', async () => {
     renderModal();
 
@@ -189,7 +220,7 @@ describe('ConferenceVotingModal', () => {
       expect(screen.getByText('Anna Muster')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Liste/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Bearbeiten/i }));
     expect(screen.getByText('Nachfolgende Beschlüsse')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Präsentation/i }));
