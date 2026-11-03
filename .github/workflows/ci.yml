@@ -38,7 +38,7 @@ jobs:
       - run: npm run typecheck
       - name: Shell syntax
         run: |
-          for f in scripts/*.sh scripts/test/*.sh; do bash -n "$f"; done
+          for f in scripts/*.sh scripts/test/*.sh scripts/https/*.sh; do bash -n "$f"; done
       - name: Python syntax
         run: python3 -m py_compile scripts/*.py scripts/test/*.py
       - run: npm test

@@ -1,0 +1,28 @@
+{
+	admin localhost:2019
+	# HTTP redirects are declared explicitly below.
+	auto_https disable_redirects
+}
+
+# Internal-only HTTPS. Caddy's local CA issues certificates for both names.
+https://172.16.1.11, https://smile.schule.intern {
+	tls internal
+
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+	}
+}
+
+http://172.16.1.11, http://smile.schule.intern {
+	redir https://{host}{uri} permanent
+}

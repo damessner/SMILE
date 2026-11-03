@@ -395,6 +395,14 @@ done
 
 [ "$SERVICE_HEALTHY" = true ] || fail "Service started but health check timed out. Check logs: pct exec $CTID -- journalctl -u smile.service"
 
+# Internal HTTPS via Caddy (https://172.16.1.11, later smile.schule.intern).
+# A failure here must not invalidate the working HTTP install.
+if pct exec "$CTID" -- test -f /opt/smile/scripts/https/setup-https.sh; then
+  pct exec "$CTID" -- bash /opt/smile/scripts/https/setup-https.sh \
+    && info "Internal HTTPS enabled via Caddy." \
+    || warn "Caddy HTTPS setup failed; HTTP on port 3000 remains available."
+fi
+
 # Retrieve Container IP
 CONTAINER_IP=$(pct exec "$CTID" -- ip -4 addr show eth0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1 || echo "")
 

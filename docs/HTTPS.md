@@ -1,0 +1,146 @@
+# HTTPS with Caddy — SMILE
+
+SMILE now has an internal HTTPS listener on LXC 115:
+
+```text
+https://172.16.1.11
+https://smile.schule.intern   (once the DNS A record exists)
+```
+
+Port `3000` remains reachable during the transition:
+
+```text
+http://172.16.1.11:3000
+```
+
+Caddy is the TLS terminator and reverse proxy:
+
+```text
+Caddy :443  ->  127.0.0.1:3000  (SMILE)
+Caddy :80   ->  permanent redirect to https://{host}{uri}
+```
+
+## Why an internal CA
+
+`172.16.1.11` is a private address and `schule.intern` is a private DNS zone,
+so no public certificate authority can issue a trusted certificate for them.
+Caddy therefore uses its local CA:
+
+- Root certificate: `docs/smile-internal-ca.crt`
+- Also on the LXC: `/opt/smile-shared/smile-internal-ca.crt`
+- CA private key: `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.key`
+  (stays on LXC 115, never distributed)
+
+Fingerprint:
+
+```text
+SHA256 D5:DE:31:A5:D7:90:33:2C:CE:C2:B8:48:40:1D:0F:E2:27:0E:F9:20:95:F6:11:82:0E:E6:54:A8:DC:CD:C4:EC
+```
+
+## Install the CA on clients
+
+### Windows
+
+Right-click `smile-internal-ca.crt` → **Install Certificate** →
+**Local Machine** → **Place all certificates in the following store** →
+**Trusted Root Certification Authorities** → Finish.
+
+Or, elevated Command Prompt:
+
+```cmd
+certutil -addstore -f Root smile-internal-ca.crt
+```
+
+Domain machines can receive the same certificate through GPO:
+**Computer Configuration → Policies → Windows Settings → Security Settings →
+Public Key Policies → Trusted Root Certification Authorities**.
+
+### macOS
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain smile-internal-ca.crt
+```
+
+### iPadOS / iOS
+
+1. AirDrop or email the `.crt` file to the device.
+2. **Settings → Profile Downloaded → Install**.
+3. **Settings → General → About → Certificate Trust Settings**.
+4. Enable full trust for `Caddy Local Authority`.
+
+### Android
+
+**Settings → Security → Encryption & credentials → Install a certificate →
+CA certificate**, then select the file and confirm the warning.
+
+### Linux
+
+```bash
+sudo cp smile-internal-ca.crt /etc/ca-certificates/trust-source/anchors/
+sudo update-ca-trust
+```
+
+Firefox may use its own store: **Settings → Privacy & Security →
+Certificates → View Certificates → Authorities → Import**.
+
+## DNS
+
+For the friendly name, add one A record on `DC01.schule.intern`:
+
+```text
+smile.schule.intern  A  172.16.1.11
+```
+
+DNS Manager: right-click the `schule.intern` forward lookup zone → **New Host
+(A or AAAA)** → name `smile`, address `172.16.1.11`.
+
+PowerShell on `DC01`:
+
+```powershell
+Add-DnsServerResourceRecordA -ZoneName "schule.intern" -Name "smile" -IPv4Address "172.16.1.11"
+```
+
+After the record exists:
+
+```powershell
+Resolve-DnsName smile.schule.intern -Server 172.16.0.203
+```
+
+## Current application settings
+
+`/opt/smile-shared/.env` now contains:
+
+```env
+CORS_ALLOWED_ORIGINS="https://172.16.1.11,https://smile.schule.intern"
+```
+
+`COOKIE_SECURE` stays `false` while port 3000 remains reachable over HTTP.
+`TRUST_PROXY` also stays `false`: the allowlist handles the HTTPS Origin without
+trusting spoofable `X-Forwarded-*` headers from direct clients.
+
+## Cut-over checklist
+
+When you are ready to retire plain HTTP:
+
+1. Set `HOST="127.0.0.1"` so SMILE is only reachable through Caddy.
+2. Set `COOKIE_SECURE="true"`.
+3. Optionally set `TRUST_PROXY="true"` and remove
+   `CORS_ALLOWED_ORIGINS` — Caddy will then supply the forwarded scheme/host.
+4. Restart `smile.service`.
+5. Remove the `http://172.16.1.11:3000` bookmarks and use HTTPS only.
+6. Add HSTS in the Caddy site block:
+   ```caddyfile
+   header Strict-Transport-Security "max-age=31536000"
+   ```
+
+## Reapply the Caddy configuration
+
+The reproducible setup is in `scripts/https/`:
+
+```bash
+bash /opt/smile/scripts/https/setup-https.sh
+```
+
+It installs Caddy if missing, validates the Caddyfile, restarts the service and
+exports the CA root certificate to `/opt/smile-shared/smile-internal-ca.crt`.

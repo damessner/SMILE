@@ -280,22 +280,25 @@ The following were changed and covered by the local suite:
   is blocked when a class failed to load; logout failure keeps the user signed in
   rather than showing a false logout; modal state is reset on identity changes.
 
-Residual items intentionally not changed in this pass: plain HTTP on the school
-LAN, AES-CBC (not authenticated) at rest for the M365 payload, and the stale
-Drizzle meta snapshots for migrations `0002`–`0009`. Treat those as follow-up
-work, not silently accepted.
+Residual items intentionally not changed in this pass: plain HTTP on port 3000
+during the HTTPS transition, AES-CBC (not authenticated) at rest for the M365
+payload, and the stale Drizzle meta snapshots for migrations `0002`–`0009`.
+Treat those as follow-up work, not silently accepted.
+
+**HTTPS (2026-11-03):** Caddy now terminates TLS on LXC 115 for
+`https://172.16.1.11` and `https://smile.schule.intern` using an internal CA.
+Port 3000 remains reachable during the transition; `COOKIE_SECURE` stays false
+until it is retired. See [`docs/HTTPS.md`](HTTPS.md) for the client CA
+installation and cut-over steps.
 
 ## Known limitations
 
-- **No TLS.** The app serves plain HTTP on the school LAN, as originally specified. The
-  session cookie is `httpOnly` and `SameSite=Strict`, but the token still crosses the
-  network in clear text and is interceptable by anyone on a switched network. Set
-  `COOKIE_SECURE=true` and put it behind a TLS-terminating proxy when you can. The default
-  stays `false` on purpose because the LAN deployment has no TLS. While `COOKIE_SECURE` is
-  false the server logs a boot warning (`insecureConfigWarnings` in `server/src/config.ts`,
-  emitted by `start()`). When `NODE_ENV=production` and `COOKIE_SECURE` is unset, the server
-  logs an error at startup (`productionCookieError`); setting it explicitly to `true` or
-  `false` silences that error. Boot still succeeds in both cases.
+- **HTTP port 3000 during transition.** TLS is available through Caddy on port 443
+  (see [`docs/HTTPS.md`](HTTPS.md)), but the app still listens on port 3000 so
+  existing bookmarks keep working. The session cookie therefore remains non-Secure
+  until the cut-over: bind the app to `127.0.0.1`, set `COOKIE_SECURE=true`, and use
+  HTTPS only. While `COOKIE_SECURE` is false the server logs a boot warning
+  (`insecureConfigWarnings` in `server/src/config.ts`).
 - ~~**No automated backup schedule.**~~ Resolved: hourly encrypted `pg_dump` to Google
   Drive with tiered retention, `cryptcheck` verification, a restore script, and a weekly
   unattended restore drill. See [`docs/BACKUP.md`](BACKUP.md). (A stale note here claimed
