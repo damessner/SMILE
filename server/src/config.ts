@@ -420,12 +420,21 @@ export function assertServerConfig(): void {
  * states on the current LAN deployment (plain HTTP), so they must not fail startup —
  * but an operator should see them in the journal rather than discover them later.
  */
-export function insecureConfigWarnings(cfg: Pick<AppConfig, 'cookieSecure'> = config): string[] {
+export function insecureConfigWarnings(
+  cfg: { cookieSecure: boolean; trustProxy?: boolean } = config,
+): string[] {
   const warnings: string[] = [];
   if (!cfg.cookieSecure) {
     warnings.push(
       'COOKIE_SECURE is disabled: the session cookie travels without the Secure flag. ' +
         'Set COOKIE_SECURE=true once the app is served over HTTPS (for example behind a TLS reverse proxy).',
+    );
+  }
+  if (cfg.cookieSecure && !cfg.trustProxy) {
+    warnings.push(
+      'COOKIE_SECURE=true with TRUST_PROXY=false: an HTTPS Origin will be compared with ' +
+        'request.protocol=http and state-changing requests will be rejected. Set TRUST_PROXY=true ' +
+        'only when a reverse proxy you control sets X-Forwarded-Proto/Host, or terminate TLS in the app.',
     );
   }
   return warnings;
@@ -443,7 +452,7 @@ export function productionCookieError(
   if (cfg.env !== 'production' || cfg.cookieSecureConfigured) return undefined;
   return (
     'COOKIE_SECURE is not set while NODE_ENV=production. Session cookies are sent without the ' +
-    'Secure flag. Set COOKIE_SECURE=true if TLS terminates in front of the app, or COOKIE_SECURE=false ' +
-    'to acknowledge plain-HTTP serving. See docs/SECURITY.md (Known limitations).'
+    'Secure flag. Set COOKIE_SECURE=true and TRUST_PROXY=true if TLS terminates in front of the app, ' +
+    'or COOKIE_SECURE=false to acknowledge plain-HTTP serving. See docs/SECURITY.md (Known limitations).'
   );
 }

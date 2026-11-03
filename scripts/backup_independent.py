@@ -105,6 +105,11 @@ def main():
     if not os.path.exists(dest_enc_file) or os.path.getsize(dest_enc_file) == 0:
         fail("Encryption failed: output file is missing or empty.")
 
+    try:
+        os.chmod(dest_enc_file, 0o600)
+    except OSError as exc:
+        fail(f"Could not restrict independent backup permissions: {exc}")
+
     file_size = os.path.getsize(dest_enc_file)
     log(f"✓ Independent copy created: {os.path.basename(dest_enc_file)} ({file_size} bytes)")
 

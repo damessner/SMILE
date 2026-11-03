@@ -268,7 +268,10 @@ describe('insecureConfigWarnings', () => {
 
   it('returns no warnings when the cookie is secure', async () => {
     const { insecureConfigWarnings } = await import('./config.js');
-    expect(insecureConfigWarnings({ cookieSecure: true })).toEqual([]);
+    expect(insecureConfigWarnings({ cookieSecure: true, trustProxy: true })).toEqual([]);
+    expect(insecureConfigWarnings({ cookieSecure: true, trustProxy: false })).toEqual([
+      expect.stringContaining('TRUST_PROXY=false'),
+    ]);
   });
 });
 
