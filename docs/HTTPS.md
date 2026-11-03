@@ -63,6 +63,31 @@ python3 scripts/https/make-apple-profile.py \
 For a large unmanaged iPad fleet, a public certificate for a real domain is
 usually less work than manually installing a private CA on every device.
 
+## Microsoft Intune (iOS/iPadOS)
+
+Use the **native Trusted certificate profile**, not a manually installed
+profile. Intune installs the root as an MDM certificate payload, which iOS
+trusts automatically for SSL.
+
+1. Intune admin center → **Devices → Configuration profiles → Create profile**.
+2. Platform: **iOS/iPadOS**.
+3. Profile type: **Templates** → **Trusted certificate**.
+4. Upload `docs/smile-internal-ca.cer` (DER format).
+5. Assign it to the teacher iPad group.
+6. Create a second profile: **Templates → Web Clip**:
+   - URL: `https://172.16.1.11`
+   - Label: `SMILE`
+7. Assign the Web Clip to the same group.
+
+The iPads receive both profiles on their next Intune check-in; teachers do not
+install or trust anything. If a device already had the profile cached, sync
+Company Portal once.
+
+One-profile alternative: upload
+`docs/smile-internal-ca.mobileconfig` as a **Custom** iOS/iPadOS configuration
+profile. It contains the root CA and the Web Clip. The native two-profile setup
+is the safer choice if your tenant restricts custom payloads.
+
 ## Install the CA on clients
 
 ### Windows
