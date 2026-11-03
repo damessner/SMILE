@@ -21,9 +21,6 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Crown,
-  Wrench,
-  Sprout,
   Snowflake,
   ShieldAlert as ShieldAlertIcon,
 } from 'lucide-react';
@@ -624,16 +621,32 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     isLwView,
   ]);
 
+  // The class tile is ranked for the subject of the lesson that is running now,
+  // not for an arbitrary subject list.
+  const lessonSubjectCode =
+    timetableData?.currentLesson?.subjectCode ||
+    timetableData?.currentLesson?.subject_code ||
+    currentClass?.mySubjects?.[0]?.code;
+
   // Filtered pupils list
   const filteredPupils = useMemo(() => {
     return pupils.filter((p) => {
       const matchesSearch = p.fullName.toLowerCase().includes(searchQuery.toLowerCase());
       const pResults = getPupilSubjectResults(p);
-      const matchesRank =
-        filterRank === 'all' || pResults.some((r) => r.rank === filterRank);
+      const displayed =
+        pResults.find((r) => r.subjectCode === lessonSubjectCode) ?? pResults[0] ?? null;
+      const matchesRank = filterRank === 'all' || displayed?.rank === filterRank;
       return matchesSearch && matchesRank;
     });
-  }, [pupils, searchQuery, filterRank, cards, rubricItemKeys, currentClass?.mySubjects]);
+  }, [
+    pupils,
+    searchQuery,
+    filterRank,
+    cards,
+    rubricItemKeys,
+    currentClass?.mySubjects,
+    lessonSubjectCode,
+  ]);
 
   // Day names helper
   const dayNames = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
@@ -979,20 +992,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
           {/* Compact Minimalist Pupils List */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden divide-y divide-slate-800/80">
-            {/* Table / List Header */}
-            <div className="hidden md:grid md:grid-cols-12 gap-3 px-4 py-2.5 bg-slate-950/70 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-              <div className="col-span-4 flex items-center gap-1.5">
-                <span>Schüler*in ({filteredPupils.length})</span>
-              </div>
-              <div className="col-span-2">
-                <span>Rang</span>
-              </div>
-              <div className="col-span-2 text-center">
-                <span>Karten</span>
-              </div>
-              <div className="col-span-4 text-right pr-2">
-                <span>Schnell-Aktionen</span>
-              </div>
+            {/* Simple class overview header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+              <span>Klasse {currentClass.name} · {filteredPupils.length} Schüler*innen</span>
+              <span className="normal-case font-medium tracking-normal text-[10px] text-slate-500">
+                <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-rose-400 mr-1" />Lehrling</span>
+                <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Geselle</span>
+                <span><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />Meister</span>
+              </span>
             </div>
 
             {filteredPupils.length === 0 ? (
@@ -1004,18 +1011,30 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 const isExpanded = expandedPupilId === pupil.id;
                 const { hasRedCard, subjectResults } = getPupilRank(pupil);
                 const pupilCards = cards.filter((c) => c.pupil_id === pupil.id);
-                const greenCards = pupilCards.filter((c) => c.card_type === 'green');
                 const yellowCards = pupilCards.filter((c) => c.card_type === 'yellow');
-                const redCards = pupilCards.filter((c) => c.card_type === 'red');
                 const isYellowAlert = yellowCards.length >= 2;
                 const activeTimeoutIncident = activeTimeouts.find((ti) => ti.pupil_id === pupil.id);
+                const currentResult =
+                  subjectResults.find((sr) => sr.subjectCode === lessonSubjectCode) ??
+                  subjectResults[0] ??
+                  null;
+                const currentRank = currentResult?.rank ?? null;
+                const rankLabel = currentRank ?? 'Ausstehend';
+                const rankBoxClass =
+                  currentRank === 'Meister'
+                    ? 'border-amber-300 bg-amber-400 text-slate-950'
+                    : currentRank === 'Geselle'
+                    ? 'border-blue-300 bg-blue-600 text-white'
+                    : currentRank === 'Lehrling'
+                    ? 'border-rose-300 bg-rose-600 text-white'
+                    : 'border-dashed border-slate-600 bg-slate-800 text-slate-300';
 
                 return (
                   <div key={pupil.id} data-tour={index === 0 ? 'pupil-row' : undefined} className="transition-colors">
                     {/* Main Compact Row */}
                     <div
                       onClick={() => setExpandedPupilId(isExpanded ? null : pupil.id)}
-                      className={`cursor-pointer px-4 py-2.5 flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-3 md:items-center transition ${
+                      className={`cursor-pointer px-3 py-3 flex flex-col gap-2.5 transition ${
                         isExpanded
                           ? 'bg-slate-800/80 border-b border-slate-700/60'
                           : activeTimeoutIncident
@@ -1025,123 +1044,61 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           : 'hover:bg-slate-800/50'
                       }`}
                     >
-                      {/* Col 1: Pupil Name & Status Indicators */}
-                      <div className="col-span-4 flex items-center justify-between md:justify-start gap-2 min-w-0">
-                        <div className="flex items-center gap-2 truncate">
+                      {/* Pupil name in a single rank-coloured box */}
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setActiveProfilePupilId(pupil.id);
                             }}
-                            className="font-medium text-base text-slate-50 truncate select-none hover:text-amber-300 hover:underline text-left transition flex items-center gap-2 focus:outline-none"
-                            title="Klicken für Schülerprofil &amp; pädagogische Verhaltenspyramide"
+                            className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2.5 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-400 ${rankBoxClass}`}
+                            title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
                           >
-                            <span className="truncate">{pupil.fullName}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 hover:border-amber-400 hover:text-amber-300 transition shrink-0 font-semibold">
-                              Profil
+                            <span className="truncate text-base font-extrabold">{pupil.fullName}</span>
+                            <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                              {rankLabel}
                             </span>
                           </button>
                           {activeTimeoutIncident && (
-
                             <span
-                              className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse flex-shrink-0"
-                              title="Aktuell im Time-Out (Lernwerkstatt)"
+                              className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                              title={activeTimeoutIncident.kind === 'cooldown' ? 'Im Cool-Down (Lernwerkstatt)' : 'Im Time-Out (Lernwerkstatt)'}
                             >
-                              <Clock className="w-3 h-3" aria-hidden="true" /> LW
+                              {activeTimeoutIncident.kind === 'cooldown' ? (
+                                <Snowflake className="w-3 h-3" aria-hidden="true" />
+                              ) : (
+                                <Clock className="w-3 h-3" aria-hidden="true" />
+                              )}
+                              {' '}LW
                             </span>
                           )}
                           {isYellowAlert && (
                             <span
-                              className="px-1.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold flex-shrink-0"
+                              className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
                               title="Mahnstufe (>= 2 gelbe Karten)"
                             >
                               <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
                             </span>
                           )}
                         </div>
-                        <span className="md:hidden text-xs text-slate-400">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedPupilId(isExpanded ? null : pupil.id);
+                          }}
+                          className="shrink-0 inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-800/80 px-2 text-[10px] font-bold text-slate-300 transition hover:bg-slate-700 hover:text-slate-50"
+                          aria-expanded={isExpanded}
+                        >
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </span>
+                          <span className="hidden sm:inline">Details</span>
+                        </button>
                       </div>
 
-                      {/* Col 2: Rang */}
-                      <div className="col-span-2 flex items-center gap-1.5 flex-wrap">
-                        {subjectResults.map((sr) => (
-                          <div key={sr.subjectCode} className="inline-flex items-center gap-1">
-                            <span
-                              className={`inline-flex items-center gap-1 text-xs font-medium ${
-                                sr.rank === 'Meister'
-                                  ? 'text-amber-300'
-                                  : sr.rank === 'Geselle'
-                                  ? 'text-sky-300'
-                                  : sr.rank === 'Lehrling'
-                                  ? 'text-rose-300'
-                                  : 'text-slate-400'
-                              }`}
-                            >
-                              {sr.rank === 'Meister' ? (
-                                <Crown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                              ) : sr.rank === 'Geselle' ? (
-                                <Wrench className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                              ) : sr.rank === 'Lehrling' ? (
-                                <Sprout className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                              ) : null}
-                              <span>{sr.label}</span>
-                            </span>
-                            {sr.hasRedCardDemotion && (
-                              <span
-                                className="text-[11px] text-rose-400/80 font-bold"
-                                title={`Rangverlust durch Rote Karte in ${sr.subjectCode} (ursprünglich ${sr.baseRank})`}
-                              >
-                                −1
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Col 3: Karten (Counts) */}
-                      <div className="col-span-2 flex items-center justify-start md:justify-center gap-1.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold ${
-                            greenCards.length > 0
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-slate-800/60 text-slate-500 border border-slate-800'
-                          }`}
-                          title={`${greenCards.length} Grüne Karten`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
-                          <span>{greenCards.length}</span>
-                        </span>
-
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold ${
-                            yellowCards.length > 0
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : 'bg-slate-800/60 text-slate-500 border border-slate-800'
-                          }`}
-                          title={`${yellowCards.length} Gelbe Karten`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-hidden="true" />
-                          <span>{yellowCards.length}</span>
-                        </span>
-
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold ${
-                            redCards.length > 0
-                              ? 'bg-rose-500/25 text-rose-300 border border-rose-500/40'
-                              : 'bg-slate-800/60 text-slate-500 border border-slate-800'
-                          }`}
-                          title={`${redCards.length} Rote Karten`}
-                        >
-                          <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" aria-hidden="true" />
-                          <span>{redCards.length}</span>
-                        </span>
-                      </div>
-
-                      {/* Col 4: Quick Action Buttons & Expand Chevron */}
-                      <div data-tour={index === 0 ? 'card-actions' : undefined} className="col-span-4 flex items-center justify-end gap-1.5 flex-wrap">
+                      {/* Quick actions stay directly under the name tile */}
+                      <div data-tour={index === 0 ? 'card-actions' : undefined} className="grid w-full grid-cols-5 gap-1.5">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1152,7 +1109,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
                           title="Grüne Karte vergeben  (Tastatur: 1)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1169,7 +1126,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
                           title="Gelbe Karte vergeben  (Tastatur: 2)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1181,7 +1138,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenRedCardModal(pupil);
                           }}
-                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
                           title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
                         >
                           <ShieldAlertIcon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1193,7 +1150,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'timeout');
                           }}
-                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
                           title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -1205,16 +1162,13 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'cooldown');
                           }}
-                          className="pressable focus-ring min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-xs font-bold transition flex items-center gap-1.5 active:scale-95"
+                          className="pressable focus-ring min-h-[48px] min-w-0 px-1 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-[10px] font-bold transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95"
                           title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich)  (Tastatur: 5)"
                         >
                           <Snowflake className="w-3.5 h-3.5 text-sky-300" />
                           <span>COOL-DOWN</span>
                         </button>
 
-                        <div className="hidden md:flex pl-1 min-h-[44px] min-w-[44px] items-center justify-center text-slate-500 hover:text-slate-300">
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </div>
                       </div>
                     </div>
 

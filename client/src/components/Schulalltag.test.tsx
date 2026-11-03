@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Schulalltag } from './Schulalltag';
@@ -106,10 +106,43 @@ describe('Schulalltag subject-scoped results and independent red card demotions'
     const annaEl = await screen.findByText('Anna Multi');
     const pupilRow = annaEl.closest<HTMLElement>('div.cursor-pointer')!;
 
-    expect(within(pupilRow).getByText(/D 6\/18 Lehrling/i)).toBeInTheDocument();
-    expect(within(pupilRow).getByText(/M 16\/18 Meister/i)).toBeInTheDocument();
-    // No merged single rank in pupil row
-    expect(within(pupilRow).queryByText(/^Meister$/)).toBeNull();
+    // The tile shows one rank only: the current lesson's subject (fallback D).
+    expect(within(pupilRow).getByText('Lehrling')).toBeInTheDocument();
+    // The old per-subject list / pending-subject text is gone from the main row.
+    expect(within(pupilRow).queryByText(/D 6\/18/)).toBeNull();
+    expect(within(pupilRow).queryByText(/M 16\/18/)).toBeNull();
+  });
+
+  it('uses the subject of the current lesson for the pupil tile rank', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getCurrentTimetable).mockResolvedValueOnce({
+      dayOfWeek: 2,
+      period: 3,
+      currentLesson: { className: '3a', subjectCode: 'M' },
+      todayLessons: [],
+    } as any);
+
+    const dItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-d-${i}`,
+      itemKey: `item_${i + 1}`,
+      rating: i < 6 ? 'smile' : 'struggle',
+      updatedAt: '2026-10-01T10:00:00Z',
+    }));
+    const mItems = Array.from({ length: 18 }, (_, i) => ({
+      id: `it-m-${i}`,
+      itemKey: `item_${i + 1}`,
+      rating: i < 16 ? 'smile' : 'struggle',
+      updatedAt: '2026-10-01T10:00:00Z',
+    }));
+    const anna = pupil(1, 'Anna Multi', [
+      evaluation('D', dItems as any),
+      evaluation('M', mItems as any),
+    ]);
+
+    renderSchulalltag([anna]);
+    const row = (await screen.findByText('Anna Multi')).closest<HTMLElement>('div.cursor-pointer')!;
+
+    await waitFor(() => expect(within(row).getByText('Meister')).toBeInTheDocument());
   });
 
   it('applies red card demotion independently per subject', async () => {
@@ -147,10 +180,14 @@ describe('Schulalltag subject-scoped results and independent red card demotions'
 
     renderSchulalltag([anna]);
 
-    // D remains Lehrling (lowest rank); M is demoted from Meister to Geselle
-    expect(await screen.findByText(/D 6\/18 Lehrling/i)).toBeInTheDocument();
-    expect(screen.getByText(/M 16\/18 Geselle/i)).toBeInTheDocument();
-    expect(screen.getByTitle(/Rangverlust durch Rote Karte in M/i)).toBeInTheDocument();
+    // D remains Lehrling (lowest rank) and is the current-lesson fallback tile.
+    const row = (await screen.findByText('Anna Multi')).closest<HTMLElement>('div.cursor-pointer')!;
+    expect(within(row).getByText('Lehrling')).toBeInTheDocument();
+
+    // The detail panel still carries the per-subject demotion information.
+    await userEvent.click(row);
+    expect(screen.getByText(/M: 16\/18 positiv/i)).toBeInTheDocument();
+    expect(screen.getByText(/herabgestuft auf Geselle/i)).toBeInTheDocument();
   });
 });
 
@@ -232,13 +269,15 @@ describe('Schulalltag per-subject panel, red card modal, and configured rubric',
     const anna = pupil(1, 'Anna Mixed', [evaluation('D', dItems as any)]);
 
     const { unmount } = renderSchulalltag([anna]);
-    expect(await screen.findByText(/D 6\/18 Lehrling/i)).toBeInTheDocument();
+    const annaRow = (await screen.findByText('Anna Mixed')).closest<HTMLElement>('div.cursor-pointer')!;
+    expect(within(annaRow).getByText('Lehrling')).toBeInTheDocument();
     unmount();
 
-    // Without a configured rubric nothing can be scored: 0/0 and pending, never a rank
+    // Without a configured rubric nothing can be scored: the tile stays pending.
     renderSchulalltag([pupil(2, 'Bella NoRubric', [evaluation('D', dItems as any)])], [GERMAN, MATHS], []);
     const bella = await screen.findByText('Bella NoRubric');
     const bellaRow = bella.closest<HTMLElement>('div.cursor-pointer')!;
-    expect(within(bellaRow).getByText(/D 0\/0 Ausstehend/i)).toBeInTheDocument();
+    expect(within(bellaRow).getByText('Ausstehend')).toBeInTheDocument();
+    expect(within(bellaRow).queryByText(/D 0\/0/)).toBeNull();
   });
 });
