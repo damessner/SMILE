@@ -477,18 +477,28 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     }
   };
 
-  // Resolve Time-Out in LW
-  const handleResolveTimeout = async (id: string, pupilName: string) => {
+  // Resolve Time-Out / Cool-Down in LW
+  const handleResolveTimeout = async (
+    id: string,
+    pupilName: string,
+    kind: 'timeout' | 'cooldown' = 'timeout',
+  ) => {
+    const isCooldown = kind === 'cooldown';
     const ok = await confirm({
       title: `${pupilName} zurück in die Klasse?`,
-      message: 'Der Arbeitsauftrag wird als erledigt protokolliert.',
+      message: isCooldown
+        ? 'Der Cool-Down wird beendet.'
+        : 'Der Arbeitsauftrag wird als erledigt protokolliert.',
       confirmLabel: 'Zurück schicken',
       tone: 'danger',
     });
     if (!ok) return;
 
     try {
-      await resolveTimeout(id, 'Arbeitsauftrag in Lernwerkstatt erledigt');
+      await resolveTimeout(
+        id,
+        isCooldown ? 'Cool-Down beendet' : 'Arbeitsauftrag in Lernwerkstatt erledigt',
+      );
       await loadTimeoutsData();
       onRefreshClassData();
       toast.success(`${pupilName} ist zurück in der Klasse.`);
@@ -640,7 +650,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             </h1>
             <span className="text-xs text-slate-400">
               {isLwView
-                ? `(${activeTimeouts.length} im Time-Out)`
+                ? `(${activeTimeouts.length} in der Lernwerkstatt)`
                 : `(${pupils.length} Schüler*innen)`}
             </span>
           </div>
@@ -855,11 +865,15 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                       {/* Action: Resolve and send back */}
                       <button
-                        onClick={() => handleResolveTimeout(item.id, item.pupil_name)}
+                        onClick={() => handleResolveTimeout(item.id, item.pupil_name, item.kind)}
                         className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-sm active:scale-95"
                       >
                         <Check className="w-4 h-4" />
-                        <span>Arbeitsauftrag erledigt / Zurück in die Klasse</span>
+                        <span>
+                          {item.kind === 'cooldown'
+                            ? 'Cool-Down beenden / Zurück in die Klasse'
+                            : 'Arbeitsauftrag erledigt / Zurück in die Klasse'}
+                        </span>
                       </button>
                     </div>
                   ))}
