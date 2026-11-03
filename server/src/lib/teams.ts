@@ -16,18 +16,23 @@ import {
   type Rank,
 } from './ranking.js';
 import { getLatestRound } from './rounds.js';
-import { normalizeSubject } from '../utils/subject.js';
+import { formatViennaTime, subjectLabel } from './notification-format.js';
+import { isEmailConfigured, sendRedCardEmail } from './email.js';
 
 /**
- * Sends staff-channel notifications to Microsoft Teams for red-card rank changes.
+ * Staff notifications for red-card rank changes.
  *
- * The transport is a Teams Workflow incoming webhook. It deliberately does not use
- * Microsoft Graph: normal chat/channel messages require delegated Graph permissions,
- * while app-only Graph messaging is migration-only. A webhook needs no Entra app
- * registration and no public callback endpoint.
+ * Two transports are supported:
+ * - Teams Workflow incoming webhook (no Entra app registration, no Graph),
+ * - SMTP e-mail (for schools where Workflows is blocked, or to post into a
+ *   Teams channel through its channel e-mail address).
+ *
+ * Microsoft Graph is deliberately not used for Teams chat messages: normal
+ * chat/channel messages require delegated Graph permissions, while app-only
+ * Graph messaging is migration-only.
  *
  * Notifications are best-effort and must never affect the card write. The caller
- * queues them after commit; delivery failures are logged without the webhook URL.
+ * queues them after commit; delivery failures are logged without secrets.
  */
 
 export type RedCardDirection = 'issued' | 'revoked';
@@ -88,20 +93,6 @@ export function rankChangesForSubjects(
     })
     .filter((change): change is RankChange => change !== null)
     .sort((a, b) => a.subjectCode.localeCompare(b.subjectCode, 'de'));
-}
-
-/** Subject code plus the canonical display name, without duplicating a bare code. */
-function subjectLabel(code: string): string {
-  const name = normalizeSubject(code).name;
-  return name && name !== code ? `${code} (${name})` : code;
-}
-
-function formatViennaTime(date: Date): string {
-  return new Intl.DateTimeFormat('de-AT', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'Europe/Vienna',
-  }).format(date);
 }
 
 /** Build the Adaptive Card exactly as the Teams Workflow webhook expects it. */
@@ -345,21 +336,28 @@ async function loadRedCardMessage(
 /**
  * Queue a notification after the card transaction has committed.
  *
- * Intentionally not awaited by the route: the card write must not wait for Teams.
- * The helper re-reads the rank state from PostgreSQL, so it also handles concurrent
- * cards correctly (a second active red card causes no second demotion message).
+ * Sends to every configured transport: the Teams Workflow webhook and/or SMTP
+ * e-mail. Intentionally not awaited by the route: the card write must not wait
+ * for Teams or the mail server. The helper re-reads the rank state from
+ * PostgreSQL, so it also handles concurrent cards correctly (a second active red
+ * card causes no second demotion message).
  */
 export function queueRedCardRankChange(event: RedCardRankChangeEvent): void {
-  if (!config.teams.notificationsEnabled || !config.teams.webhookUrl) return;
+  const teamsConfigured =
+    config.teams.notificationsEnabled && Boolean(config.teams.webhookUrl);
+  if (!teamsConfigured && !isEmailConfigured()) return;
 
   void (async () => {
     const message = await loadRedCardMessage(event);
     if (!message) return;
-    await postTeamsCard(buildRedCardCard(message));
+    await Promise.all([
+      postTeamsCard(buildRedCardCard(message)),
+      sendRedCardEmail(message),
+    ]);
   })().catch((error) => {
-    // Do not log the webhook URL or pupil data. A failed notification is visible
-    // in the journal only by its error class.
+    // Do not log the webhook URL, SMTP password or pupil data. A failed
+    // notification is visible in the journal only by its error class.
     const name = error instanceof Error ? error.name : 'UnknownError';
-    console.warn(`[teams] rank-change notification skipped (${name})`);
+    console.warn(`[notifications] rank-change notification skipped (${name})`);
   });
 }

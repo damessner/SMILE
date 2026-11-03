@@ -4,12 +4,18 @@ SMILE can post a message to a Microsoft Teams channel when a red card changes a
 pupil's rank (demotion on issue, restoration when the last active red card is
 revoked).
 
-This uses a **Teams Workflow incoming webhook**, not Microsoft Graph:
+Two transports are available:
+
+1. **Teams Workflow incoming webhook** — recommended.
+2. **SMTP e-mail** — fallback for tenants where Workflows is blocked; can send
+   to a staff list or to a Teams channel e-mail address.
+
+Neither uses Microsoft Graph:
 
 - no Entra app registration,
 - no Graph admin consent,
 - no public callback endpoint on the SMILE server,
-- works from the internal LXC over outbound HTTPS.
+- works from the internal LXC over outbound HTTPS (webhook) or SMTP port 587.
 
 Microsoft Graph is deliberately not used: normal chat/channel messages require
 delegated Graph permissions, and app-only Graph messaging is migration-only.
@@ -81,12 +87,50 @@ red card while one is already active).
 | `TEAMS_NOTIFICATIONS_ENABLED` | `true` | Set `false` to stop sending without removing the URL. |
 | `PUBLIC_APP_URL` | `https://172.16.1.11` | Target of the card's “In SMILE öffnen” action. |
 
+## E-mail fallback (SMTP)
+
+If a Teams Workflow cannot be created, the same rank-change message can be sent
+by e-mail instead. The recipient can be a staff distribution list or the e-mail
+address of a Teams channel (channel `...` → **Get email address**), which turns
+the mail into a channel post.
+
+Configure `/opt/smile-shared/.env`:
+
+```bash
+EMAIL_NOTIFICATIONS_ENABLED=true
+SMTP_HOST="smtp.office365.com"
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER="smile@ms-telfs.at"
+SMTP_PASSWORD="..."
+SMTP_FROM="SMILE <smile@ms-telfs.at>"
+NOTIFICATION_EMAIL_TO="staff-list@example.org"
+```
+
+`SMTP_SECURE=false` is correct for port 587 (STARTTLS). Use `true` only for
+implicit TLS on port 465.
+
+Then restart SMILE and send a test that does not touch pupil data:
+
+```bash
+sudo -u smile node /opt/smile/scripts/test-email-notification.mjs
+```
+
+To test one explicit address without changing `NOTIFICATION_EMAIL_TO`:
+
+```bash
+sudo -u smile node /opt/smile/scripts/test-email-notification.mjs name@example.org
+```
+
+The same red-card rules apply: full pupil name, class, source, teacher, subject
+rank changes; no red-card note; no message when the rank does not change.
+
 ## Failure behaviour
 
 Delivery is queued after the card transaction commits and is never awaited by
-the card request. A Teams outage or a revoked webhook cannot make a red card
-fail to save. Failures are logged as `[teams] ...` without the URL or pupil
-data, and are best-effort only (no retry queue).
+the card request. A Teams outage, revoked webhook or SMTP failure cannot make a
+red card fail to save. Failures are logged as `[teams]` or `[email]` without
+secrets or pupil data, and are best-effort only (no retry queue).
 
 ## Data protection
 

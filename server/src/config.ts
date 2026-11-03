@@ -379,6 +379,28 @@ export const config = {
     /** Link used by the card's "In SMILE öffnen" action. */
     appUrl: (process.env.PUBLIC_APP_URL ?? '').trim() || 'https://172.16.1.11',
   },
+
+  // --- SMTP e-mail notifications --------------------------------------------
+  /**
+   * Alternative transport for the same red-card rank-change messages. Useful
+   * when a Teams Workflow cannot be created, or to post into a Teams channel via
+   * its channel e-mail address. Sending is enabled only when host, user,
+   * password, from and at least one recipient are all present.
+   */
+  email: {
+    notificationsEnabled: readBool('EMAIL_NOTIFICATIONS_ENABLED', true),
+    host: (process.env.SMTP_HOST ?? '').trim(),
+    port: readInt('SMTP_PORT', 587),
+    /** true for implicit TLS on port 465; false for STARTTLS on 587. */
+    secure: readBool('SMTP_SECURE', false),
+    user: (process.env.SMTP_USER ?? '').trim(),
+    password: process.env.SMTP_PASSWORD ?? '',
+    from: (process.env.SMTP_FROM ?? '').trim(),
+    to: (process.env.NOTIFICATION_EMAIL_TO ?? '')
+      .split(',')
+      .map((address) => address.trim())
+      .filter(Boolean),
+  },
 } as const;
 
 export type AppConfig = typeof config;
