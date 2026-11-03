@@ -2,8 +2,35 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildRedCardCard,
   postTeamsCard,
+  rankChangeFromSuggestion,
   type RedCardMessage,
 } from './teams.js';
+
+describe('rankChangeFromSuggestion', () => {
+  it('demotes a Geselle to Lehrling and a Meister to Geselle', () => {
+    expect(rankChangeFromSuggestion('Geselle', false, true)).toEqual({
+      from: 'Geselle',
+      to: 'Lehrling',
+    });
+    expect(rankChangeFromSuggestion('Meister', false, true)).toEqual({
+      from: 'Meister',
+      to: 'Geselle',
+    });
+  });
+
+  it('restores the rank when the last red card is revoked', () => {
+    expect(rankChangeFromSuggestion('Geselle', true, false)).toEqual({
+      from: 'Lehrling',
+      to: 'Geselle',
+    });
+  });
+
+  it('sends nothing for a Lehrling or an unchanged red-card state', () => {
+    expect(rankChangeFromSuggestion('Lehrling', false, true)).toBeNull();
+    expect(rankChangeFromSuggestion('Geselle', true, true)).toBeNull();
+    expect(rankChangeFromSuggestion(null, false, true)).toBeNull();
+  });
+});
 
 describe('buildRedCardCard', () => {
   const message: RedCardMessage = {

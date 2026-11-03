@@ -199,6 +199,21 @@ async function activeRedCardCount(pupilId: number): Promise<number> {
 }
 
 /**
+ * Apply the red-card state to one pupil-level suggestion. A card is a single
+ * one-step demotion; a Lehrling stays Lehrling, so no notification is emitted.
+ */
+export function rankChangeFromSuggestion(
+  suggestion: Rank | null,
+  beforeHasRedCard: boolean,
+  afterHasRedCard: boolean,
+): PupilRankChange | null {
+  if (!suggestion || beforeHasRedCard === afterHasRedCard) return null;
+  const from = beforeHasRedCard ? demote(suggestion) : suggestion;
+  const to = afterHasRedCard ? demote(suggestion) : suggestion;
+  return from === to ? null : { from, to };
+}
+
+/**
  * Compute the pupil-level conference rank before and after the red-card state.
  *
  * Ranks are a pupil property, not a per-subject value. The base is the
@@ -304,11 +319,15 @@ export async function computePupilRankChange(
   });
 
   const suggestion = summarizeSubmittedTeacherVotes(votes).suggestedRankByHours;
-  if (!suggestion) return null;
+  return rankChangeFromSuggestion(suggestion, beforeHasRedCard, afterHasRedCard);
+}
 
-  const from = beforeHasRedCard ? demote(suggestion) : suggestion;
-  const to = afterHasRedCard ? demote(suggestion) : suggestion;
-  return from === to ? null : { from, to };
+function cleanTeacherNote(note: string | null | undefined): string | null {
+  return (
+    note
+      ?.replace(/^\[TIME-OUT LW\]\s*(Arbeitsauftrag:\s*)?/i, '')
+      .trim() || null
+  );
 }
 
 async function loadRedCardMessage(
@@ -359,7 +378,7 @@ async function loadRedCardMessage(
     actorName,
     source: event.source,
     rankChange,
-    note: event.note?.trim() || null,
+    note: cleanTeacherNote(event.note),
     occurredAt: new Date(),
   };
 }
