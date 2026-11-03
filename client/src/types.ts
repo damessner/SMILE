@@ -28,6 +28,22 @@ export interface SchoolClass {
   isKv?: boolean;
 }
 
+export interface NotificationClassSubscription {
+  classId: number;
+  className: string;
+  green: boolean;
+  yellow: boolean;
+  red: boolean;
+  timeout: boolean;
+  cooldown: boolean;
+  weeklyDigest: boolean;
+}
+
+export interface NotificationPreferences {
+  email: string;
+  classes: NotificationClassSubscription[];
+}
+
 export interface RubricItem {
   key: string;
   label?: string;

@@ -14,6 +14,7 @@ import {
   EyeOff,
   KeyRound,
   RotateCcw,
+  Bell,
 } from 'lucide-react';
 import type { SchoolClass, User } from '../../types';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -65,6 +66,7 @@ export function AppHeader({
     setAdminRestoreOpen,
     setTimeoutEscalationOpen,
     setOnboardingOpen,
+    setNotificationSettingsOpen,
   } = modals;
   const isHeadmaster = isSchoolLeadership;
 
@@ -239,6 +241,16 @@ export function AppHeader({
             aria-label="Einführung und Tour"
           >
             <HelpCircle className="w-4 h-4" />
+          </button>
+
+          {/* E-mail notification subscriptions */}
+          <button
+            onClick={() => setNotificationSettingsOpen(true)}
+            className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-sky-300 hover:bg-slate-700 transition border border-slate-700/60"
+            title="E-Mail-Benachrichtigungen einstellen"
+            aria-label="E-Mail-Benachrichtigungen einstellen"
+          >
+            <Bell className="w-4 h-4" />
           </button>
 
           {/* Pupil Manager Button */}

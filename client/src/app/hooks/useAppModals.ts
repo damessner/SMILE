@@ -14,6 +14,7 @@ export function useAppModals() {
   const [adminRestoreOpen, setAdminRestoreOpen] = useState(false);
   const [timeoutEscalationOpen, setTimeoutEscalationOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
 
   /**
    * Close every modal/drawer. Called when the signed-in identity changes: a
@@ -31,6 +32,7 @@ export function useAppModals() {
     setAdminRestoreOpen(false);
     setTimeoutEscalationOpen(false);
     setOnboardingOpen(false);
+    setNotificationSettingsOpen(false);
   }, []);
 
   return {
@@ -55,6 +57,8 @@ export function useAppModals() {
     setTimeoutEscalationOpen,
     onboardingOpen,
     setOnboardingOpen,
+    notificationSettingsOpen,
+    setNotificationSettingsOpen,
   };
 }
 

@@ -22,6 +22,8 @@ vi.mock('./services/api', () => ({
   batchUpdateItems: vi.fn(),
   getCurrentTimetable: vi.fn(),
   getTimeoutEscalations: vi.fn(),
+  getNotificationPreferences: vi.fn(),
+  saveNotificationPreferences: vi.fn(),
   logout: vi.fn(),
   exportBackup: vi.fn(),
 }));

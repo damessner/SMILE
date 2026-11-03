@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, uuid, jsonb, numeric, serial, bigserial, index, uniqueIndex, pgSequence } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, uuid, jsonb, numeric, serial, bigserial, index, uniqueIndex, primaryKey, pgSequence } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 /**
@@ -212,7 +212,57 @@ export const finalRanks = pgTable('final_ranks', {
   classRoundIdx: index('final_ranks_class_round_idx').on(t.classId, t.roundId),
 }));
 
-// 12. Audit Logs
+// 12. Notification preferences and class subscriptions
+export const notificationPreferences = pgTable('notification_preferences', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const notificationSubscriptions = pgTable('notification_subscriptions', {
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  classId: integer('class_id')
+    .notNull()
+    .references(() => schoolClasses.id, { onDelete: 'cascade' }),
+  green: boolean('green').default(false).notNull(),
+  yellow: boolean('yellow').default(false).notNull(),
+  red: boolean('red').default(false).notNull(),
+  timeout: boolean('timeout').default(false).notNull(),
+  cooldown: boolean('cooldown').default(false).notNull(),
+  weeklyDigest: boolean('weekly_digest').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.userId, t.classId] }),
+  userIdx: index('notification_subscriptions_user_idx').on(t.userId),
+  classIdx: index('notification_subscriptions_class_idx').on(t.classId),
+}));
+
+/** One row per sent weekly digest, so a restart cannot send the same week twice. */
+export const notificationDigestLog = pgTable('notification_digest_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  classId: integer('class_id')
+    .notNull()
+    .references(() => schoolClasses.id, { onDelete: 'cascade' }),
+  weekStart: text('week_start').notNull(), // ISO date, Monday
+  sentAt: timestamp('sent_at').defaultNow().notNull(),
+}, (t) => ({
+  userClassWeekUidx: uniqueIndex('notification_digest_user_class_week_uidx').on(
+    t.userId,
+    t.classId,
+    t.weekStart,
+  ),
+}));
+
+// 13. Audit Logs
 export const auditLogs = pgTable('audit_logs', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
   actorId: integer('actor_id'),

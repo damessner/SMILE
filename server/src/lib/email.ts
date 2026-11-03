@@ -19,6 +19,10 @@ export interface EmailContent {
   html: string;
 }
 
+export interface OutgoingMail extends EmailContent {
+  to: string[];
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -27,6 +31,8 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+export { escapeHtml };
 
 function fromAddress(): string {
   return config.email.from || config.email.user;
@@ -41,13 +47,14 @@ function hasSmtpCredentials(): boolean {
   );
 }
 
-/** Sending is enabled only when the transport and at least one recipient exist. */
+/** SMTP transport is ready; recipients are supplied per message. */
+export function isSmtpConfigured(): boolean {
+  return config.email.notificationsEnabled && hasSmtpCredentials();
+}
+
+/** Legacy global recipient list for red-card rank-loss notifications. */
 export function isEmailConfigured(): boolean {
-  return (
-    config.email.notificationsEnabled &&
-    hasSmtpCredentials() &&
-    config.email.to.length > 0
-  );
+  return isSmtpConfigured() && config.email.to.length > 0;
 }
 
 export function buildRedCardEmail(message: RedCardMessage): EmailContent {
@@ -136,29 +143,19 @@ function getTransport() {
 }
 
 /**
- * Send one rank-change e-mail. Returns false rather than throwing so a mail
- * outage never makes a card write look failed. The password is never logged.
+ * Send one e-mail. Returns false rather than throwing so a mail outage never
+ * makes a card write look failed. The password is never logged.
  */
-export async function sendRedCardEmail(
-  message: RedCardMessage,
-  recipients: string[] = config.email.to,
-): Promise<boolean> {
-  if (
-    !config.email.notificationsEnabled ||
-    !hasSmtpCredentials() ||
-    recipients.length === 0
-  ) {
-    return false;
-  }
+export async function sendMail(mail: OutgoingMail): Promise<boolean> {
+  if (!isSmtpConfigured() || mail.to.length === 0) return false;
 
-  const content = buildRedCardEmail(message);
   try {
     await getTransport().sendMail({
       from: fromAddress(),
-      to: recipients.join(', '),
-      subject: content.subject,
-      text: content.text,
-      html: content.html,
+      to: mail.to.join(', '),
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
     });
     return true;
   } catch (error) {
@@ -166,4 +163,13 @@ export async function sendRedCardEmail(
     console.warn(`[email] notification delivery failed (${name})`);
     return false;
   }
+}
+
+/** Legacy fixed-recipient red-card rank-loss mail. */
+export async function sendRedCardEmail(
+  message: RedCardMessage,
+  recipients: string[] = config.email.to,
+): Promise<boolean> {
+  const content = buildRedCardEmail(message);
+  return sendMail({ ...content, to: recipients });
 }

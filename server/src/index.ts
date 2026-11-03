@@ -27,7 +27,9 @@ import { backupRoutes } from './routes/backup.js';
 import { statisticsRoutes } from './routes/statistics.js';
 import { timetableRoutes } from './routes/timetable.js';
 import { timeoutRoutes } from './routes/timeouts.js';
+import { notificationRoutes } from './routes/notifications.js';
 import { registerTimeoutSweeper } from './lib/timeout-sweeper.js';
+import { startWeeklyDigestScheduler } from './lib/notification-digest.js';
 import { bellScheduleTimezoneWarning } from './lib/period-times.js';
 import {
   closeAllWebSockets,
@@ -251,6 +253,7 @@ export async function buildServer(
   await fastify.register(statisticsRoutes, { prefix: '/api/statistics' });
   await fastify.register(timetableRoutes, { prefix: '/api/timetable' });
   await fastify.register(timeoutRoutes, { prefix: '/api/timeouts' });
+  await fastify.register(notificationRoutes, { prefix: '/api/notifications' });
   await fastify.register(backupRoutes, { prefix: '/api/backup' });
 
   // --- Static client ------------------------------------------------------
@@ -340,10 +343,12 @@ export async function start() {
   }
 
   const heartbeat = startWebSocketHeartbeat();
+  const digestTimer = startWeeklyDigestScheduler(fastify.log);
 
   const shutdown = async (signal: string) => {
     fastify.log.info(`${signal} received, shutting down`);
     stopWebSocketHeartbeat(heartbeat);
+    clearInterval(digestTimer);
     closeAllWebSockets();
     try {
       await fastify.close();

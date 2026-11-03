@@ -18,6 +18,7 @@ import {
 } from '../lib/guards.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 import { queueRedCardRankChange } from '../lib/teams.js';
+import { queueClassEventNotification } from '../lib/notification-events.js';
 
 const CARD_TYPES = new Set(['green', 'yellow', 'red']);
 
@@ -154,6 +155,14 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     broadcastToClass(classId, { type: 'CARD_ISSUED', card, alertTriggered });
+
+    queueClassEventNotification({
+      type: typedCard,
+      classId,
+      pupilName: pupil.fullName,
+      teacherId: actorId,
+      note: cleanNote ?? null,
+    });
 
     if (typedCard === 'red') {
       queueRedCardRankChange({

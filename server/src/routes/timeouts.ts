@@ -26,6 +26,10 @@ import { canActOnTimeout, timeoutVisibility } from '../lib/lw-duty.js';
 import { timeoutExpiry } from '../lib/period-times.js';
 import { broadcastToClass } from '../ws/live-sync.js';
 import { queueRedCardRankChange } from '../lib/teams.js';
+import {
+  queueClassEventNotification,
+  queueTimeoutEscalationNotification,
+} from '../lib/notification-events.js';
 
 export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -197,12 +201,35 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         source: 'Time-Out',
         note: storedTask,
       });
+      queueClassEventNotification({
+        type: 'timeout',
+        classId,
+        pupilName: pupil.fullName,
+        teacherId: actorId,
+        note: storedTask,
+      });
     }
     if (result.cooldownCard) {
       broadcastToClass(classId, {
         type: 'CARD_ISSUED',
         card: result.cooldownCard,
         alertTriggered: false,
+      });
+      queueClassEventNotification({
+        type: 'cooldown',
+        classId,
+        pupilName: pupil.fullName,
+        teacherId: actorId,
+        note: cleanTask || null,
+      });
+    }
+    if (result.isEscalationTriggered) {
+      queueTimeoutEscalationNotification({
+        classId,
+        pupilName: pupil.fullName,
+        teacherId: actorId,
+        totalTimeouts: result.totalTimeouts,
+        note: storedTask,
       });
     }
     broadcastToClass(classId, {

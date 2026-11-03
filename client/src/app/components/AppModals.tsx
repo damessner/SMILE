@@ -9,6 +9,7 @@ import { TeacherClassReportModal } from '../../components/TeacherClassReportModa
 import { AllClassesConferenceExportModal } from '../../components/AllClassesConferenceExportModal';
 import { TimeoutEscalationModal } from '../../components/TimeoutEscalationModal';
 import { OnboardingTour } from '../../components/OnboardingTour';
+import { NotificationSettingsModal } from '../../components/NotificationSettingsModal';
 import type { AppModals } from '../hooks/useAppModals';
 import type { AppTab } from '../types';
 
@@ -67,6 +68,8 @@ export function AppModals({
     setTimeoutEscalationOpen,
     onboardingOpen,
     setOnboardingOpen,
+    notificationSettingsOpen,
+    setNotificationSettingsOpen,
   } = modals;
 
   return (
@@ -146,6 +149,10 @@ export function AppModals({
           }}
           onUpdated={refreshPendingTimeoutCount}
         />
+      )}
+
+      {notificationSettingsOpen && (
+        <NotificationSettingsModal onClose={() => setNotificationSettingsOpen(false)} />
       )}
 
       {/* Interactive Spotlight Onboarding Tour */}

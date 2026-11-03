@@ -1,4 +1,9 @@
-import type { PupilBehaviorProfile, PupilBehaviorAction } from '../types';
+import type {
+  PupilBehaviorProfile,
+  PupilBehaviorAction,
+  NotificationPreferences,
+  NotificationClassSubscription,
+} from '../types';
 
 const API_BASE = '/api';
 export const SESSION_EXPIRED_EVENT = 'smile-session-expired';
@@ -569,6 +574,32 @@ export async function deletePupilBehaviorAction(
 ): Promise<{ success: boolean }> {
   const res = await apiFetch(`/pupils/${pupilId}/behavior-actions/${actionId}`, {
     method: 'DELETE',
+  });
+  return unwrap(res);
+}
+
+// --- E-mail notification subscriptions --------------------------------------
+
+export async function getNotificationPreferences(): Promise<NotificationPreferences> {
+  const res = await apiFetch('/notifications/preferences');
+  return unwrap(res);
+}
+
+export async function saveNotificationPreferences(data: {
+  email: string;
+  subscriptions: Array<
+    Pick<NotificationClassSubscription, 'classId'> &
+      Partial<
+        Pick<
+          NotificationClassSubscription,
+          'green' | 'yellow' | 'red' | 'timeout' | 'cooldown' | 'weeklyDigest'
+        >
+      >
+  >;
+}): Promise<{ success: boolean }> {
+  const res = await apiFetch('/notifications/preferences', {
+    method: 'PUT',
+    body: JSON.stringify(data),
   });
   return unwrap(res);
 }

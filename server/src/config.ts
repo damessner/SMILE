@@ -400,6 +400,11 @@ export const config = {
       .split(',')
       .map((address) => address.trim())
       .filter(Boolean),
+    /** MED/SLC recipients for mandatory 3/6/9 time-out escalation mails. */
+    leadershipTo: (process.env.LEADERSHIP_NOTIFICATION_EMAILS ?? '')
+      .split(',')
+      .map((address) => address.trim())
+      .filter(Boolean),
   },
 } as const;
 
