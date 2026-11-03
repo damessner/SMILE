@@ -621,12 +621,25 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     isLwView,
   ]);
 
-  // The class tile is ranked for the subject of the lesson that is running now,
-  // not for an arbitrary subject list.
+  // The class tile is ranked for the subject of the lesson running now — but only
+  // when the teacher is actually looking at that lesson's class. If they switch to
+  // another class, use that class's first subject instead of a foreign rank.
+  const currentLesson = timetableData?.currentLesson ?? null;
+  const currentLessonClassName =
+    currentLesson?.className || currentLesson?.class_name || null;
+  const currentLessonMatchesClass =
+    !!currentLesson &&
+    !!currentClass &&
+    (currentLessonClassName === currentClass.name ||
+      currentLesson.classId === currentClass.id) &&
+    (currentClass.mySubjects ?? []).some(
+      (s) => s.code === (currentLesson.subjectCode || currentLesson.subject_code),
+    );
+
   const lessonSubjectCode =
-    timetableData?.currentLesson?.subjectCode ||
-    timetableData?.currentLesson?.subject_code ||
-    currentClass?.mySubjects?.[0]?.code;
+    (currentLessonMatchesClass
+      ? currentLesson?.subjectCode || currentLesson?.subject_code
+      : null) || currentClass?.mySubjects?.[0]?.code;
 
   // Filtered pupils list
   const filteredPupils = useMemo(() => {
@@ -998,7 +1011,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <span className="normal-case font-medium tracking-normal text-[10px] text-slate-500">
                 <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-rose-400 mr-1" />Lehrling</span>
                 <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Geselle</span>
-                <span><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />Meister</span>
+                <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />Meister</span>
+                <span><span className="inline-block w-2 h-2 rounded-full bg-slate-500 mr-1" />Ausstehend</span>
               </span>
             </div>
 
