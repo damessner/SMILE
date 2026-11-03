@@ -127,10 +127,11 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanEmail = email?.trim() ?? '';
       const active = (subscriptions ?? []).filter(hasAnyFlag);
 
-      if (active.length > 0) {
-        if (!cleanEmail || !EMAIL_RE.test(cleanEmail)) {
-          return badRequest(reply, 'Bitte eine gültige E-Mail-Adresse für die Benachrichtigungen angeben.');
-        }
+      if (cleanEmail && !EMAIL_RE.test(cleanEmail)) {
+        return badRequest(reply, 'Bitte eine gültige E-Mail-Adresse angeben.');
+      }
+      if (active.length > 0 && !cleanEmail) {
+        return badRequest(reply, 'Bitte eine gültige E-Mail-Adresse für die Benachrichtigungen angeben.');
       }
 
       const classIds = [...new Set(active.map((s) => s.classId).filter((id): id is number => !!id))];
