@@ -109,7 +109,7 @@ export function AppHeader({
                       }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span className="hidden 2xl:inline">{label}</span>
+                    <span className="hidden lg:inline">{label}</span>
                     <span className="md:hidden">{label.split(' ')[0]}</span>
                   </button>
                 ))}
