@@ -29,7 +29,9 @@ Caddy therefore uses its local CA:
 - Root certificate: `docs/smile-internal-ca.crt`
 - Also on the LXC: `/opt/smile-shared/smile-internal-ca.crt`
 - CA private key: `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.key`
-  (stays on LXC 115, never distributed)
+  (stays on LXC 115, never distributed). If LXC 115 is rebuilt, Caddy creates a
+  new root and every client must install the new CA. Back up
+  `/var/lib/caddy/.local/share/caddy/pki/` if you want the CA to survive a rebuild.
 
 Fingerprint:
 
