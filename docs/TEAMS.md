@@ -60,7 +60,14 @@ red card while one is already active).
    systemctl restart smile.service
    ```
 
-8. Issue and revoke a red card for a test pupil, or watch the journal:
+8. Issue and revoke a red card for a test pupil, or send one test card that does
+   not touch pupil data:
+
+   ```bash
+   sudo -u smile node /opt/smile/scripts/test-teams-webhook.mjs
+   ```
+
+   Watch the journal for delivery errors:
 
    ```bash
    journalctl -u smile.service -f | grep '\[teams\]'
