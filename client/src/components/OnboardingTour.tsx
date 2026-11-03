@@ -155,7 +155,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
       badge: 'Sofort-Feedback 🟢🟡🔴',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       title: 'Verhaltenskarten im Unterricht',
-      subtitle: 'Lob, Verwarnung & Time-Out mit 1 Klick',
+      subtitle: 'Lob, Verwarnung, Time-Out & Cool-Down mit 1 Klick',
       pointerText: '👉 Hier Verhaltenskarten vergeben oder Schüler anklicken',
       description: 'In der Schülerliste können Sie direkt während der Stunde Karten vergeben:',
       highlights: [
@@ -176,6 +176,12 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
           title: 'Rote Karte & TIMEOUT',
           text: 'Schwerer Verstoß (kostet sofort einen Rang). Bei Bedarf kann der Schüler in den Time-Out-Raum geschickt werden.',
           border: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+        },
+        {
+          icon: '❄',
+          title: 'Cool-Down (Lernwerkstatt)',
+          text: 'Auszeit zur Beruhigung ohne Rote Karte, ohne Rangverlust und ohne Eskalation. Eine Notiz ist optional.',
+          border: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
         },
       ],
     },
