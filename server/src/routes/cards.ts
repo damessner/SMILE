@@ -17,6 +17,7 @@ import {
   safeTeacherId,
 } from '../lib/guards.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+import { queueRedCardRankChange } from '../lib/teams.js';
 
 const CARD_TYPES = new Set(['green', 'yellow', 'red']);
 
@@ -154,6 +155,16 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
 
     broadcastToClass(classId, { type: 'CARD_ISSUED', card, alertTriggered });
 
+    if (typedCard === 'red') {
+      queueRedCardRankChange({
+        pupilId,
+        classId,
+        actorTeacherId: actorId,
+        direction: 'issued',
+        source: 'Rote Karte',
+      });
+    }
+
     return reply.status(201).send({ card, alertTriggered });
   });
 
@@ -216,6 +227,16 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       cardId: id,
       pupilId: existing.pupilId,
     });
+
+    if (existing.cardType === 'red') {
+      queueRedCardRankChange({
+        pupilId: existing.pupilId,
+        classId: existing.classId,
+        actorTeacherId: user.teacherId ?? null,
+        direction: 'revoked',
+        source: 'Rote Karte',
+      });
+    }
 
     return reply.send({ success: true, card: revoked });
   });

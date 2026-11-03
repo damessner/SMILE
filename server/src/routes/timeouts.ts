@@ -25,6 +25,7 @@ type Identity,
 import { canActOnTimeout, timeoutVisibility } from '../lib/lw-duty.js';
 import { timeoutExpiry } from '../lib/period-times.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+import { queueRedCardRankChange } from '../lib/teams.js';
 
 export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -187,6 +188,13 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'CARD_ISSUED',
         card: result.redCard,
         alertTriggered: true,
+      });
+      queueRedCardRankChange({
+        pupilId,
+        classId,
+        actorTeacherId: actorId,
+        direction: 'issued',
+        source: 'Time-Out',
       });
     }
     if (result.cooldownCard) {

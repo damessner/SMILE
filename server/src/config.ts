@@ -365,6 +365,20 @@ export const config = {
    * private notes should stay with their author.
    */
   statisticsShowForeignComments: readBool('STATISTICS_SHOW_FOREIGN_COMMENTS', true),
+
+  // --- Microsoft Teams staff-channel notifications --------------------------
+  /**
+   * Incoming-webhook URL from a Teams Workflow ("Send webhook alerts to a
+   * channel"). Empty disables the feature. The URL contains a bearer secret,
+   * so it lives in .env and must never be logged or committed.
+   */
+  teams: {
+    webhookUrl: (process.env.TEAMS_WEBHOOK_URL ?? '').trim(),
+    /** Explicit switch; a missing URL also disables sending. */
+    notificationsEnabled: readBool('TEAMS_NOTIFICATIONS_ENABLED', true),
+    /** Link used by the card's "In SMILE öffnen" action. */
+    appUrl: (process.env.PUBLIC_APP_URL ?? '').trim() || 'https://172.16.1.11',
+  },
 } as const;
 
 export type AppConfig = typeof config;
