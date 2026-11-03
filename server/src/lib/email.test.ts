@@ -17,8 +17,7 @@ describe('buildRedCardEmail', () => {
   it('contains the full name, class, pupil-level rank and the note', () => {
     const mail = buildRedCardEmail(message);
 
-    expect(mail.subject).toContain('Anna Muster');
-    expect(mail.subject).toContain('3a');
+    expect(mail.subject).toBe('Schüler Anna Muster (3a) Geselle ---> Lehrling');
     expect(mail.text).toContain('Schüler*in: Anna Muster');
     expect(mail.text).toContain('Klasse: 3a');
     expect(mail.text).toContain('Quelle: Rote Karte');
@@ -36,9 +35,13 @@ describe('buildRedCardEmail', () => {
   });
 
   it('uses the restore wording after a revoke', () => {
-    const mail = buildRedCardEmail({ ...message, direction: 'revoked' });
+    const mail = buildRedCardEmail({
+      ...message,
+      direction: 'revoked',
+      rankChange: { from: 'Lehrling', to: 'Geselle' },
+    });
 
-    expect(mail.subject).toContain('Rang wiederhergestellt');
+    expect(mail.subject).toBe('Schüler Anna Muster (3a) Lehrling ---> Geselle');
     expect(mail.text).toContain('Zurückgezogen von: Lehrerin Beispiel (LBE)');
     expect(mail.html).toContain('Rang wiederhergestellt');
   });

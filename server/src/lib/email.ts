@@ -63,7 +63,7 @@ export function buildRedCardEmail(message: RedCardMessage): EmailContent {
     ? 'Rote Karte – Rangverlust'
     : 'Rote Karte zurückgezogen – Rang wiederhergestellt';
 
-  const subject = `SMILE: ${title} – ${message.pupilName} (${message.className})`;
+  const subject = `Schüler ${message.pupilName} (${message.className}) ${message.rankChange.from} ---> ${message.rankChange.to}`;
 
   const textLines = [
     title,
