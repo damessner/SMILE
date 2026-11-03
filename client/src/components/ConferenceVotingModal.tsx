@@ -25,8 +25,6 @@ import { describeParticipation } from '../lib/conferenceParticipation';
 import { useConfirm } from './ConfirmDialog';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
 import {
-  formatSubjectEvidence,
-  computeSubjectEvidenceBars,
   getRankVisuals,
   type SubjectEvidenceItem,
 } from '../lib/conferenceEvidence';
@@ -630,33 +628,8 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Positive Criteria Progress Bar & Hours-Weighted Breakdown */}
+                  {/* Hours-Weighted Breakdown */}
                   <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-                        <span>
-                          Raster (je Fach):{' '}
-                          <strong className="text-amber-300 font-bold">
-                            {formatSubjectEvidence(p.subjectEvidence)}
-                          </strong>
-                        </span>
-                      </div>
-                      <div className="w-full h-3.5 bg-slate-950 rounded-full overflow-hidden flex border border-slate-800">
-                        {p.subjectEvidence?.length ? (
-                          computeSubjectEvidenceBars(p.subjectEvidence).map((bar) => (
-                            <div
-                              key={bar.key}
-                              style={{ width: `${bar.percent}%` }}
-                              className={`h-full ${bar.fillColor} transition-all duration-300`}
-                              title={bar.title}
-                            />
-                          ))
-                        ) : (
-                          <div className="h-full w-full bg-slate-800" />
-                        )}
-                      </div>
-                    </div>
-
                     {/* Hours-Weighted Breakdown Bar */}
                     {p.voteStats?.totalVotedHours ? (
                       <div className="pt-2.5 border-t border-slate-800/60">
@@ -1180,28 +1153,6 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   </div>
 
                   <div className="mt-2 pl-8 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Raster:{' '}
-                        <strong className="text-slate-50">
-                          {formatSubjectEvidence(pupil.subjectEvidence)}
-                        </strong>
-                      </span>
-                      <span>Nachfolgende Beschlüsse</span>
-                    </div>
-                    <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700">
-                      {pupil.subjectEvidence?.length ? (
-                        computeSubjectEvidenceBars(pupil.subjectEvidence).map((bar) => (
-                          <div
-                            key={bar.key}
-                            style={{ width: `${bar.percent}%` }}
-                            className={`h-full ${bar.fillColor}`}
-                            title={bar.title}
-                          />
-                        ))
-                      ) : (
-                        <div className="h-full w-full bg-slate-800" />
-                      )}
-                    </div>
                     {pupil.voteStats?.totalVotedHours ? (
                       <div className="pt-1">
                         <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">

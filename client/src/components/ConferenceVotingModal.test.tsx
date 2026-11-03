@@ -121,9 +121,9 @@ describe('ConferenceVotingModal', () => {
     expect(screen.getByText('Konferenz-Modus')).toBeInTheDocument();
     expect(screen.getByText(/Lehrpersonen/)).toBeInTheDocument();
 
-    // The evidence bar row is one bar per subject.
-    const bars = screen.getAllByTitle(/Deutsch: 10\/18 positiv/);
-    expect(bars).toHaveLength(1);
+    // Subject rubric evidence is intentionally not listed in conference mode.
+    expect(screen.queryByText(/Raster/)).toBeNull();
+    expect(screen.queryAllByTitle(/Deutsch: 10\/18 positiv/)).toHaveLength(0);
 
     // Approve is available and not yet pressed.
     expect(screen.getByRole('button', { name: /Als Beschluss annehmen/i })).toBeInTheDocument();
@@ -221,7 +221,7 @@ describe('ConferenceVotingModal', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: /Bearbeiten/i }));
-    expect(screen.getByText('Nachfolgende Beschlüsse')).toBeInTheDocument();
+    expect(screen.getAllByText('Vorschlag').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: /Präsentation/i }));
     expect(screen.getByText(/Lehrer-Votings & Vorschläge/)).toBeInTheDocument();
