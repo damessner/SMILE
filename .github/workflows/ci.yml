@@ -12,21 +12,21 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: smile
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
           POSTGRES_DB: smile_db_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U smile -d smile_db_test"
+          --health-cmd "pg_isready -U postgres -d smile_db_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
       NODE_ENV: test
-      TEST_DATABASE_URL: postgres://smile:password@127.0.0.1:5432/smile_db_test
+      TEST_DATABASE_URL: postgres://smile_test:password@127.0.0.1:5432/smile_db_test
       JWT_SECRET: ci-only-secret-that-is-long-enough-to-pass-123456
-      DATABASE_URL: postgres://smile:password@127.0.0.1:5432/smile_db_test
+      DATABASE_URL: postgres://smile_test:password@127.0.0.1:5432/smile_db_test
       SMILE_ENV_FILE: no-such-env-file-for-ci
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +34,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Provision least-privilege test database role
+        run: |
+          PGPASSWORD=password psql -h 127.0.0.1 -U postgres -d smile_db_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE smile_test LOGIN PASSWORD 'password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT;
+          GRANT CONNECT, CREATE, TEMPORARY ON DATABASE smile_db_test TO smile_test;
+          GRANT USAGE, CREATE ON SCHEMA public TO smile_test;
+          SQL
       - run: npm ci
       - run: npm run typecheck
       - name: Shell syntax
