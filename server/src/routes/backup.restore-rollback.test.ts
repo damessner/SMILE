@@ -69,7 +69,7 @@ beforeAll(async () => {
     await app.ready();
   } finally {
     for (const key of Object.keys(process.env)) {
-      if (!(key in TEST_ENV) && key !== 'BACKUP_DIR') delete process.env[key];
+      if (!(key in TEST_ENV)) delete process.env[key];
     }
     Object.assign(process.env, saved, TEST_ENV, { BACKUP_DIR: testBackupDir });
   }
@@ -181,7 +181,7 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
     expect(res.statusCode).toBe(500);
     const body = res.json();
     expect(body.error).toContain('Wiederherstellung fehlgeschlagen');
-    expect(body.error).toContain('zurÃ¼ckgesetzt');
+    expect(body.error).toContain('zurückgesetzt');
     expect(body.preRestoreBackup).toMatch(/^pre-restore-safety-.*\.dump$/);
     expect(body.rollback).toEqual({ attempted: true, succeeded: true });
     expect(body.liveSyncReopened).toBe(true);
@@ -252,7 +252,7 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
 
     expect(res.statusCode).toBe(500);
     const body = res.json();
-    expect(body.error).toContain('nicht verÃ¤ndert');
+    expect(body.error).toContain('nicht verändert');
     expect(body.rollback).toEqual({ attempted: false, succeeded: false });
     // Only the failed safety dump ran: no pg_restore of either archive.
     expect(pgCalls().map((c) => c.command)).toEqual(['pg_dump']);
@@ -274,7 +274,7 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
 
     expect(res.statusCode).toBe(500);
     const body = res.json();
-    expect(body.error).toContain('nicht verÃ¤ndert');
+    expect(body.error).toContain('nicht verändert');
     expect(body.rollback).toEqual({ attempted: false, succeeded: false });
     // Only preflights ran (--version and the failing --list): no safety dump, no restore.
     expect(pgCalls()).toHaveLength(0);
@@ -311,7 +311,7 @@ describe('POST /api/backup/restore: failure path and rollback', () => {
 
     expect(res.statusCode).toBe(500);
     const body = res.json();
-    expect(body.error).toContain('zurÃ¼ckgesetzt');
+    expect(body.error).toContain('zurückgesetzt');
     expect(body.rollback).toEqual({ attempted: true, succeeded: true });
     const steps = pgCalls().map((c) => c.command + ':' + c.args[c.args.length - 1]);
     expect(steps).toEqual([
