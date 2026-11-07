@@ -1,17 +1,20 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   assessmentRubrics,
+  behaviorCards,
   evaluationItems,
   evaluations,
   finalRanks,
   observationRounds,
+  pupilBehaviorActions,
   pupils,
   rubricCriteria,
   schoolClasses,
   teachers,
   teachingAssignments,
+  timeoutIncidents,
 } from '../db/schema.js';
 import {
   forbid,
@@ -24,26 +27,22 @@ import { config } from '../config.js';
 import {
   buildSubjectStatistics,
   calculateSubjectDistribution,
+  type PupilStatisticsSummary,
 } from '../lib/subject-statistics.js';
+import { PERIOD_TIMES } from '../lib/period-times.js';
 
 export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * GET /api/statistics/overview?classId=...
    *
-   * READ-ONLY. There is no POST/PUT/PATCH/DELETE variant of this route and the
-   * client only ever reads it, so "every teacher sees everything, nobody edits"
-   * holds structurally rather than by an edit check somewhere.
+   * Factual school & class statistics dashboard.
+   * Focuses purely on objective facts:
+   * 1. Behavioral cards & incident totals (Green, Yellow, Red, Time-Out, Cool-Down)
+   * 2. Per-class distribution and breakdown
+   * 3. Temporal incident breakdown (by weekday and lesson period)
+   * 4. Per-pupil factual card statistics
    *
-   * School decision (STATISTICS_SCHOOL_WIDE, default true): every teacher sees the
-   * school-wide and per-class figures, not just their own classes. This reverses the
-   * scoping introduced during the hardening pass, on the grounds that staff under the
-   * same controller may see the whole picture.
-   *
-   * STATISTICS_SHOW_FOREIGN_COMMENTS (default true) additionally exposes the
-   * individual `comment` / `nextStep` another teacher wrote about a pupil. Turn it off
-   * to keep private notes with their author while still sharing the aggregates.
-   *
-   * Pupil logins are excluded outright: this view is for staff.
+   * READ-ONLY. Pupil logins are excluded outright: this view is for staff.
    */
   fastify.get('/overview', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user: AuthUser = requireAuth(request);
@@ -56,15 +55,6 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     const schoolWide = config.statisticsSchoolWide;
     const global = schoolWide ? { classIds: null } : await getGlobalAccess(user);
 
-    /**
-     * One shape for `scope`, built in one place.
-     *
-     * The early returns below used to hand-write this object each time, and two of the
-     * five omitted `schoolWide` — including the success path. A client reading
-     * `scope.schoolWide` therefore got a correct answer on every *empty* response and
-     * `undefined` precisely when there was data to describe. Deriving it here means a
-     * future branch cannot silently drop a field again.
-     */
     const buildScope = () => ({
       restricted: global.classIds !== null,
       schoolWide,
@@ -78,6 +68,10 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
+        pupilCardStats: [],
+        cardsSummary: emptyCardsSummary(),
+        classBreakdown: [],
+        gradeProgression: [],
         scope: buildScope(),
       });
     }
@@ -98,17 +92,6 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       .orderBy(desc(observationRounds.createdAt))
       .limit(1);
 
-    if (!round) {
-      return reply.send({
-        classes: visibleClasses,
-        round: null,
-        rubricConfig: currentRubricConfig(),
-        distribution: emptyDistribution(),
-        pupils: [],
-        scope: buildScope(),
-      });
-    }
-
     let targetClassIds: number[];
     if (classId && classId !== 'all') {
       const cid = parseIdParam(String(classId), 'classId');
@@ -128,10 +111,14 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     if (targetClassIds.length === 0) {
       return reply.send({
         classes: visibleClasses,
-        round,
+        round: round ?? null,
         rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
+        pupilCardStats: [],
+        cardsSummary: emptyCardsSummary(),
+        classBreakdown: [],
+        gradeProgression: [],
         scope: buildScope(),
       });
     }
@@ -149,18 +136,109 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       .where(and(inArray(pupils.classId, targetClassIds), eq(pupils.isArchived, false)))
       .orderBy(schoolClasses.grade, schoolClasses.name, pupils.fullName);
 
-    if (classPupils.length === 0) {
+    const pupilIds = classPupils.map((p) => p.id);
+
+    // Fetch active behavioral cards and timeouts
+    const activeCards = await db
+      .select({
+        id: behaviorCards.id,
+        pupilId: behaviorCards.pupilId,
+        classId: behaviorCards.classId,
+        cardType: behaviorCards.cardType,
+        createdAt: behaviorCards.createdAt,
+        note: behaviorCards.note,
+      })
+      .from(behaviorCards)
+      .where(and(
+        inArray(behaviorCards.classId, targetClassIds),
+        isNull(behaviorCards.revokedAt)
+      ));
+
+    const classTimeouts = await db
+      .select({
+        id: timeoutIncidents.id,
+        pupilId: timeoutIncidents.pupilId,
+        classId: timeoutIncidents.classId,
+        kind: timeoutIncidents.kind,
+        sentAt: timeoutIncidents.sentAt,
+        status: timeoutIncidents.status,
+      })
+      .from(timeoutIncidents)
+      .where(inArray(timeoutIncidents.classId, targetClassIds));
+
+    // Calculate individual pupil factual card stats
+    const pupilCardStats = classPupils.map((p) => {
+      const cards = activeCards.filter((c) => c.pupilId === p.id);
+      const timeouts = classTimeouts.filter((t) => t.pupilId === p.id);
+
+      let green = 0;
+      let yellow = 0;
+      let red = 0;
+      let cooldown = 0;
+      let timeout = 0;
+
+      for (const c of cards) {
+        if (c.cardType === 'green') green++;
+        else if (c.cardType === 'yellow') yellow++;
+        else if (c.cardType === 'red') red++;
+        else if (c.cardType === 'cooldown') cooldown++;
+      }
+
+      for (const t of timeouts) {
+        if (t.kind === 'timeout') timeout++;
+        else if (t.kind === 'cooldown') cooldown++;
+      }
+
+      const total = green + yellow + red + cooldown + timeout;
+
+      return {
+        id: p.id,
+        fullName: p.fullName,
+        classId: p.classId,
+        className: p.className,
+        grade: p.grade,
+        green,
+        yellow,
+        red,
+        timeout,
+        cooldown,
+        total,
+      };
+    });
+
+    // Fetch confirmed ranks from finalRanks (synced with actual conference decisions)
+    const confirmedRanks = round && pupilIds.length > 0
+      ? await db
+          .select()
+          .from(finalRanks)
+          .where(and(inArray(finalRanks.pupilId, pupilIds), eq(finalRanks.roundId, round.id)))
+      : [];
+
+    const cardsSummary = computeCardsSummary(activeCards, classTimeouts);
+    const classBreakdown = computeClassBreakdown(
+      allClasses.filter((c) => targetClassIds.includes(c.id)),
+      classPupils,
+      activeCards,
+      classTimeouts,
+      confirmedRanks,
+    );
+    const gradeProgression = computeGradeProgression(classBreakdown);
+
+    // If there is no round or no pupils, return basic overview
+    if (!round || pupilIds.length === 0) {
       return reply.send({
         classes: visibleClasses,
-        round,
+        round: round ?? null,
         rubricConfig: currentRubricConfig(),
         distribution: emptyDistribution(),
         pupils: [],
+        pupilCardStats,
+        cardsSummary,
+        classBreakdown,
+        gradeProgression,
         scope: buildScope(),
       });
     }
-
-    const pupilIds = classPupils.map((p) => p.id);
 
     const allEvals = await db
       .select()
@@ -196,11 +274,6 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
         .from(evaluationItems)
         .where(inArray(evaluationItems.evaluationId, evalIds));
     }
-
-    const confirmedRanks = await db
-      .select()
-      .from(finalRanks)
-      .where(and(inArray(finalRanks.pupilId, pupilIds), eq(finalRanks.roundId, round.id)));
 
     const allTeachers = await db.select().from(teachers);
     const teacherMap = new Map(allTeachers.map((t) => [t.id, t]));
@@ -254,6 +327,10 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
       rubricConfig: currentRubricConfig(),
       distribution,
       pupils: pupilsSummary,
+      pupilCardStats,
+      cardsSummary,
+      classBreakdown,
+      gradeProgression,
       scope: buildScope(),
     });
   });
@@ -297,4 +374,249 @@ function emptyDistribution() {
     percentGeselle: 0,
     percentMeister: 0,
   };
+}
+
+function emptyCardsSummary() {
+  return {
+    totals: {
+      green: 0,
+      yellow: 0,
+      red: 0,
+      cooldown: 0,
+      timeout: 0,
+      total: 0,
+    },
+    incidentsByDayOfWeek: [
+      { day: 1, dayName: 'Mo', count: 0 },
+      { day: 2, dayName: 'Di', count: 0 },
+      { day: 3, dayName: 'Mi', count: 0 },
+      { day: 4, dayName: 'Do', count: 0 },
+      { day: 5, dayName: 'Fr', count: 0 },
+    ],
+    incidentsByPeriod: [
+      { period: 1, label: '1. Stunde', time: '07:45 - 08:35', count: 0 },
+      { period: 2, label: '2. Stunde', time: '08:40 - 09:30', count: 0 },
+      { period: 3, label: '3. Stunde', time: '09:45 - 10:35', count: 0 },
+      { period: 4, label: '4. Stunde', time: '10:40 - 11:30', count: 0 },
+      { period: 5, label: '5. Stunde', time: '11:35 - 12:25', count: 0 },
+      { period: 6, label: '6. Stunde', time: '12:30 - 13:20', count: 0 },
+    ],
+  };
+}
+
+function computeCardsSummary(
+  activeCards: Array<{
+    id: string;
+    pupilId: number;
+    classId: number;
+    cardType: string;
+    createdAt: Date;
+    note: string | null;
+  }>,
+  classTimeouts: Array<{
+    id: string;
+    pupilId: number;
+    classId: number;
+    kind: string;
+    sentAt: Date;
+    status: string;
+  }>,
+) {
+  let green = 0;
+  let yellow = 0;
+  let red = 0;
+  let cooldown = 0;
+  let timeout = 0;
+
+  for (const c of activeCards) {
+    if (c.cardType === 'green') green++;
+    else if (c.cardType === 'yellow') yellow++;
+    else if (c.cardType === 'red') red++;
+    else if (c.cardType === 'cooldown') cooldown++;
+  }
+
+  for (const t of classTimeouts) {
+    if (t.kind === 'timeout') timeout++;
+    else if (t.kind === 'cooldown') cooldown++;
+  }
+
+  const total = green + yellow + red + cooldown + timeout;
+
+  // Temporal analysis: Day of week & period
+  const incidentDates: Date[] = [];
+  for (const c of activeCards) {
+    if (c.cardType === 'yellow' || c.cardType === 'red') {
+      incidentDates.push(new Date(c.createdAt));
+    }
+  }
+  for (const t of classTimeouts) {
+    if (t.kind === 'timeout') {
+      incidentDates.push(new Date(t.sentAt));
+    }
+  }
+
+  const dayNames = ['Mo', 'Di', 'Mi', 'Do', 'Fr'];
+  const dayCounts = [0, 0, 0, 0, 0];
+
+  for (const ts of incidentDates) {
+    const day = ts.getDay(); // 0=Sun, 1=Mon... 5=Fri
+    if (day >= 1 && day <= 5) {
+      dayCounts[day - 1]++;
+    }
+  }
+
+  const incidentsByDayOfWeek = dayNames.map((name, i) => ({
+    day: i + 1,
+    dayName: name,
+    count: dayCounts[i],
+  }));
+
+  const periodCounts = PERIOD_TIMES.slice(0, 6).map((pt) => ({
+    period: pt.period,
+    label: `${pt.period}. Stunde`,
+    time: `${pt.start} - ${pt.end}`,
+    count: 0,
+  }));
+
+  for (const ts of incidentDates) {
+    const min = ts.getHours() * 60 + ts.getMinutes();
+    for (let i = 0; i < periodCounts.length; i++) {
+      const pt = PERIOD_TIMES[i]!;
+      if (min >= pt.startMin && min <= pt.endMin) {
+        periodCounts[i].count++;
+        break;
+      }
+    }
+  }
+
+  return {
+    totals: {
+      green,
+      yellow,
+      red,
+      cooldown,
+      timeout,
+      total,
+    },
+    incidentsByDayOfWeek,
+    incidentsByPeriod: periodCounts,
+  };
+}
+
+function computeClassBreakdown(
+  classes: Array<{ id: number; name: string; grade: number }>,
+  classPupils: Array<{ id: number; fullName: string; classId: number; className: string; grade: number }>,
+  activeCards: Array<{ classId: number; cardType: string }>,
+  classTimeouts: Array<{ classId: number; kind: string }>,
+  confirmedRanks: Array<{ pupilId: number; rank: string }>,
+) {
+  const confirmedMap = new Map<number, string>();
+  for (const cr of confirmedRanks) {
+    confirmedMap.set(cr.pupilId, cr.rank);
+  }
+
+  return classes.map((sc) => {
+    const classPupilsInThisClass = classPupils.filter((p) => p.classId === sc.id);
+    const cardsInClass = activeCards.filter((c) => c.classId === sc.id);
+    const timeoutsInClass = classTimeouts.filter((t) => t.classId === sc.id);
+
+    let green = 0;
+    let yellow = 0;
+    let red = 0;
+    let cooldown = 0;
+    let timeout = 0;
+
+    for (const c of cardsInClass) {
+      if (c.cardType === 'green') green++;
+      else if (c.cardType === 'yellow') yellow++;
+      else if (c.cardType === 'red') red++;
+      else if (c.cardType === 'cooldown') cooldown++;
+    }
+    for (const t of timeoutsInClass) {
+      if (t.kind === 'timeout') timeout++;
+      else if (t.kind === 'cooldown') cooldown++;
+    }
+
+    const totalCards = green + yellow + red + cooldown + timeout;
+    const totalIncidents = yellow + red + timeout;
+
+    // Confirmed rank distribution synced with conference decisions
+    let lehrling = 0;
+    let geselle = 0;
+    let meister = 0;
+    let totalConfirmed = 0;
+
+    for (const p of classPupilsInThisClass) {
+      const rank = confirmedMap.get(p.id);
+      if (rank === 'Meister') {
+        meister++;
+        totalConfirmed++;
+      } else if (rank === 'Geselle') {
+        geselle++;
+        totalConfirmed++;
+      } else if (rank === 'Lehrling') {
+        lehrling++;
+        totalConfirmed++;
+      }
+    }
+
+    const pct = (n: number) => (totalConfirmed > 0 ? Math.round((n / totalConfirmed) * 100) : 0);
+
+    return {
+      classId: sc.id,
+      className: sc.name,
+      grade: sc.grade,
+      pupilCount: classPupilsInThisClass.length,
+      green,
+      yellow,
+      red,
+      cooldown,
+      timeout,
+      totalCards,
+      totalIncidents,
+      lehrling,
+      geselle,
+      meister,
+      totalConfirmed,
+      percentLehrling: pct(lehrling),
+      percentGeselle: pct(geselle),
+      percentMeister: pct(meister),
+    };
+  });
+}
+
+function computeGradeProgression(classBreakdown: ReturnType<typeof computeClassBreakdown>) {
+  const grades = [1, 2, 3, 4];
+  return grades.map((grade) => {
+    const classesInGrade = classBreakdown.filter((c) => c.grade === grade);
+    let lehrling = 0;
+    let geselle = 0;
+    let meister = 0;
+    let totalConfirmed = 0;
+    let pupilCount = 0;
+
+    for (const c of classesInGrade) {
+      lehrling += c.lehrling;
+      geselle += c.geselle;
+      meister += c.meister;
+      totalConfirmed += c.totalConfirmed;
+      pupilCount += c.pupilCount;
+    }
+
+    const pct = (n: number) => (totalConfirmed > 0 ? Math.round((n / totalConfirmed) * 100) : 0);
+
+    return {
+      grade,
+      gradeLabel: `${grade}. Schulstufe`,
+      classCount: classesInGrade.length,
+      pupilCount,
+      lehrling,
+      geselle,
+      meister,
+      totalConfirmed,
+      percentLehrling: pct(lehrling),
+      percentGeselle: pct(geselle),
+      percentMeister: pct(meister),
+    };
+  });
 }

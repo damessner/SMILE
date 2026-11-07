@@ -496,6 +496,11 @@ export async function getTimeoutHistory() {
   return unwrap(res);
 }
 
+export async function getClassTimeouts(classId: number): Promise<any[]> {
+  const res = await apiFetch('/timeouts/class/' + classId);
+  return unwrap(res);
+}
+
 export async function getTimeoutEscalations() {
   const res = await apiFetch('/timeouts/escalations');
   return unwrap(res);

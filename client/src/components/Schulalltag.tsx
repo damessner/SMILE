@@ -33,6 +33,7 @@ import {
   issueCard,
   revokeCard,
   getClassCards,
+  getClassTimeouts,
   getCurrentTimetable,
   sendToTimeout,
   sendToCooldown,
@@ -110,6 +111,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   criteria,
 }) => {
   const [cards, setCards] = useState<BehaviorCardItem[]>([]);
+  const [classTimeouts, setClassTimeouts] = useState<TimeoutItem[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [timetableData, setTimetableData] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -190,14 +192,18 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       .catch((e) => console.error('Timetable fetch error:', e));
   }, []);
 
-  // Load cards for current class
+  // Load cards & class timeouts for current class
   const loadClassCards = async (cid: number) => {
     setLoadingCards(true);
     try {
-      const res = await getClassCards(cid);
-      setCards(res);
+      const [cardsRes, timeoutsRes] = await Promise.all([
+        getClassCards(cid),
+        getClassTimeouts(cid),
+      ]);
+      setCards(Array.isArray(cardsRes) ? cardsRes : []);
+      setClassTimeouts(Array.isArray(timeoutsRes) ? timeoutsRes : []);
     } catch (e) {
-      console.error('Error fetching cards:', e);
+      console.error('Error fetching cards/timeouts:', e);
     } finally {
       setLoadingCards(false);
     }
@@ -231,6 +237,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     const interval = setInterval(loadTimeoutsData, 15000); // Poll every 15s for live updates
     const handleTimeoutsUpdated = () => {
       void loadTimeoutsData();
+      if (currentClass?.id) void loadClassCards(currentClass.id);
     };
     window.addEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
     return () => {
@@ -1104,12 +1111,22 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {/* Simple class overview header */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <span>Klasse {currentClass.name} · {filteredPupils.length} Schüler*innen</span>
-              <span className="normal-case font-medium tracking-normal text-[10px] text-slate-500">
-                <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-rose-400 mr-1" />Lehrling</span>
-                <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Geselle</span>
-                <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />Meister</span>
-                <span><span className="inline-block w-2 h-2 rounded-full bg-slate-500 mr-1" />Ausstehend</span>
-              </span>
+              <div className="flex items-center gap-3 sm:gap-4 text-[10px] normal-case font-medium tracking-normal text-slate-400">
+                <span className="hidden md:flex items-center gap-2 text-slate-400">
+                  <span className="font-semibold text-slate-300">Karten:</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Grün</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Gelb</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Rot</span>
+                  <span className="inline-flex items-center gap-1"><Clock className="w-2.5 h-2.5 text-orange-400" /> Time-Out</span>
+                  <span className="inline-flex items-center gap-1"><Snowflake className="w-2.5 h-2.5 text-sky-400" /> Cool-Down</span>
+                </span>
+                <span className="text-slate-500">
+                  <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-rose-400 mr-1" />Lehrling</span>
+                  <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Geselle</span>
+                  <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />Meister</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-slate-500 mr-1" />Ausstehend</span>
+                </span>
+              </div>
             </div>
 
             {filteredPupils.length === 0 ? (
@@ -1121,7 +1138,18 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 const isExpanded = expandedPupilId === pupil.id;
                 const { hasRedCard, demotionSteps, subjectResults } = getPupilRank(pupil);
                 const pupilCards = cards.filter((c) => c.pupil_id === pupil.id);
+                const greenCards = pupilCards.filter((c) => c.card_type === 'green');
                 const yellowCards = pupilCards.filter((c) => c.card_type === 'yellow');
+                const redCards = pupilCards.filter((c) => c.card_type === 'red');
+                const cooldownCards = pupilCards.filter((c) => c.card_type === 'cooldown');
+
+                const pupilTimeouts = classTimeouts.filter((ti) => ti.pupil_id === pupil.id);
+                const timeoutCount = pupilTimeouts.filter((ti) => ti.kind === 'timeout' || !ti.kind).length;
+                const cooldownCount =
+                  cooldownCards.length > 0
+                    ? cooldownCards.length
+                    : pupilTimeouts.filter((ti) => ti.kind === 'cooldown').length;
+
                 const isYellowAlert = yellowCards.length >= 2;
                 const activeTimeoutIncident = activeTimeouts.find((ti) => ti.pupil_id === pupil.id);
                 const currentRank = getDisplayedRank(pupil, subjectResults, demotionSteps);
@@ -1200,6 +1228,78 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         >
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
+                      </div>
+
+                      {/* Middle: Compact Card Counter Block (Option 2) */}
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1 sm:gap-1.5 shrink-0 bg-slate-950/70 p-1 sm:p-1.5 rounded-2xl border border-slate-800/80 shadow-inner"
+                        title="Kartenstand des Schülers: Grün · Gelb · Rot · Time-Out · Cool-Down"
+                      >
+                        {/* Grün */}
+                        <span
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                            greenCards.length > 0
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35 shadow-sm shadow-emerald-950/40'
+                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
+                          }`}
+                          title={`${greenCards.length} Grüne Karte(n) bisher`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${greenCards.length > 0 ? 'bg-emerald-400' : 'bg-slate-600'}`} aria-hidden="true" />
+                          <span>{greenCards.length}</span>
+                        </span>
+
+                        {/* Gelb */}
+                        <span
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                            yellowCards.length > 0
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/35 shadow-sm shadow-amber-950/40'
+                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
+                          }`}
+                          title={`${yellowCards.length} Gelbe Karte(n) bisher`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${yellowCards.length > 0 ? 'bg-amber-400' : 'bg-slate-600'}`} aria-hidden="true" />
+                          <span>{yellowCards.length}</span>
+                        </span>
+
+                        {/* Rot */}
+                        <span
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                            redCards.length > 0
+                              ? 'bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-950/40 font-extrabold'
+                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
+                          }`}
+                          title={`${redCards.length} Rote Karte(n) bisher (Rangverlust)`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${redCards.length > 0 ? 'bg-rose-400' : 'bg-slate-600'}`} aria-hidden="true" />
+                          <span>{redCards.length}</span>
+                        </span>
+
+                        {/* Time-Out */}
+                        <span
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                            timeoutCount > 0
+                              ? 'bg-orange-500/20 text-orange-300 border-orange-500/35 shadow-sm shadow-orange-950/40'
+                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
+                          }`}
+                          title={`${timeoutCount} Time-Out(s) in der Lernwerkstatt`}
+                        >
+                          <Clock className={`w-3.5 h-3.5 ${timeoutCount > 0 ? 'text-orange-400' : 'text-slate-600'}`} aria-hidden="true" />
+                          <span>{timeoutCount}</span>
+                        </span>
+
+                        {/* Cool-Down */}
+                        <span
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                            cooldownCount > 0
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/35 shadow-sm shadow-sky-950/40'
+                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
+                          }`}
+                          title={`${cooldownCount} Cool-Down(s)`}
+                        >
+                          <Snowflake className={`w-3.5 h-3.5 ${cooldownCount > 0 ? 'text-sky-400' : 'text-slate-600'}`} aria-hidden="true" />
+                          <span>{cooldownCount}</span>
+                        </span>
                       </div>
 
                       {/* Right: quick action cards */}

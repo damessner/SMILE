@@ -493,6 +493,45 @@ error:
   });
 
   /**
+   * GET /api/timeouts/class/:classId — all timeouts & cooldowns for a class.
+   *
+   * Scoped to teachers who have read access to the class.
+   */
+  fastify.get('/class/:classId', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    const { classId } = request.params as { classId: string };
+    const cid = parseIdParam(classId, 'classId');
+    if (!cid) return badRequest(reply, 'Ungültige Klassen-ID.');
+
+    const access = await getClassAccess(user, cid);
+    if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
+    if (!access.canRead) return forbid(reply);
+
+    const rows = await getPool().query(
+      `SELECT ti.id,
+              ti.pupil_id,
+              ti.class_id,
+              ti.sent_by_teacher_id,
+              ti.sent_at,
+              ti.recorded_at,
+              ti.retroactive,
+              ti.task_assignment,
+              ti.kind,
+              ti.status,
+              ti.resolved_at,
+              ti.resolved_by,
+              ti.resolution_note,
+              t.short_name AS sent_by_short
+         FROM timeout_incidents ti
+         LEFT JOIN teachers t ON t.id = ti.sent_by_teacher_id
+        WHERE ti.class_id = $1
+        ORDER BY ti.sent_at DESC`,
+      [cid],
+    );
+    return reply.send(rows.rows);
+  });
+
+  /**
    * GET /api/timeouts/escalations — pupils at 3, 6, 9, ... timeouts.
    *
    * Restricted to school leadership: this is the pupil-consequence view that drives

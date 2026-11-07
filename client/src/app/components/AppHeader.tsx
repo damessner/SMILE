@@ -85,68 +85,54 @@ export function AppHeader({
             <span className="hidden sm:inline">SMILE</span>
           </div>
 
-          {/* Segmented control or Compact 'Bewertungen' badge with toggle */}
+          {/* Navigation tabs */}
           <div data-tour="nav-tabs" className="flex items-center gap-1.5 shrink-0">
-            {showAllModules ? (
-              <div className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
-                {(
-                  [
-                    ['schulalltag', 'Schulalltag', Calendar],
-                    ['bewertung', 'Bewertung', ClipboardList],
-                    ['statistics', 'Schulstatistik', BarChart3],
-                  ] as const
-                ).map(([key, label, Icon]) => (
-                  <button
-                    key={key}
-                    onClick={() => setActiveTab(key)}
-                    aria-current={activeTab === key}
-                    title={label}
-                    className={`pressable focus-ring min-h-[40px] px-3 md:px-3.5 py-1.5 rounded-md text-xs font-semibold
-                      flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-                        activeTab === key
-                          ? 'bg-accent text-slate-950 font-bold shadow-sm'
-                          : 'text-slate-400 hover:text-slate-100'
-                      }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span className="hidden lg:inline">{label}</span>
-                    <span className="md:hidden">{label.split(' ')[0]}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-100 font-bold text-xs shadow-sm">
-                <ClipboardList className="w-4 h-4 text-amber-400" />
-                <span>Bewertungen</span>
-              </div>
-            )}
+            <div className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
+              {(
+                [
+                  ['schulalltag', 'Schulalltag', Calendar],
+                  ...(showAllModules ? [['bewertung', 'Bewertung', ClipboardList] as const] : []),
+                  ['statistics', 'Schulstatistik', BarChart3],
+                ] as const
+              ).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  aria-current={activeTab === key}
+                  title={label}
+                  className={`pressable focus-ring min-h-[40px] px-3 md:px-3.5 py-1.5 rounded-md text-xs font-semibold
+                    flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                      activeTab === key
+                        ? 'bg-accent text-slate-950 font-bold shadow-sm'
+                        : 'text-slate-400 hover:text-slate-100'
+                    }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span className="hidden lg:inline">{label}</span>
+                  <span className="md:hidden">{label.split(' ')[0]}</span>
+                </button>
+              ))}
+            </div>
 
-            {/* 1-Click Toggle to Show / Hide Schulalltag and Schulstatistik */}
+            {/* 1-Click Toggle to Show / Hide Bewertung for Conferences */}
             <button
               onClick={toggleAllModules}
               className={`p-2 rounded-xl transition border text-xs flex items-center gap-1.5 ${
                 showAllModules
-                  ? 'bg-slate-800 text-amber-400 border-amber-500/40 hover:bg-slate-700'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                   : 'bg-slate-800/70 text-slate-400 hover:text-slate-200 hover:bg-slate-700 border-slate-700/60'
               }`}
               title={
                 showAllModules
-                  ? 'Module wieder ausblenden (Fokus auf Bewertung)'
-                  : 'Weitere Module (Schulalltag & Schulstatistik) einblenden'
+                  ? 'Bewertungsmodul wieder ausblenden (Schulalltag-Fokus)'
+                  : 'Bewertungsmodul für Konferenz einblenden'
               }
-              aria-label={showAllModules ? 'Module ausblenden' : 'Module einblenden'}
+              aria-label={showAllModules ? 'Bewertungsmodul ausblenden' : 'Bewertungsmodul einblenden'}
             >
-              {showAllModules ? (
-                <>
-                  <EyeOff className="w-4 h-4" />
-                  <span className="hidden 2xl:inline text-[11px] font-semibold text-slate-300">Ausblenden</span>
-                </>
-              ) : (
-                <>
-                  <LayoutGrid className="w-4 h-4" />
-                  <span className="hidden 2xl:inline text-[11px] font-semibold text-slate-300">Module</span>
-                </>
-              )}
+              <ClipboardList className="w-4 h-4" />
+              <span className="hidden 2xl:inline text-[11px] font-semibold">
+                {showAllModules ? 'Bewertung aktiv' : 'Bewertung'}
+              </span>
             </button>
           </div>
         </div>

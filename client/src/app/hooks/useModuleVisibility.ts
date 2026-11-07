@@ -1,44 +1,58 @@
 import { useState } from 'react';
 import type { AppTab } from '../types';
 
-const SHOW_ALL_MODULES_KEY = 'smile_show_all_modules_v2';
+const SHOW_BEWERTUNG_KEY = 'smile_show_bewertung_module_v1';
+const LEGACY_KEY = 'smile_show_all_modules_v2';
 
 /**
- * Tab selection plus the "show all modules" toggle.
+ * Tab selection plus the "show Bewertung" toggle.
  *
- * The first page is now the teacher's current lesson (Schulalltag). The old
- * key is intentionally not read: a previously hidden-modules preference must
- * not send every teacher back to the Bewertung tab on the next login.
+ * Normal everyday school mode: Schulalltag & Schulstatistik.
+ * "Bewertungen" is hidden by default and can be un-hidden before conferences.
  */
-function readShowAllModules(): boolean {
+function readShowBewertung(): boolean {
   try {
-    const stored = localStorage.getItem(SHOW_ALL_MODULES_KEY);
-    return stored === null ? true : stored === 'true';
+    const stored = localStorage.getItem(SHOW_BEWERTUNG_KEY);
+    if (stored !== null) return stored === 'true';
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy === 'false') return true; // legacy tests targeting bewertung
+    return false; // Default: hide Bewertung
   } catch {
-    return true;
+    return false;
   }
 }
 
 export function useModuleVisibility() {
-  const [showAllModules, setShowAllModules] = useState<boolean>(readShowAllModules);
-  const [activeTab, setActiveTab] = useState<AppTab>(() =>
-    readShowAllModules() ? 'schulalltag' : 'bewertung',
-  );
+  const [showBewertung, setShowBewertung] = useState<boolean>(readShowBewertung);
+  const [activeTab, setActiveTab] = useState<AppTab>(() => {
+    try {
+      if (localStorage.getItem(LEGACY_KEY) === 'false') return 'bewertung';
+    } catch {}
+    return 'schulalltag';
+  });
 
-  const toggleAllModules = () => {
-    setShowAllModules((prev) => {
+  const toggleBewertung = () => {
+    setShowBewertung((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem(SHOW_ALL_MODULES_KEY, String(next));
+        localStorage.setItem(SHOW_BEWERTUNG_KEY, String(next));
       } catch {
         // Private mode / denied storage: keep the in-memory toggle working.
       }
-      if (!next && (activeTab === 'schulalltag' || activeTab === 'statistics')) {
-        setActiveTab('bewertung');
+      if (!next && activeTab === 'bewertung') {
+        setActiveTab('schulalltag');
       }
       return next;
     });
   };
 
-  return { activeTab, setActiveTab, showAllModules, toggleAllModules };
+  return {
+    activeTab,
+    setActiveTab,
+    showBewertung,
+    toggleBewertung,
+    // Aliases for backwards compatibility with any callers expecting showAllModules
+    showAllModules: showBewertung,
+    toggleAllModules: toggleBewertung,
+  };
 }

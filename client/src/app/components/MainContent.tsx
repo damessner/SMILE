@@ -68,7 +68,7 @@ export function MainContent({
   const { setActiveCardDrawer, setActiveKelPupil, setTeacherReportModalOpen } = modals;
 
   if (activeTab === 'statistics') {
-    return <SchoolStatistics initialClassId={selectedClassId} />;
+    return <SchoolStatistics currentUser={currentUser} />;
   }
   if (loadingClass && pupils.length === 0) {
     return (

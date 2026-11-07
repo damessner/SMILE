@@ -10,6 +10,7 @@ import type { RubricCriterion } from '../types';
 
 vi.mock('../services/api', () => ({
   getClassCards: vi.fn().mockResolvedValue([]),
+  getClassTimeouts: vi.fn().mockResolvedValue([]),
   getCurrentTimetable: vi.fn().mockResolvedValue({ lessons: [], currentPeriod: null }),
   getActiveTimeouts: vi.fn().mockResolvedValue([]),
   getTimeoutHistory: vi.fn().mockResolvedValue([]),

@@ -92,11 +92,13 @@ beforeEach(() => {
     final_ranks: [],
     teachers: [],
     teaching_assignments: [],
+    behavior_cards: [],
+    timeout_incidents: [],
+    pupil_behavior_actions: [],
   };
 });
 
-
-describe('GET /api/statistics/overview rubric configuration', () => {
+describe('GET /api/statistics/overview factual statistics dashboard', () => {
   it('includes the active config when there is no observation round', async () => {
     database.rowsByTable.school_classes = [{ id: 10, name: '3a', grade: 3 }];
 
@@ -110,15 +112,27 @@ describe('GET /api/statistics/overview rubric configuration', () => {
       aggregation: 'normalized',
     });
     expect(response.json().round).toBeNull();
+    expect(response.json().cardsSummary).toBeDefined();
+    expect(response.json().cardsSummary.totals.green).toBe(0);
+    expect(response.json().classBreakdown).toBeDefined();
   });
 
-  it('includes the same active config in a populated pupil response', async () => {
+  it('includes factual behavioral aggregates and pupilCardStats in a populated response', async () => {
     database.rowsByTable.school_classes = [{ id: 10, name: '3a', grade: 3 }];
     database.rowsByTable.observation_rounds = [
       { id: 'round-1', createdAt: new Date('2026-10-01T00:00:00Z'), isLocked: false },
     ];
     database.rowsByTable.pupils = [
       { id: 101, fullName: 'Anna Muster', classId: 10, className: '3a', grade: 3 },
+      { id: 102, fullName: 'Ben Problem', classId: 10, className: '3a', grade: 3 },
+    ];
+    database.rowsByTable.behavior_cards = [
+      { id: 'c1', pupilId: 101, classId: 10, cardType: 'green', createdAt: new Date('2026-11-02T08:00:00Z'), revokedAt: null },
+      { id: 'c2', pupilId: 102, classId: 10, cardType: 'yellow', createdAt: new Date('2026-11-03T09:00:00Z'), revokedAt: null },
+      { id: 'c3', pupilId: 102, classId: 10, cardType: 'yellow', createdAt: new Date('2026-11-04T10:00:00Z'), revokedAt: null },
+    ];
+    database.rowsByTable.timeout_incidents = [
+      { id: 't1', pupilId: 102, classId: 10, kind: 'timeout', sentAt: new Date('2026-11-05T11:00:00Z'), status: 'resolved' },
     ];
 
     const response = await app!.inject({ method: 'GET', url: '/api/statistics/overview' });
@@ -131,7 +145,28 @@ describe('GET /api/statistics/overview rubric configuration', () => {
       itemCount: 24,
       aggregation: 'normalized',
     });
-    expect(data.pupils).toHaveLength(1);
+    expect(data.pupils).toHaveLength(2);
     expect(data.pupils[0].fullName).toBe('Anna Muster');
+
+    // Cards summary assertions
+    expect(data.cardsSummary.totals.green).toBe(1);
+    expect(data.cardsSummary.totals.yellow).toBe(2);
+    expect(data.cardsSummary.totals.timeout).toBe(1);
+    expect(data.cardsSummary.totals.total).toBe(4);
+
+    // Class breakdown assertions
+    expect(data.classBreakdown).toHaveLength(1);
+    expect(data.classBreakdown[0].className).toBe('3a');
+    expect(data.classBreakdown[0].green).toBe(1);
+    expect(data.classBreakdown[0].yellow).toBe(2);
+    expect(data.classBreakdown[0].timeout).toBe(1);
+
+    // Pupil card stats assertions
+    expect(data.pupilCardStats).toHaveLength(2);
+    expect(data.pupilCardStats[0].fullName).toBe('Anna Muster');
+    expect(data.pupilCardStats[0].green).toBe(1);
+    expect(data.pupilCardStats[1].fullName).toBe('Ben Problem');
+    expect(data.pupilCardStats[1].yellow).toBe(2);
+    expect(data.pupilCardStats[1].timeout).toBe(1);
   });
 });
