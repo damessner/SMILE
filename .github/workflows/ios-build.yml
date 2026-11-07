@@ -1,0 +1,71 @@
+name: SMILE iOS App Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build SMILE iOS (.ipa & Xcode Project)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate Xcode project with XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen generate
+
+      - name: Upload generated SMILE.xcodeproj artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMILE-xcodeproj
+          path: ios/SMILE.xcodeproj
+
+      - name: Build for iOS Simulator (Typecheck & Compile Verification)
+        run: |
+          xcodebuild build \
+            -project SMILE.xcodeproj \
+            -scheme SMILE \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Build & Package Unsigned iOS Device Bundle (SMILE.ipa)
+        run: |
+          xcodebuild build \
+            -project SMILE.xcodeproj \
+            -scheme SMILE \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/SMILE.app Payload/
+          zip -qry SMILE-unsigned.ipa Payload
+
+      - name: Upload SMILE-unsigned.ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMILE-iOS-App
+          path: ios/SMILE-unsigned.ipa
