@@ -627,8 +627,9 @@ export interface WebUntisStatus {
   environment: 'production' | 'playground';
   server: string;
   school: string;
-  user: string;
-  personId?: number;
+  /** Which credential answered: the caller's own link, the leadership service account, or none. */
+  account: 'personal' | 'service' | 'none';
+  teacherShort?: string;
   error?: string;
 }
 
@@ -646,7 +647,8 @@ export interface WebUntisLessonItem {
   hasTeachingContent?: boolean;
   missingTeachingContent?: boolean;
   missingAttendance?: boolean;
-  attendanceChecked?: boolean;
+  /** `null` means WebUntis did not report an attendance state. */
+  attendanceChecked?: boolean | null;
   absenceCount?: number;
 }
 
@@ -686,14 +688,6 @@ export async function getWebUntisStatus(): Promise<WebUntisStatus> {
   return unwrap(res);
 }
 
-export async function setWebUntisEnvironment(environment: 'production' | 'playground'): Promise<WebUntisStatus> {
-  const res = await apiFetch('/webuntis/environment', {
-    method: 'POST',
-    body: JSON.stringify({ environment }),
-  });
-  return unwrap(res);
-}
-
 export async function getWebUntisTimetable(
   dateOrParams?: { date?: string; startDate?: string; endDate?: string; classId?: number } | string,
   classId?: number,
@@ -713,10 +707,15 @@ export async function getWebUntisTimetable(
   return unwrap(res);
 }
 
-export async function saveWebUntisTeachingContent(lessonId: number, text: string): Promise<{ success: boolean }> {
+export async function saveWebUntisTeachingContent(
+  lessonId: number,
+  classId: number,
+  date: string,
+  text: string,
+): Promise<{ success: boolean }> {
   const res = await apiFetch('/webuntis/teaching-content', {
     method: 'POST',
-    body: JSON.stringify({ lessonId, text }),
+    body: JSON.stringify({ lessonId, classId, date, text }),
   });
   return unwrap(res);
 }
@@ -776,7 +775,6 @@ export async function connectWebUntisAccount(params: {
   secret: string;
   server?: string;
   school?: string;
-  authMethod?: 'password' | 'loginkey';
 }): Promise<{ success: boolean; teacherShort: string; teacherName?: string; personId?: number }> {
   const res = await apiFetch('/webuntis/account/connect', {
     method: 'POST',

@@ -44,6 +44,7 @@ function makeChain(result: any) {
   p.limit = () => p;
   p.orderBy = () => p;
   p.onConflictDoUpdate = () => p;
+  p.onConflictDoNothing = () => p;
   p.returning = () => p;
   return p;
 }

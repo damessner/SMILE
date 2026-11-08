@@ -1,21 +1,11 @@
 export type WebUntisEnv = 'production' | 'playground';
 
-export interface WebUntisConfig {
-  server: string;
-  school: string;
-  user: string;
-  password: string;
-  environment: WebUntisEnv;
-  autoSyncDisciplinary: boolean;
-}
-
 export interface WebUntisSession {
   sessionId: string;
   cookies: string[];
   token?: string;
   personId?: number;
   personType?: number;
-  userId?: number;
   lastLogin: Date;
   expiresAt: Date;
 }
@@ -51,7 +41,8 @@ export interface WebUntisLesson {
   hasTeachingContent?: boolean;
   missingTeachingContent?: boolean;
   missingAttendance?: boolean;
-  attendanceChecked?: boolean;
+  /** `null` means WebUntis did not report an attendance state (unknown, not "missing"). */
+  attendanceChecked?: boolean | null;
   absenceCount?: number;
 }
 

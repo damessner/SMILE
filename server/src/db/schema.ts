@@ -410,3 +410,38 @@ export const userWebuntisAccounts = pgTable('user_webuntis_accounts', {
 }, (t) => ({
   userIdx: index('user_webuntis_accounts_user_idx').on(t.userId),
 }));
+
+/**
+ * 20. WebUntis Sync Outbox
+ *
+ * Class-register mirrors used to be dispatched with `setImmediate`: a single
+ * transient network error silently dropped the write, and a process restart lost
+ * every pending entry. The outbox makes the mirror durable and retryable.
+ *
+ * `payload` is the already-rendered Klassenbucheintrag (text, category, date), so
+ * a retry cannot drift if SMILE's wording changes between attempts.
+ */
+export const webuntisSyncOutbox = pgTable('webuntis_sync_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  /** Teacher whose linked WebUntis account is used. Null when the account was deleted. */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  kind: text('kind', { enum: ['classreg_upsert', 'classreg_correction'] }).notNull(),
+  /**
+   * Stable key so a repeated POST (or a retried HTTP request) cannot create a
+   * second row. Null for entries that have no natural identity.
+   */
+  idempotencyKey: text('idempotency_key').unique(),
+  payload: jsonb('payload').notNull(),
+  status: text('status', { enum: ['pending', 'processing', 'done', 'failed'] })
+    .default('pending')
+    .notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  maxAttempts: integer('max_attempts').default(8).notNull(),
+  lastError: text('last_error'),
+  nextAttemptAt: timestamp('next_attempt_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  pendingIdx: index('webuntis_sync_outbox_pending_idx').on(t.status, t.nextAttemptAt),
+  userIdx: index('webuntis_sync_outbox_user_idx').on(t.userId),
+}));

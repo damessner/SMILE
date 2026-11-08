@@ -3,14 +3,12 @@ import {
   X,
   KeyRound,
   Server,
-  Lock,
   UserCheck,
   AlertCircle,
   CheckCircle2,
   RefreshCw,
   ShieldCheck,
   LogOut,
-  ExternalLink,
 } from 'lucide-react';
 import {
   connectWebUntisAccount,
@@ -42,7 +40,6 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
   const [school, setSchool] = useState<string>(currentSchool);
   const [username, setUsername] = useState<string>(currentUsername);
   const [secret, setSecret] = useState<string>('');
-  const [authMethod, setAuthMethod] = useState<'password' | 'loginkey'>('password');
 
   const [loading, setLoading] = useState<boolean>(false);
   const [disconnecting, setDisconnecting] = useState<boolean>(false);
@@ -79,7 +76,6 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
         school: school.trim(),
         username: username.trim(),
         secret: secret.trim(),
-        authMethod,
       });
 
       setSuccessInfo(`Erfolgreich verbunden als: ${res.teacherName || res.teacherShort}`);
@@ -239,35 +235,6 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
               </div>
             </div>
 
-            {/* Auth Method Toggle */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-slate-400">Anmeldeverfahren</label>
-              <div className="grid grid-cols-2 gap-2 bg-slate-800/60 p-1 rounded-xl border border-slate-700/80">
-                <button
-                  type="button"
-                  onClick={() => setAuthMethod('password')}
-                  className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition ${
-                    authMethod === 'password'
-                      ? 'bg-sky-500 text-slate-950 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  WebUntis-Passwort
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMethod('loginkey')}
-                  className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition ${
-                    authMethod === 'loginkey'
-                      ? 'bg-sky-500 text-slate-950 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Untis-Login-Key / 2FA
-                </button>
-              </div>
-            </div>
-
             {/* Username & Secret */}
             <div className="space-y-3">
               <div>
@@ -287,7 +254,7 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  {authMethod === 'password' ? 'WebUntis Passwort' : 'WebUntis Login-Key / OTP-Geheimnis'}
+                  WebUntis Passwort
                 </label>
                 <input
                   type="password"

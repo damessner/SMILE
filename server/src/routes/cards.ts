@@ -19,7 +19,7 @@ import {
 import { broadcastToClass } from '../ws/live-sync.js';
 import { queueRedCardRankChange } from '../lib/teams.js';
 import { queueClassEventNotification } from '../lib/notification-events.js';
-import { queueWebUntisClassregEvent } from '../lib/webuntis/sync.js';
+import { queueWebUntisClassregCorrection, queueWebUntisClassregEvent } from '../lib/webuntis/sync.js';
 
 const CARD_TYPES = new Set(['green', 'yellow', 'red']);
 
@@ -172,6 +172,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
         type: typedCard,
         note: cleanNote ?? null,
         teacherUserId: user.id,
+        sourceId: card.id,
       });
     }
 
@@ -248,6 +249,21 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       cardId: id,
       pupilId: existing.pupilId,
     });
+
+    if (existing.cardType === 'yellow' || existing.cardType === 'red') {
+      // WebUntis has no verified delete endpoint for class-register entries.
+      // Write a compensating "[Korrektur]" entry so the official record shows
+      // that the SMILE card was withdrawn instead of leaving it unopposed.
+      queueWebUntisClassregCorrection({
+        pupilId: existing.pupilId,
+        classId: existing.classId,
+        type: existing.cardType,
+        note: existing.note,
+        occurredAt: existing.createdAt,
+        teacherUserId: user.id,
+        sourceId: existing.id,
+      });
+    }
 
     if (existing.cardType === 'red') {
       queueRedCardRankChange({

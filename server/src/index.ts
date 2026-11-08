@@ -9,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-import { assertServerConfig, config, ConfigError, insecureConfigWarnings, jwtSecret, productionCookieError } from './config.js';
+import { assertServerConfig, config, ConfigError, insecureConfigWarnings, jwtSecret, productionCookieError, webuntisConfigWarnings } from './config.js';
 import { buildAuthenticate, buildRequireAccountAdministrator, buildRequireRole, buildSessionGuard, getTeacher } from './lib/guards.js';
 import type { PersistedUserSessionState } from './lib/session.js';
 import { rateLimitKey } from './lib/rate-limit.js';
@@ -30,6 +30,7 @@ import { timetableRoutes } from './routes/timetable.js';
 import { timeoutRoutes } from './routes/timeouts.js';
 import { notificationRoutes } from './routes/notifications.js';
 import { registerTimeoutSweeper } from './lib/timeout-sweeper.js';
+import { registerWebUntisOutboxWorker } from './lib/webuntis/outbox.js';
 import { startWeeklyDigestScheduler } from './lib/notification-digest.js';
 import { bellScheduleTimezoneWarning } from './lib/period-times.js';
 import {
@@ -310,6 +311,7 @@ export async function start() {
   // Known-accepted deployment states (for example plain-HTTP LAN serving) are
   // surfaced here rather than silently absorbed.
   for (const warning of insecureConfigWarnings()) fastify.log.warn(warning);
+  for (const warning of webuntisConfigWarnings()) fastify.log.warn(warning);
   const cookieError = productionCookieError();
   if (cookieError) fastify.log.error(cookieError);
 
@@ -347,8 +349,33 @@ export async function start() {
   const heartbeat = startWebSocketHeartbeat();
   const digestTimer = startWeeklyDigestScheduler(fastify.log);
 
+  // Upgrade credentials encrypted with the legacy JWT-derived key. This runs
+  // after migrations and before the first request, so a JWT_SECRET rotation
+  // cannot strand stored WebUntis passwords.
+  if (config.webuntis.credentialKey) {
+    try {
+      const { reencryptLegacySecrets } = await import('./lib/webuntis/vault.js');
+      const result = await reencryptLegacySecrets((message) => fastify.log.warn(message));
+      if (result.reencrypted > 0) {
+        fastify.log.info(
+          `Re-encrypted ${result.reencrypted} legacy WebUntis credential(s) with WEBUNTIS_CREDENTIAL_KEY`,
+        );
+      }
+      if (result.failed > 0) {
+        fastify.log.warn(`${result.failed} WebUntis credential(s) could not be re-encrypted`);
+      }
+    } catch (err) {
+      fastify.log.warn(safeErrorLogFields(err), 'WebUntis credential re-encryption failed');
+    }
+  }
+
+  const stopWebUntisOutbox = registerWebUntisOutboxWorker({
+    onError: (err) => fastify.log.warn(safeErrorLogFields(err), 'WebUntis outbox pass failed'),
+  });
+
   const shutdown = async (signal: string) => {
     fastify.log.info(`${signal} received, shutting down`);
+    stopWebUntisOutbox();
     stopWebSocketHeartbeat(heartbeat);
     clearInterval(digestTimer);
     closeAllWebSockets();

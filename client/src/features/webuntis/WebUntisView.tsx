@@ -14,7 +14,6 @@ import {
   Send,
   ShieldAlert,
   Sparkles,
-  Server,
   Layers,
   ChevronLeft,
   ChevronRight,
@@ -25,7 +24,6 @@ import {
   getWebUntisStatus,
   getWebUntisAccount,
   type WebUntisAccountStatus,
-  setWebUntisEnvironment,
   getWebUntisTimetable,
   saveWebUntisTeachingContent,
   getWebUntisAbsences,
@@ -68,6 +66,19 @@ export function formatLocalDateInt(d: Date): number {
   return Number(`${y}${m}${day}`);
 }
 
+/** Convert a WebUntis YYYYMMDD integer into `YYYY-MM-DD` (no Date round-trip). */
+export function dateIntToIso(value: number): string {
+  const s = String(value);
+  if (!/^\d{8}$/.test(s)) return '';
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error && err.message
+    ? err.message
+    : 'WebUntis ist derzeit nicht erreichbar.';
+}
+
 export function WebUntisView({ currentClass, classes, currentUser, pupils }: WebUntisViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('timetable');
   const [selectedClassId, setSelectedClassId] = useState<number | 'all'>('all');
@@ -77,10 +88,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   const [refDate, setRefDate] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateIso(new Date()));
 
-  // Status & Environment
+  // Status
   const [status, setStatus] = useState<WebUntisStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<boolean>(true);
-  const [switchingEnv, setSwitchingEnv] = useState<boolean>(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Personal WebUntis Account
   const [accountStatus, setAccountStatus] = useState<WebUntisAccountStatus | null>(null);
@@ -212,26 +224,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     }
   };
 
-  // Switch between Production and Playground
-  const handleToggleEnvironment = async () => {
-    if (!status) return;
-    const nextEnv = status.environment === 'production' ? 'playground' : 'production';
-    try {
-      setSwitchingEnv(true);
-      const updated = await setWebUntisEnvironment(nextEnv);
-      setStatus(updated);
-      refreshData();
-    } catch {
-      // Keep old status on error
-    } finally {
-      setSwitchingEnv(false);
-    }
-  };
-
   // Load Timetable
   const loadLessons = async () => {
     try {
       setLoadingLessons(true);
+      setDataError(null);
       const classIdParam = selectedClassId === 'all' ? undefined : selectedClassId;
 
       let res: { lessons: WebUntisLessonItem[] };
@@ -255,30 +252,41 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
         }
       }
       setLessonEdits((prev) => ({ ...initialEdits, ...prev }));
-    } catch {
-      setLessons([]);
+    } catch (err) {
+      // An outage is not an empty timetable. Keep the previous data visible and
+      // show why it could not be refreshed.
+      setDataError(errorMessage(err));
     } finally {
       setLoadingLessons(false);
     }
   };
 
   // Save Teaching Content (Lehrstoff)
-  const handleSaveTeachingContent = async (lessonId: number) => {
-    const text = lessonEdits[lessonId]?.trim();
+  const handleSaveTeachingContent = async (lesson: WebUntisLessonItem) => {
+    const text = lessonEdits[lesson.id]?.trim();
     if (!text) return;
+
+    const classId = selectedClassId === 'all' ? lesson.classes[0]?.id : selectedClassId;
+    const date = dateIntToIso(lesson.date);
+    if (!classId || !date) {
+      setSaveError('Klasse oder Datum der Stunde konnte nicht bestimmt werden.');
+      return;
+    }
+
     try {
-      setSavingLessonId(lessonId);
-      await saveWebUntisTeachingContent(lessonId, text);
-      setSavedLessonIds((prev) => ({ ...prev, [lessonId]: true }));
+      setSavingLessonId(lesson.id);
+      setSaveError(null);
+      await saveWebUntisTeachingContent(lesson.id, classId, date, text);
+      setSavedLessonIds((prev) => ({ ...prev, [lesson.id]: true }));
       // Also update in-memory lesson state
       setLessons((prev) =>
-        prev.map((l) => (l.id === lessonId ? { ...l, lessonText: text, hasTeachingContent: true, missingTeachingContent: false } : l)),
+        prev.map((l) => (l.id === lesson.id ? { ...l, lessonText: text, hasTeachingContent: true, missingTeachingContent: false } : l)),
       );
       setTimeout(() => {
-        setSavedLessonIds((prev) => ({ ...prev, [lessonId]: false }));
+        setSavedLessonIds((prev) => ({ ...prev, [lesson.id]: false }));
       }, 3000);
-    } catch {
-      // Error handling
+    } catch (err) {
+      setSaveError(errorMessage(err));
     } finally {
       setSavingLessonId(null);
     }
@@ -288,11 +296,12 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   const loadAbsences = async () => {
     try {
       setLoadingAbsences(true);
+      setDataError(null);
       const classIdParam = selectedClassId === 'all' ? undefined : selectedClassId;
       const res = await getWebUntisAbsences(selectedDate, classIdParam);
       setAbsences(res.absences || []);
-    } catch {
-      setAbsences([]);
+    } catch (err) {
+      setDataError(errorMessage(err));
     } finally {
       setLoadingAbsences(false);
     }
@@ -302,11 +311,12 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   const loadEvents = async () => {
     try {
       setLoadingEvents(true);
+      setDataError(null);
       const classIdParam = selectedClassId === 'all' ? undefined : selectedClassId;
       const res = await getWebUntisEvents(classIdParam);
       setEvents(res.events || []);
-    } catch {
-      setEvents([]);
+    } catch (err) {
+      setDataError(errorMessage(err));
     } finally {
       setLoadingEvents(false);
     }
@@ -465,7 +475,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold text-slate-100">WebUntis-Integration</h1>
-                {status && (
+                {!loadingStatus && status && (
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
                       status.connected
@@ -474,7 +484,13 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     }`}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${status.connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-                    {status.connected ? (status.environment === 'playground' ? 'Spielwiese' : 'MS-Telfs Live') : 'Getrennt'}
+                    {status.connected
+                      ? status.account === 'service'
+                        ? 'Schulweite Ansicht (nur Lesen)'
+                        : status.environment === 'playground'
+                          ? 'Spielwiese'
+                          : 'MS-Telfs Live'
+                      : 'Getrennt'}
                   </span>
                 )}
               </div>
@@ -484,7 +500,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             </div>
           </div>
 
-          {/* Top Actions: Personal Account Wizard, Environment Switcher & Refresh */}
+          {/* Top Actions: Personal Account Wizard & Refresh */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsConnectModalOpen(true)}
@@ -508,21 +524,6 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
               {accountStatus?.connected && (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               )}
-            </button>
-
-            <button
-              onClick={handleToggleEnvironment}
-              disabled={switchingEnv || loadingStatus}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-2 ${
-                status?.environment === 'playground'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-              }`}
-              title="Wechseln zwischen Spielwiese (Playground) und Live-Server"
-            >
-              <Server className="w-3.5 h-3.5 text-sky-400" />
-              <span>{status?.environment === 'playground' ? 'Modus: Spielwiese' : 'Modus: Live (MS-Telfs)'}</span>
-              {switchingEnv && <RefreshCw className="w-3 h-3 animate-spin" />}
             </button>
 
             <button
@@ -623,6 +624,29 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           )}
         </div>
       </div>
+
+      {/* Load / write errors are stated, not rendered as an empty day. */}
+      {dataError && (
+        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{dataError}</span>
+          </span>
+          <button
+            onClick={refreshData}
+            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-semibold shrink-0"
+          >
+            Erneut versuchen
+          </button>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{saveError}</span>
+        </div>
+      )}
 
       {/* Banner if personal account not connected */}
       {accountStatus && !accountStatus.connected && (
@@ -774,7 +798,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                   <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
                   {missingLehrstoffCount}x Lehrstoff fehlt
                 </span>
-              ) : filteredLessons.length > 0 ? (
+              ) : filteredLessons.some((l) => l.hasTeachingContent) ? (
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                   Lehrstoff vollständig
@@ -790,7 +814,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                   <UserX className="w-3.5 h-3.5 text-rose-400" />
                   {missingAttendanceCount}x Anwesenheit fehlt
                 </button>
-              ) : filteredLessons.length > 0 ? (
+              ) : filteredLessons.some((l) => l.attendanceChecked === true) ? (
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                   <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
                   Anwesenheiten geprüft
@@ -807,10 +831,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           ) : filteredLessons.length === 0 ? (
             <div className="py-16 text-center text-slate-500 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-2">
               <Calendar className="w-10 h-10 mx-auto text-slate-600" />
-              <p className="font-semibold text-slate-300">Keine Stunden für diesen Zeitraum gefunden.</p>
-              <p className="text-xs text-slate-500">
-                Wählen Sie eine andere Schulwoche oder überprüfen Sie Ihre verknüpften Kontodaten.
+              <p className="font-semibold text-slate-300">
+                {dataError ? 'Stundenplan konnte nicht geladen werden.' : 'Keine Stunden für diesen Zeitraum gefunden.'}
               </p>
+              {!dataError && (
+                <p className="text-xs text-slate-500">
+                  Wählen Sie eine andere Schulwoche oder überprüfen Sie Ihre verknüpften Kontodaten.
+                </p>
+              )}
             </div>
           ) : timetableMode === 'calendar' ? (
             /* ==============================================================
@@ -974,7 +1002,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                     className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                                   />
                                   <button
-                                    onClick={() => handleSaveTeachingContent(lesson.id)}
+                                    onClick={() => handleSaveTeachingContent(lesson)}
                                     disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
                                     className="p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold transition shrink-0"
                                     title="Lehrstoff in WebUntis speichern"
@@ -1094,7 +1122,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                           className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                         />
                         <button
-                          onClick={() => handleSaveTeachingContent(lesson.id)}
+                          onClick={() => handleSaveTeachingContent(lesson)}
                           disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
                           className="px-3 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shrink-0"
                           title="Lehrstoff in WebUntis speichern"
@@ -1146,8 +1174,10 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           ) : filteredAbsences.length === 0 ? (
             <div className="py-16 text-center text-slate-500 bg-slate-900/50 rounded-2xl border border-slate-800/80">
               <UserCheck className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
-              <p className="font-semibold text-slate-300">Keine Abwesenheiten verzeichnet.</p>
-              <p className="text-xs text-slate-500 mt-1">Alle Schüler sind anwesend.</p>
+              <p className="font-semibold text-slate-300">
+                {dataError ? 'Abwesenheiten konnten nicht geladen werden.' : 'Keine Abwesenheiten verzeichnet.'}
+              </p>
+              {!dataError && <p className="text-xs text-slate-500 mt-1">Alle Schüler sind anwesend.</p>}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
@@ -1242,8 +1272,12 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           ) : filteredEvents.length === 0 ? (
             <div className="py-16 text-center text-slate-500 bg-slate-900/50 rounded-2xl border border-slate-800/80">
               <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-slate-600" />
-              <p className="font-semibold text-slate-300">Keine Vorfälle im Klassenbuch verzeichnet.</p>
-              <p className="text-xs text-slate-500 mt-1">Keine aktuellen Einträge in den letzten 14 Tagen.</p>
+              <p className="font-semibold text-slate-300">
+                {dataError ? 'Klassenbucheinträge konnten nicht geladen werden.' : 'Keine Vorfälle im Klassenbuch verzeichnet.'}
+              </p>
+              {!dataError && (
+                <p className="text-xs text-slate-500 mt-1">Keine aktuellen Einträge in den letzten 14 Tagen.</p>
+              )}
             </div>
           ) : (
             <div className="space-y-2.5">

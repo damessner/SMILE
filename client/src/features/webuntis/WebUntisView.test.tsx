@@ -6,7 +6,6 @@ import * as api from '../../services/api';
 
 vi.mock('../../services/api', () => ({
   getWebUntisStatus: vi.fn(),
-  setWebUntisEnvironment: vi.fn(),
   getWebUntisAccount: vi.fn(),
   connectWebUntisAccount: vi.fn(),
   disconnectWebUntisAccount: vi.fn(),
@@ -53,7 +52,7 @@ describe('WebUntisView', () => {
       environment: 'production',
       server: 'ms-telfs.webuntis.com',
       school: 'ms-telfs',
-      user: 'untis_monitor',
+      account: 'service',
     });
     vi.mocked(api.getWebUntisAccount).mockResolvedValue({
       connected: false,
@@ -286,5 +285,50 @@ describe('WebUntisView', () => {
     await waitFor(() => {
       expect(api.getWebUntisTimetable).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('sends the lesson class and date when saving Lehrstoff', async () => {
+    vi.mocked(api.saveWebUntisTeachingContent).mockResolvedValue({ success: true });
+
+    render(
+      <WebUntisView
+        currentClass={mockClass}
+        classes={[mockClass]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    const input = await screen.findByDisplayValue('Grammatik Grundlagen');
+    expect(input).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Lehrstoff in WebUntis speichern'));
+
+    await waitFor(() => {
+      expect(api.saveWebUntisTeachingContent).toHaveBeenCalledWith(
+        501,
+        430,
+        getTestMonday().dateStr,
+        'Grammatik Grundlagen',
+      );
+    });
+  });
+
+  it('shows an error banner instead of claiming an empty timetable on failure', async () => {
+    vi.mocked(api.getWebUntisTimetable).mockRejectedValueOnce(
+      new Error('WebUntis ist nicht erreichbar.'),
+    );
+
+    render(
+      <WebUntisView
+        currentClass={mockClass}
+        classes={[mockClass]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    expect(await screen.findByText('WebUntis ist nicht erreichbar.')).toBeInTheDocument();
+    expect(screen.queryByText('Keine Stunden für diesen Zeitraum gefunden.')).not.toBeInTheDocument();
   });
 });

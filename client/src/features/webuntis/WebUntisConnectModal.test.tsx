@@ -43,6 +43,8 @@ describe('WebUntisConnectModal', () => {
     expect(screen.getByText('MS-Telfs (Live)')).toBeInTheDocument();
     expect(screen.getByText('Spielwiese (Test)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('z. B. dames oder Lehrkraft-Kürzel')).toBeInTheDocument();
+    // Only password authentication exists; the old login-key toggle was dead code.
+    expect(screen.queryByText('Untis-Login-Key / 2FA')).not.toBeInTheDocument();
   });
 
   it('allows switching to playground preset', () => {
@@ -99,7 +101,6 @@ describe('WebUntisConnectModal', () => {
         school: 'ms-telfs',
         username: 'OFJ',
         secret: 'Secret123!',
-        authMethod: 'password',
       });
       expect(onSuccess).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { encryptSecret, decryptSecret } from './crypto.js';
+import { config } from '../../config.js';
+import {
+  decryptSecret,
+  decryptSecretDetailed,
+  encryptSecret,
+  hasDedicatedCredentialKey,
+} from './crypto.js';
 
 describe('WebUntis Credential Crypto (AES-256-GCM)', () => {
   it('encrypts and decrypts a plaintext password successfully', () => {
@@ -43,5 +49,29 @@ describe('WebUntis Credential Crypto (AES-256-GCM)', () => {
 
   it('rejects empty input on encrypt', () => {
     expect(() => encryptSecret('')).toThrow(/empty/i);
+  });
+
+  it('still reads a legacy JWT-derived secret after a dedicated key is added', () => {
+    const cfg = config.webuntis as { credentialKey: string };
+    const original = cfg.credentialKey;
+    try {
+      cfg.credentialKey = '';
+      expect(hasDedicatedCredentialKey()).toBe(false);
+      const legacy = encryptSecret('LegacySecret123!');
+
+      cfg.credentialKey = 'dedicated-credential-key-that-is-at-least-32-chars';
+      expect(hasDedicatedCredentialKey()).toBe(true);
+
+      const migrated = decryptSecretDetailed(legacy.encrypted, legacy.iv, legacy.authTag);
+      expect(migrated.plaintext).toBe('LegacySecret123!');
+      expect(migrated.usedLegacyKey).toBe(true);
+
+      const fresh = encryptSecret('FreshSecret123!');
+      const current = decryptSecretDetailed(fresh.encrypted, fresh.iv, fresh.authTag);
+      expect(current.plaintext).toBe('FreshSecret123!');
+      expect(current.usedLegacyKey).toBe(false);
+    } finally {
+      cfg.credentialKey = original;
+    }
   });
 });

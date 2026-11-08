@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { WebUntisClient } from '../lib/webuntis/client.js';
 import { userWebuntisAccounts } from '../db/schema.js';
@@ -68,6 +68,10 @@ describe('WebUntis Account Connection Routes', () => {
     if (app) await app.close();
   });
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('returns connected: false when no personal account is linked', async () => {
     mockState.accountRow = null;
     const token = app.jwt.sign({ id: '00000000-0000-0000-0000-000000000001', role: 'teacher', username: 'OFJ', teacherId: 242 });
@@ -106,6 +110,63 @@ describe('WebUntis Account Connection Routes', () => {
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
     expect(body.error).toMatch(/Ungültige/);
+  });
+
+  it('rejects a WebUntis account that belongs to a different teacher', async () => {
+    vi.spyOn(WebUntisClient, 'verifyCredentials').mockResolvedValueOnce({
+      valid: true,
+      personId: 999,
+      personType: 2,
+      teacherShort: 'AND',
+    });
+
+    const token = app.jwt.sign({ id: '00000000-0000-0000-0000-000000000001', role: 'teacher', username: 'OFJ', teacherId: 242 });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/webuntis/account/connect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { username: 'other.teacher', secret: 'ValidSecret123!' },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects non-teacher WebUntis accounts', async () => {
+    vi.spyOn(WebUntisClient, 'verifyCredentials').mockResolvedValueOnce({
+      valid: true,
+      personId: 242,
+      personType: 1,
+      teacherShort: 'OFJ',
+    });
+
+    const token = app.jwt.sign({ id: '00000000-0000-0000-0000-000000000001', role: 'teacher', username: 'OFJ', teacherId: 242 });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/webuntis/account/connect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { username: 'pupil.account', secret: 'ValidSecret123!' },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects a host outside the WebUntis allowlist before contacting it', async () => {
+    const verifySpy = vi.spyOn(WebUntisClient, 'verifyCredentials');
+
+    const token = app.jwt.sign({ id: '00000000-0000-0000-0000-000000000001', role: 'teacher', username: 'OFJ', teacherId: 242 });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/webuntis/account/connect',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { server: '169.254.169.254', username: 'max', secret: 'ValidSecret123!' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).code).toBe('WEBUNTIS_HOST_NOT_ALLOWED');
+    expect(verifySpy).not.toHaveBeenCalled();
   });
 
   it('connects successfully and stores encrypted credentials when verified', async () => {

@@ -22,6 +22,9 @@ export const LEAKED_SECRETS: ReadonlySet<string> = new Set([
   'smile_super_secret_jwt_key_2026_telfs_weissenbach!',
   'smile_secure_pass_2026!',
   '8JG1V6S28pQl6NZYqLjuHQ1d7hIeWY5h',
+  // Committed as the WebUntis service-account fallback in config.ts (commit 4cc7d96).
+  // It must never be accepted again, even if an operator copies it back into .env.
+  'Smile2026!!',
 ]);
 
 export class ConfigError extends Error {
@@ -58,6 +61,19 @@ export function readBool(name: string, fallback: boolean): boolean {
   if (['1', 'true', 'yes', 'on'].includes(lower)) return true;
   if (['0', 'false', 'no', 'off'].includes(lower)) return false;
   throw new ConfigError(`Environment variable ${name} must be a boolean (true/false, 1/0, yes/no, on/off).`);
+}
+
+/** Read a value that must be one of `allowed`; anything else fails loudly at boot. */
+export function readEnum<T extends string>(name: string, allowed: readonly T[], fallback: T): T {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = raw.trim();
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new ConfigError(
+      `Environment variable ${name} must be one of: ${allowed.join(', ')}. Received "${value}".`,
+    );
+  }
+  return value as T;
 }
 
 /** Strict RFC3339 timestamp (explicit timezone required), used for business dates. */
@@ -412,15 +428,48 @@ export const config = {
   },
 
   // --- WebUntis Integration -------------------------------------------------
+  /**
+   * The service account is optional and is only ever used for read-only
+   * leadership views. Ordinary teachers must link their own account; there is
+   * no silent fallback (see `getWebUntisClientForUser`). The password has no
+   * default: the previously committed value is in LEAKED_SECRETS and is
+   * refused at boot.
+   */
   webuntis: {
     server: (process.env.WEBUNTIS_SERVER ?? '').trim() || 'ms-telfs.webuntis.com',
     school: (process.env.WEBUNTIS_SCHOOL ?? '').trim() || 'ms-telfs',
     user: (process.env.WEBUNTIS_USER ?? '').trim() || 'untis_monitor',
-    password: process.env.WEBUNTIS_PASSWORD ?? 'Smile2026!!',
+    password: process.env.WEBUNTIS_PASSWORD ?? '',
+    /**
+     * Dedicated key for the credential vault. Must be 32+ characters. When
+     * unset the key is derived from JWT_SECRET for backwards compatibility.
+     */
+    credentialKey: process.env.WEBUNTIS_CREDENTIAL_KEY ?? '',
     playgroundServer: 'playground.webuntis.com',
-    playgroundSchool: 'PG6ef0f7d3-abdf-49b5-ab74-044ef932d877',
-    environment: (process.env.WEBUNTIS_ENV ?? 'production').trim() as 'production' | 'playground',
+    playgroundSchool: (process.env.WEBUNTIS_PLAYGROUND_SCHOOL ?? '').trim() ||
+      'PG6ef0f7d3-abdf-49b5-ab74-044ef932d877',
+    environment: readEnum('WEBUNTIS_ENV', ['production', 'playground'] as const, 'production'),
     autoSyncDisciplinary: readBool('WEBUNTIS_AUTO_SYNC_DISCIPLINARY', true),
+    /** Outbound request ceiling. A hung WebUntis must never pin a SMILE request. */
+    timeoutMs: readInt('WEBUNTIS_TIMEOUT_MS', 10_000),
+    /**
+     * Hosts a personal account may be pointed at. Matched as exact host or
+     * suffix (".webuntis.com"). Prevents the connect endpoint from being used
+     * as an SSRF / credential-submission probe.
+     */
+    allowedHosts: (process.env.WEBUNTIS_ALLOWED_HOSTS ?? 'webuntis.com')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+    /** WebUntis class-register categories SMILE may write. 2 = Verhalten, 3 = Sonstiges. */
+    allowedCategoryIds: [2, 3] as readonly number[],
+    /** Durable retry queue for class-register mirrors. */
+    sync: {
+      intervalMs: readInt('WEBUNTIS_SYNC_INTERVAL_MS', 30_000),
+      maxAttempts: readInt('WEBUNTIS_SYNC_MAX_ATTEMPTS', 8),
+      /** Stop retrying an item older than this; it is reported as failed instead. */
+      maxAgeMs: readInt('WEBUNTIS_SYNC_MAX_AGE_MS', 7 * 24 * 60 * 60 * 1000),
+    },
   },
 } as const;
 
@@ -453,10 +502,36 @@ export function assertServerConfig(): void {
     ['YELLOW_CARD_RANK_LOSS_THRESHOLD', config.yellowCardRankLossThreshold],
     ['ESCALATION_STEP', config.escalationStep],
     ['RETROACTIVE_TIMEOUT_MAX_DAYS', config.retroactiveTimeoutMaxDays],
+    ['WEBUNTIS_TIMEOUT_MS', config.webuntis.timeoutMs],
+    ['WEBUNTIS_SYNC_INTERVAL_MS', config.webuntis.sync.intervalMs],
+    ['WEBUNTIS_SYNC_MAX_ATTEMPTS', config.webuntis.sync.maxAttempts],
+    ['WEBUNTIS_SYNC_MAX_AGE_MS', config.webuntis.sync.maxAgeMs],
   ];
   for (const [name, value] of positiveSettings) {
     if (value <= 0) {
       throw new ConfigError(`Environment variable ${name} must be greater than 0.`);
+    }
+  }
+
+  if (config.webuntis.password && LEAKED_SECRETS.has(config.webuntis.password.trim())) {
+    throw new ConfigError(
+      'WEBUNTIS_PASSWORD is set to the service-account password that was previously committed ' +
+        'to source control. Rotate it in WebUntis and set a new value before starting the server.',
+    );
+  }
+  if (config.webuntis.allowedHosts.length === 0) {
+    throw new ConfigError('WEBUNTIS_ALLOWED_HOSTS must list at least one WebUntis host.');
+  }
+  const credentialKey = config.webuntis.credentialKey.trim();
+  if (credentialKey) {
+    if (credentialKey.length < 32) {
+      throw new ConfigError('WEBUNTIS_CREDENTIAL_KEY must be at least 32 characters long.');
+    }
+    if (LEAKED_SECRETS.has(credentialKey)) {
+      throw new ConfigError(
+        'WEBUNTIS_CREDENTIAL_KEY matches a value that was previously committed to source control. ' +
+          'Generate a new random key before starting the server.',
+      );
     }
   }
 
@@ -514,4 +589,41 @@ export function productionCookieError(
     'Secure flag. Set COOKIE_SECURE=true and TRUST_PROXY=true if TLS terminates in front of the app, ' +
     'or COOKIE_SECURE=false to acknowledge plain-HTTP serving. See docs/SECURITY.md (Known limitations).'
   );
+}
+
+/**
+ * True when the shared WebUntis service account is usable. It is read-only and
+ * reserved for school leadership; teachers always use their personal account.
+ */
+export function webuntisServiceAccountConfigured(): boolean {
+  return Boolean(config.webuntis.server && config.webuntis.school && config.webuntis.user && config.webuntis.password);
+}
+
+/**
+ * WebUntis deployment warnings. None of these block boot: the integration is
+ * optional, and a school that does not use it must still be able to start SMILE.
+ */
+export function webuntisConfigWarnings(): string[] {
+  const warnings: string[] = [];
+  if (!webuntisServiceAccountConfigured()) {
+    warnings.push(
+      'WEBUNTIS_PASSWORD is not set: the shared WebUntis service account is disabled. ' +
+        'Teachers can still connect personal accounts; school-wide WebUntis views for ' +
+        'leadership are unavailable.',
+    );
+  }
+  if (!isEnvSet('WEBUNTIS_CREDENTIAL_KEY')) {
+    warnings.push(
+      'WEBUNTIS_CREDENTIAL_KEY is not set: stored WebUntis passwords are encrypted with a key ' +
+        'derived from JWT_SECRET. Rotating JWT_SECRET will make them undecryptable. Set a dedicated ' +
+        '32+ character key before the next secret rotation.',
+    );
+  }
+  if (!isEnvSet('WEBUNTIS_SERVER') || !isEnvSet('WEBUNTIS_SCHOOL')) {
+    warnings.push(
+      'WEBUNTIS_SERVER/WEBUNTIS_SCHOOL are not set; the built-in defaults for MS Telfs are in use. ' +
+        'Set them explicitly for any other school.',
+    );
+  }
+  return warnings;
 }
