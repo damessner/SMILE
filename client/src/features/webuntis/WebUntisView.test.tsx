@@ -331,4 +331,63 @@ describe('WebUntisView', () => {
     expect(await screen.findByText('WebUntis ist nicht erreichbar.')).toBeInTheDocument();
     expect(screen.queryByText('Keine Stunden für diesen Zeitraum gefunden.')).not.toBeInTheDocument();
   });
+
+  it('renders duty slots (MM, SPR) with badges and no Lehrstoff input, collapsing coincident slots', async () => {
+    vi.mocked(api.getWebUntisTimetable).mockResolvedValueOnce({
+      lessons: [
+        {
+          id: 601,
+          date: getTestMonday().dateInt,
+          startTime: 1145,
+          endTime: 1235,
+          classes: [{ id: 101, name: '1A' }],
+          teachers: [{ id: 10, name: 'MED' }],
+          subjects: [{ id: 61, name: 'MM' }],
+          rooms: [{ id: 12, name: 'Speisesaal' }],
+          hasTeachingContent: false,
+          missingTeachingContent: false,
+          missingAttendance: false,
+          attendanceChecked: null,
+          status: 'regular',
+          isDuty: true,
+          dutyType: 'lunch',
+        },
+        {
+          id: 602,
+          date: getTestMonday().dateInt,
+          startTime: 1145,
+          endTime: 1235,
+          classes: [{ id: 102, name: '1B' }],
+          teachers: [{ id: 10, name: 'MED' }],
+          subjects: [{ id: 61, name: 'MM' }],
+          rooms: [{ id: 12, name: 'Speisesaal' }],
+          hasTeachingContent: false,
+          missingTeachingContent: false,
+          missingAttendance: false,
+          attendanceChecked: null,
+          status: 'regular',
+          isDuty: true,
+          dutyType: 'lunch',
+        },
+      ],
+    });
+
+    render(
+      <WebUntisView
+        currentClass={null}
+        classes={[]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    // Shows duty badge
+    expect(await screen.findByText('Mittagsbetreuung')).toBeInTheDocument();
+    // Classes are merged together in the collapsed duty card
+    expect(screen.getByText('1A, 1B')).toBeInTheDocument();
+    // Does not show Lehrstoff fehlt or Lehrstoff input
+    expect(screen.queryByText('Lehrstoff fehlt')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Thema / Lehrstoff...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Anwesenheit fehlt')).not.toBeInTheDocument();
+  });
 });

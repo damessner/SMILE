@@ -132,6 +132,53 @@ export function normalizeWebUntisHost(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Duty / Supervision slots (MM = Mittagsbetreuung, SPR = Sprechstunde, BS = Pausenaufsicht)
+// Teachers do not conduct instruction or take class attendance during duty slots.
+// ---------------------------------------------------------------------------
+
+const DUTY_LUNCH_REGEX = /\b(MM|MITTAGSBETREUUNG)\b/i;
+const DUTY_OFFICE_REGEX = /\b(SPR|SPRECHSTUNDE|OFFICE\s*HOURS?)\b/i;
+const DUTY_SUPERVISION_REGEX = /\b(AUFSICHT|PAUSENAUFSICHT|BEREITSCHAFT)\b/i;
+
+export function classifyDutySlot(input: {
+  lstype?: string;
+  activityType?: string;
+  sg?: string;
+  subjects?: Array<{ id: number; name?: string }>;
+}): { isDuty: boolean; dutyType?: 'lunch' | 'office_hour' | 'supervision' | 'duty' } {
+  if (input.lstype === 'bs') {
+    return { isDuty: true, dutyType: 'supervision' };
+  }
+  if (input.lstype === 'oh') {
+    return { isDuty: true, dutyType: 'office_hour' };
+  }
+
+  const candidates: string[] = [];
+  if (input.activityType) candidates.push(input.activityType);
+  if (input.sg) candidates.push(input.sg);
+  if (input.subjects) {
+    for (const s of input.subjects) {
+      if (s.name) candidates.push(s.name);
+    }
+  }
+
+  for (const text of candidates) {
+    const trimmed = text.trim();
+    if (DUTY_LUNCH_REGEX.test(trimmed)) {
+      return { isDuty: true, dutyType: 'lunch' };
+    }
+    if (DUTY_OFFICE_REGEX.test(trimmed)) {
+      return { isDuty: true, dutyType: 'office_hour' };
+    }
+    if (DUTY_SUPERVISION_REGEX.test(trimmed)) {
+      return { isDuty: true, dutyType: 'supervision' };
+    }
+  }
+
+  return { isDuty: false };
+}
+
+// ---------------------------------------------------------------------------
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
@@ -693,27 +740,6 @@ export class WebUntisClient {
     const currentTimeInt = formatTimeInt(now);
 
     return raw.map((lesson) => {
-      const hasContent = Boolean(lesson.lstext && lesson.lstext.trim().length > 0);
-      // A lesson is only "missing" once it has ended. Comparing startTime
-      // flagged the lesson currently in progress.
-      const isFinished =
-        lesson.date < currentDateInt ||
-        (lesson.date === currentDateInt && lesson.endTime <= currentTimeInt);
-      const isCancelled = lesson.code === 'cancelled';
-
-      const rawAttendance = lesson.attendanceChecked ?? lesson.isAttendanceChecked;
-      const attendanceKnown = rawAttendance !== undefined && rawAttendance !== null;
-      const attendanceChecked = attendanceKnown ? Boolean(rawAttendance) : null;
-      // Unknown is not a violation. The classic API often omits this field, and
-      // treating that as `false` turned every past lesson into an alarm.
-      const missingAttendance = attendanceKnown && !isCancelled && isFinished && !attendanceChecked;
-      const missingTeachingContent = !isCancelled && isFinished && !hasContent;
-
-      const classes = (lesson.kl || []).map((k) => ({
-        id: k.id,
-        name: k.name || masterData.classes.get(k.id) || '',
-      }));
-
       let subjects = (lesson.su || []).map((s) => ({
         id: s.id,
         name: s.name || masterData.subjects.get(s.id) || '',
@@ -728,6 +754,35 @@ export class WebUntisClient {
           subjects = [{ id: 0, name: lesson.sg }];
         }
       }
+
+      const duty = classifyDutySlot({
+        lstype: lesson.lstype,
+        activityType: lesson.activityType,
+        sg: lesson.sg,
+        subjects,
+      });
+
+      const hasContent = Boolean(lesson.lstext && lesson.lstext.trim().length > 0);
+      // A lesson is only "missing" once it has ended. Comparing startTime
+      // flagged the lesson currently in progress.
+      const isFinished =
+        lesson.date < currentDateInt ||
+        (lesson.date === currentDateInt && lesson.endTime <= currentTimeInt);
+      const isCancelled = lesson.code === 'cancelled';
+
+      const rawAttendance = lesson.attendanceChecked ?? lesson.isAttendanceChecked;
+      const attendanceKnown = rawAttendance !== undefined && rawAttendance !== null;
+      const attendanceChecked = attendanceKnown ? Boolean(rawAttendance) : null;
+      // Unknown is not a violation. The classic API often omits this field, and
+      // treating that as `false` turned every past lesson into an alarm.
+      // Furthermore, duty slots (MM, SPR, Aufsicht) do not expect attendance checks.
+      const missingAttendance = !duty.isDuty && attendanceKnown && !isCancelled && isFinished && !attendanceChecked;
+      const missingTeachingContent = !duty.isDuty && !isCancelled && isFinished && !hasContent;
+
+      const classes = (lesson.kl || []).map((k) => ({
+        id: k.id,
+        name: k.name || masterData.classes.get(k.id) || '',
+      }));
 
       return {
         id: lesson.id,
@@ -750,6 +805,8 @@ export class WebUntisClient {
         missingTeachingContent,
         attendanceChecked,
         missingAttendance,
+        isDuty: duty.isDuty,
+        dutyType: duty.dutyType,
       };
     });
   }

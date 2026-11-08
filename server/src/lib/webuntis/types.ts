@@ -44,6 +44,9 @@ export interface WebUntisLesson {
   /** `null` means WebUntis did not report an attendance state (unknown, not "missing"). */
   attendanceChecked?: boolean | null;
   absenceCount?: number;
+  /** True for duty / supervision slots (e.g. MM, SPR, Aufsicht) where no Lehrstoff or class attendance is expected. */
+  isDuty?: boolean;
+  dutyType?: 'lunch' | 'office_hour' | 'supervision' | 'duty';
 }
 
 export interface WebUntisClassregEvent {

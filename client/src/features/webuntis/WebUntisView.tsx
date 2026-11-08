@@ -18,6 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileEdit,
+  Info,
+  ExternalLink,
 } from 'lucide-react';
 import type { SchoolClass, User, PupilWithData } from '../../types';
 import {
@@ -77,6 +79,98 @@ function errorMessage(err: unknown): string {
   return err instanceof Error && err.message
     ? err.message
     : 'WebUntis ist derzeit nicht erreichbar.';
+}
+
+export interface DutyBadgeInfo {
+  label: string;
+  icon: string;
+  bg: string;
+  text: string;
+  border: string;
+}
+
+export function getDutyBadge(lesson: WebUntisLessonItem): DutyBadgeInfo | null {
+  const isMM =
+    lesson.dutyType === 'lunch' ||
+    lesson.subjects.some((s) => /^(MM|MITTAGSBETREUUNG)$/i.test(s.name?.trim() || ''));
+  if (isMM) {
+    return {
+      label: 'Mittagsbetreuung',
+      icon: '🍽️',
+      bg: 'bg-amber-500/15',
+      text: 'text-amber-300',
+      border: 'border-amber-500/30',
+    };
+  }
+  const isSPR =
+    lesson.dutyType === 'office_hour' ||
+    lesson.subjects.some((s) => /^(SPR|SPRECHSTUNDE)$/i.test(s.name?.trim() || ''));
+  if (isSPR) {
+    return {
+      label: 'Sprechstunde',
+      icon: '💬',
+      bg: 'bg-purple-500/15',
+      text: 'text-purple-300',
+      border: 'border-purple-500/30',
+    };
+  }
+  const isAufsicht =
+    lesson.dutyType === 'supervision' ||
+    lesson.subjects.some((s) => /AUFSICHT|PAUSENAUFSICHT|BEREITSCHAFT/i.test(s.name?.trim() || ''));
+  if (isAufsicht) {
+    return {
+      label: 'Pausenaufsicht',
+      icon: '👁️',
+      bg: 'bg-sky-500/15',
+      text: 'text-sky-300',
+      border: 'border-sky-500/30',
+    };
+  }
+  if (lesson.isDuty) {
+    return {
+      label: 'Dienst / Aufsicht',
+      icon: '📋',
+      bg: 'bg-slate-800',
+      text: 'text-slate-300',
+      border: 'border-slate-700',
+    };
+  }
+  return null;
+}
+
+export function groupDutyLessons(lessons: WebUntisLessonItem[]): WebUntisLessonItem[] {
+  const result: WebUntisLessonItem[] = [];
+  const dutyGroups = new Map<string, WebUntisLessonItem>();
+
+  for (const l of lessons) {
+    const dutyBadge = getDutyBadge(l);
+    if (!l.isDuty && !dutyBadge) {
+      result.push(l);
+      continue;
+    }
+    const dutyTypeKey = l.dutyType || dutyBadge?.label || l.subjects[0]?.name || 'duty';
+    const dutyKey = `${l.date}_${l.startTime}_${l.endTime}_${dutyTypeKey}`;
+    const existing = dutyGroups.get(dutyKey);
+    if (!existing) {
+      const grouped: WebUntisLessonItem = {
+        ...l,
+        isDuty: true,
+        missingTeachingContent: false,
+        missingAttendance: false,
+        classes: [...l.classes],
+      };
+      dutyGroups.set(dutyKey, grouped);
+      result.push(grouped);
+    } else {
+      for (const c of l.classes) {
+        if (!existing.classes.some((ec) => ec.id === c.id || ec.name === c.name)) {
+          existing.classes.push(c);
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 export function WebUntisView({ currentClass, classes, currentUser, pupils }: WebUntisViewProps) {
@@ -368,7 +462,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     );
   }, [lessons, selectedClassId, classes]);
 
-  // Group lessons by day (dateInt) for Calendar View
+  // Group lessons by day (dateInt) for Calendar View and collapse duplicate duty slots
   const lessonsByDay = useMemo(() => {
     const map = new Map<number, WebUntisLessonItem[]>();
     for (const d of schoolWeek.days) {
@@ -380,19 +474,26 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
         arr.push(l);
       }
     }
-    for (const list of map.values()) {
+    for (const [dateInt, list] of map.entries()) {
       list.sort((a, b) => a.startTime - b.startTime);
+      map.set(dateInt, groupDutyLessons(list));
     }
     return map;
   }, [filteredLessons, schoolWeek]);
 
-  // Missing counts
+  // Lessons for List View with collapsed duplicate duty slots
+  const listLessons = useMemo(() => {
+    const sorted = [...filteredLessons].sort((a, b) => a.startTime - b.startTime);
+    return groupDutyLessons(sorted);
+  }, [filteredLessons]);
+
+  // Missing counts (duty slots like MM, SPR, Aufsicht do not require teaching content or attendance)
   const missingLehrstoffCount = useMemo(
-    () => filteredLessons.filter((l) => l.missingTeachingContent).length,
+    () => filteredLessons.filter((l) => !l.isDuty && !getDutyBadge(l) && l.missingTeachingContent).length,
     [filteredLessons],
   );
   const missingAttendanceCount = useMemo(
-    () => filteredLessons.filter((l) => l.missingAttendance).length,
+    () => filteredLessons.filter((l) => !l.isDuty && !getDutyBadge(l) && l.missingAttendance).length,
     [filteredLessons],
   );
 
@@ -848,8 +949,8 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               {schoolWeek.days.map((day) => {
                 const dayLessons = lessonsByDay.get(day.dateInt) || [];
-                const dayMissingLehrstoff = dayLessons.filter((l) => l.missingTeachingContent).length;
-                const dayMissingAttendance = dayLessons.filter((l) => l.missingAttendance).length;
+                const dayMissingLehrstoff = dayLessons.filter((l) => !l.isDuty && !getDutyBadge(l) && l.missingTeachingContent).length;
+                const dayMissingAttendance = dayLessons.filter((l) => !l.isDuty && !getDutyBadge(l) && l.missingAttendance).length;
 
                 return (
                   <div
@@ -905,6 +1006,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                         </div>
                       ) : (
                         dayLessons.map((lesson) => {
+                          const dutyBadge = getDutyBadge(lesson);
                           const startTimeStr = String(lesson.startTime).padStart(4, '0');
                           const endTimeStr = String(lesson.endTime).padStart(4, '0');
                           const timeLabel = `${startTimeStr.slice(0, 2)}:${startTimeStr.slice(2)} – ${endTimeStr.slice(0, 2)}:${endTimeStr.slice(2)}`;
@@ -918,18 +1020,29 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                           return (
                             <div
                               key={lesson.id}
-                              className={`p-3 rounded-xl border transition space-y-2 bg-slate-950/80 ${
-                                lesson.missingTeachingContent || lesson.missingAttendance
-                                  ? 'border-amber-500/30 hover:border-amber-500/50'
-                                  : 'border-slate-800/90 hover:border-slate-700'
+                              className={`p-3 rounded-xl border transition space-y-2 ${
+                                dutyBadge
+                                  ? 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700'
+                                  : lesson.missingTeachingContent || lesson.missingAttendance
+                                  ? 'border-amber-500/30 hover:border-amber-500/50 bg-slate-950/80'
+                                  : 'border-slate-800/90 hover:border-slate-700 bg-slate-950/80'
                               }`}
                             >
-                              {/* Top row: Subject, Class, Room & Time */}
+                              {/* Top row: Subject / Duty Badge, Class, Room & Time */}
                               <div className="flex items-start justify-between gap-1">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 font-bold text-xs border border-sky-500/30">
-                                    {subject}
-                                  </span>
+                                  {dutyBadge ? (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md font-bold text-xs border flex items-center gap-1.5 ${dutyBadge.bg} ${dutyBadge.text} ${dutyBadge.border}`}
+                                    >
+                                      <span>{dutyBadge.icon}</span>
+                                      <span>{dutyBadge.label}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 font-bold text-xs border border-sky-500/30">
+                                      {subject}
+                                    </span>
+                                  )}
                                   {classesStr && (
                                     <span className="text-[11px] font-bold text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded">
                                       {classesStr}
@@ -952,70 +1065,80 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                               </div>
 
                               {/* Status Badges */}
-                              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                {lesson.missingTeachingContent ? (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
-                                    Lehrstoff fehlt
+                              {dutyBadge ? (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
+                                    Dienst / Betreuung • kein Lehrstoff
                                   </span>
-                                ) : lesson.hasTeachingContent ? (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                                    Lehrstoff erfasst
-                                  </span>
-                                ) : null}
-
-                                {lesson.missingAttendance ? (
-                                  <button
-                                    onClick={() => handleInspectAbsences(day.dateStr)}
-                                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
-                                    title="Anwesenheitsliste für diese Stunde prüfen"
-                                  >
-                                    <UserX className="w-3 h-3 text-rose-400 shrink-0" />
-                                    Anwesenheit fehlt
-                                  </button>
-                                ) : lesson.attendanceChecked ? (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                                    <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
-                                    Anwesenheit erfasst
-                                  </span>
-                                ) : null}
-                              </div>
-
-                              {/* Lehrstoff Inline Editor */}
-                              <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
-                                <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
-                                  <span>Lehrstoff:</span>
-                                  {isSaved && (
-                                    <span className="text-emerald-400 flex items-center gap-1 font-bold">
-                                      <CheckCircle2 className="w-3 h-3" /> Gespeichert
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                  {lesson.missingTeachingContent ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                                      Lehrstoff fehlt
                                     </span>
-                                  )}
+                                  ) : lesson.hasTeachingContent ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      Lehrstoff erfasst
+                                    </span>
+                                  ) : null}
+
+                                  {lesson.missingAttendance ? (
+                                    <button
+                                      onClick={() => handleInspectAbsences(day.dateStr)}
+                                      className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
+                                      title="Anwesenheitsliste für diese Stunde prüfen"
+                                    >
+                                      <UserX className="w-3 h-3 text-rose-400 shrink-0" />
+                                      Anwesenheit fehlt
+                                    </button>
+                                  ) : lesson.attendanceChecked ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                                      <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      Anwesenheit erfasst
+                                    </span>
+                                  ) : null}
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                  <input
-                                    type="text"
-                                    value={lessonEdits[lesson.id] ?? ''}
-                                    onChange={(e) =>
-                                      setLessonEdits((prev) => ({ ...prev, [lesson.id]: e.target.value }))
-                                    }
-                                    placeholder="Thema / Lehrstoff..."
-                                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
-                                  />
-                                  <button
-                                    onClick={() => handleSaveTeachingContent(lesson)}
-                                    disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
-                                    className="p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold transition shrink-0"
-                                    title="Lehrstoff in WebUntis speichern"
-                                  >
-                                    {isSaving ? (
-                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                    ) : (
-                                      <Send className="w-3.5 h-3.5" />
+                              )}
+
+                              {/* Lehrstoff Inline Editor (only for teaching lessons, not duty slots) */}
+                              {!dutyBadge && (
+                                <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
+                                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
+                                    <span>Lehrstoff:</span>
+                                    {isSaved && (
+                                      <span className="text-emerald-400 flex items-center gap-1 font-bold">
+                                        <CheckCircle2 className="w-3 h-3" /> Gespeichert
+                                      </span>
                                     )}
-                                  </button>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="text"
+                                      value={lessonEdits[lesson.id] ?? ''}
+                                      onChange={(e) =>
+                                        setLessonEdits((prev) => ({ ...prev, [lesson.id]: e.target.value }))
+                                      }
+                                      placeholder="Thema / Lehrstoff..."
+                                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                                    />
+                                    <button
+                                      onClick={() => handleSaveTeachingContent(lesson)}
+                                      disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
+                                      className="p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold transition shrink-0"
+                                      title="Lehrstoff in WebUntis speichern"
+                                    >
+                                      {isSaving ? (
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Send className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           );
                         })
@@ -1030,7 +1153,8 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
              * LIST VIEW (TAGES-LISTE)
              * ============================================================== */
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredLessons.map((lesson) => {
+              {listLessons.map((lesson) => {
+                const dutyBadge = getDutyBadge(lesson);
                 const startTimeStr = String(lesson.startTime).padStart(4, '0');
                 const endTimeStr = String(lesson.endTime).padStart(4, '0');
                 const timeLabel = `${startTimeStr.slice(0, 2)}:${startTimeStr.slice(2)} – ${endTimeStr.slice(0, 2)}:${endTimeStr.slice(2)}`;
@@ -1044,13 +1168,26 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 return (
                   <div
                     key={lesson.id}
-                    className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                    className={`p-4 rounded-xl border transition space-y-3 ${
+                      dutyBadge
+                        ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                        : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 font-bold text-xs border border-sky-500/20">
-                          {subject}
-                        </span>
+                        {dutyBadge ? (
+                          <span
+                            className={`px-2.5 py-1 rounded-lg font-bold text-xs border flex items-center gap-1.5 ${dutyBadge.bg} ${dutyBadge.text} ${dutyBadge.border}`}
+                          >
+                            <span>{dutyBadge.icon}</span>
+                            <span>{dutyBadge.label}</span>
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 font-bold text-xs border border-sky-500/20">
+                            {subject}
+                          </span>
+                        )}
                         {classesStr && (
                           <span className="text-xs font-semibold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
                             {classesStr}
@@ -1072,71 +1209,81 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     </div>
 
                     {/* Status Badges: Lehrstoff fehlt / Anwesenheit fehlt */}
-                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                      {lesson.missingTeachingContent ? (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3 text-amber-400" />
-                          Lehrstoff fehlt
+                    {dutyBadge ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
+                          Dienst / Betreuung • kein Lehrstoff erforderlich
                         </span>
-                      ) : lesson.hasTeachingContent ? (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          Lehrstoff erfasst
-                        </span>
-                      ) : null}
-
-                      {lesson.missingAttendance ? (
-                        <button
-                          onClick={() => setActiveSubTab('absences')}
-                          className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
-                          title="Anwesenheitsliste für diese Stunde prüfen"
-                        >
-                          <UserX className="w-3 h-3 text-rose-400" />
-                          Anwesenheit fehlt
-                        </button>
-                      ) : lesson.attendanceChecked ? (
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3 text-emerald-400" />
-                          Anwesenheit erfasst
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {/* Lehrstoff Input */}
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
-                        <span>Lehrstoff (Was wurde gemacht?):</span>
-                        {isSaved && (
-                          <span className="text-emerald-400 flex items-center gap-1 font-bold text-[10px]">
-                            <CheckCircle2 className="w-3 h-3" /> In WebUntis gespeichert
-                          </span>
-                        )}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={lessonEdits[lesson.id] ?? ''}
-                          onChange={(e) =>
-                            setLessonEdits((prev) => ({ ...prev, [lesson.id]: e.target.value }))
-                          }
-                          placeholder="z.B. Grammatik Seite 42, Leseverständnis..."
-                          className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
-                        />
-                        <button
-                          onClick={() => handleSaveTeachingContent(lesson)}
-                          disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
-                          className="px-3 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shrink-0"
-                          title="Lehrstoff in WebUntis speichern"
-                        >
-                          {isSaving ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Send className="w-3.5 h-3.5" />
-                          )}
-                          <span>Speichern</span>
-                        </button>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                        {lesson.missingTeachingContent ? (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 text-amber-400" />
+                            Lehrstoff fehlt
+                          </span>
+                        ) : lesson.hasTeachingContent ? (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            Lehrstoff erfasst
+                          </span>
+                        ) : null}
+
+                        {lesson.missingAttendance ? (
+                          <button
+                            onClick={() => setActiveSubTab('absences')}
+                            className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
+                            title="Anwesenheitsliste für diese Stunde prüfen"
+                          >
+                            <UserX className="w-3 h-3 text-rose-400" />
+                            Anwesenheit fehlt
+                          </button>
+                        ) : lesson.attendanceChecked ? (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                            <UserCheck className="w-3 h-3 text-emerald-400" />
+                            Anwesenheit erfasst
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* Lehrstoff Input (only for teaching lessons, not duty slots) */}
+                    {!dutyBadge && (
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                          <span>Lehrstoff (Was wurde gemacht?):</span>
+                          {isSaved && (
+                            <span className="text-emerald-400 flex items-center gap-1 font-bold text-[10px]">
+                              <CheckCircle2 className="w-3 h-3" /> In WebUntis gespeichert
+                            </span>
+                          )}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={lessonEdits[lesson.id] ?? ''}
+                            onChange={(e) =>
+                              setLessonEdits((prev) => ({ ...prev, [lesson.id]: e.target.value }))
+                            }
+                            placeholder="z.B. Grammatik Seite 42, Leseverständnis..."
+                            className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                          />
+                          <button
+                            onClick={() => handleSaveTeachingContent(lesson)}
+                            disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
+                            className="px-3 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shrink-0"
+                            title="Lehrstoff in WebUntis speichern"
+                          >
+                            {isSaving ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            <span>Speichern</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1148,6 +1295,29 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
       {/* SUB-TAB 2: Abwesenheiten */}
       {activeSubTab === 'absences' && (
         <div className="space-y-4">
+          {/* Explanation banner for Attendance Check & WebUntis direct jump */}
+          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                <Info className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>Anwesenheitskontrolle & Absenzen erfassen</span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Die Anwesenheitskontrolle (Abhaken der Stunde) wird im offiziellen WebUntis-Klassenbuch oder in der Untis Mobile App durchgeführt. SMILE überwacht den Status in Echtzeit und signalisiert, falls eine Stunde noch nicht abgehakt wurde.
+              </p>
+            </div>
+            <a
+              href={`https://${accountStatus?.account?.server || status?.server || 'arche.webuntis.com'}/WebUntis/?school=${encodeURIComponent(accountStatus?.account?.school || status?.school || 'ms-telfs')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 font-bold text-xs flex items-center gap-1.5 transition shrink-0"
+              title="WebUntis im neuen Tab öffnen"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>In WebUntis öffnen</span>
+            </a>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
               <UserX className="w-4 h-4 text-rose-400" />

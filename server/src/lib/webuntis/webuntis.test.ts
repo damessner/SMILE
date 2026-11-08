@@ -1,6 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { config } from '../../config.js';
-import { WebUntisClient, normalizeWebUntisHost, parseDateOnly, toUntisDateInt } from './client.js';
+import {
+  WebUntisClient,
+  normalizeWebUntisHost,
+  parseDateOnly,
+  toUntisDateInt,
+  classifyDutySlot,
+} from './client.js';
 import { classregText, queueWebUntisClassregCorrection, queueWebUntisClassregEvent } from './sync.js';
 import { isWebUntisError } from './errors.js';
 
@@ -75,6 +81,48 @@ describe('WebUntis date handling', () => {
 
   it('throws instead of sending NaN to WebUntis', () => {
     expect(() => toUntisDateInt('not-a-date')).toThrow(RangeError);
+  });
+});
+
+describe('WebUntis duty / supervision slot classification', () => {
+  it('classifies MM / Mittagsbetreuung as lunch duty', () => {
+    expect(classifyDutySlot({ subjects: [{ id: 61, name: 'MM' }] })).toEqual({
+      isDuty: true,
+      dutyType: 'lunch',
+    });
+    expect(classifyDutySlot({ subjects: [{ id: 61, name: 'Mittagsbetreuung' }] })).toEqual({
+      isDuty: true,
+      dutyType: 'lunch',
+    });
+  });
+
+  it('classifies SPR / Sprechstunde as office hour duty', () => {
+    expect(classifyDutySlot({ subjects: [{ id: 70, name: 'SPR' }] })).toEqual({
+      isDuty: true,
+      dutyType: 'office_hour',
+    });
+    expect(classifyDutySlot({ lstype: 'oh' })).toEqual({
+      isDuty: true,
+      dutyType: 'office_hour',
+    });
+  });
+
+  it('classifies Pausenaufsicht / Bereitschaft as supervision duty', () => {
+    expect(classifyDutySlot({ lstype: 'bs' })).toEqual({
+      isDuty: true,
+      dutyType: 'supervision',
+    });
+    expect(classifyDutySlot({ subjects: [{ id: 0, name: 'Aufsicht' }] })).toEqual({
+      isDuty: true,
+      dutyType: 'supervision',
+    });
+  });
+
+  it('does not classify regular teaching subjects as duty', () => {
+    expect(classifyDutySlot({ subjects: [{ id: 1, name: 'D' }] })).toEqual({ isDuty: false });
+    expect(classifyDutySlot({ subjects: [{ id: 2, name: 'M' }] })).toEqual({ isDuty: false });
+    expect(classifyDutySlot({ subjects: [{ id: 3, name: 'E' }] })).toEqual({ isDuty: false });
+    expect(classifyDutySlot({ subjects: [{ id: 4, name: 'BSP' }] })).toEqual({ isDuty: false });
   });
 });
 

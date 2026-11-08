@@ -650,6 +650,8 @@ export interface WebUntisLessonItem {
   /** `null` means WebUntis did not report an attendance state. */
   attendanceChecked?: boolean | null;
   absenceCount?: number;
+  isDuty?: boolean;
+  dutyType?: 'lunch' | 'office_hour' | 'supervision' | 'duty';
 }
 
 export interface WebUntisAbsenceItem {
