@@ -40,7 +40,9 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@rolldown/binding-win32-x64-msvc": "1.2.12",
     "content-disposition": "0.5.4"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "1.2.12"
   }
 }
