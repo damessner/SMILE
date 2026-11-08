@@ -23,7 +23,7 @@ import {
   type ResolvedWebUntisClient,
 } from '../lib/webuntis/client.js';
 import { encryptSecret } from '../lib/webuntis/crypto.js';
-import { asWebUntisError } from '../lib/webuntis/errors.js';
+import { asWebUntisError, isWebUntisError, WebUntisError } from '../lib/webuntis/errors.js';
 import { buildWebUntisScope, scopeClassIds } from '../lib/webuntis/scope.js';
 import { db } from '../db/index.js';
 import { auditLogs, userWebuntisAccounts } from '../db/schema.js';
@@ -436,6 +436,12 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ lessons: [] });
       }
 
+      // If no specific class was requested and the user has a personal account,
+      // return their own teacher timetable (including supervisions, across all classes).
+      if (requestedClassId === undefined && resolved.account === 'personal') {
+        return reply.send({ lessons: await resolved.client.getTimetableRange(start, end) });
+      }
+
       if (classIds === null) {
         return reply.send({ lessons: await resolved.client.getTimetableRange(start, end) });
       }
@@ -561,16 +567,26 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ events: [] });
       }
 
-      if (classIds === null) {
-        return reply.send({
-          events: await resolved.client.getRecentEvents(undefined, categoryId),
-        });
-      }
+      try {
+        if (classIds === null) {
+          return reply.send({
+            events: await resolved.client.getRecentEvents(undefined, categoryId),
+          });
+        }
 
-      const lists = await Promise.all(
-        classIds.map((classId) => resolved.client.getRecentEvents(classId, categoryId)),
-      );
-      return reply.send({ events: dedupeById(lists.flat()) });
+        const lists = await Promise.all(
+          classIds.map((classId) => resolved.client.getRecentEvents(classId, categoryId)),
+        );
+        return reply.send({ events: dedupeById(lists.flat()) });
+      } catch (err) {
+        if (isWebUntisError(err) && err.code === 'WEBUNTIS_PERMISSION_DENIED') {
+          // Standard teacher accounts in WebUntis do not have permission to read getClassregEvents JSON-RPC.
+          // They can still create events via dialogs. Return empty events rather than blocking the UI.
+          request.log.info({ userId: user.id }, 'WebUntis account lacks permission for getClassregEvents; returning empty list');
+          return reply.send({ events: [] });
+        }
+        throw err;
+      }
     }),
   );
 

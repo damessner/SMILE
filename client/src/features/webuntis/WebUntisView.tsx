@@ -311,12 +311,13 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   const loadEvents = async () => {
     try {
       setLoadingEvents(true);
-      setDataError(null);
       const classIdParam = selectedClassId === 'all' ? undefined : selectedClassId;
       const res = await getWebUntisEvents(classIdParam);
       setEvents(res.events || []);
-    } catch (err) {
-      setDataError(errorMessage(err));
+    } catch {
+      // Event reading permissions may not be granted to standard teacher accounts.
+      // Keep events empty rather than masking the timetable or absences.
+      setEvents([]);
     } finally {
       setLoadingEvents(false);
     }
