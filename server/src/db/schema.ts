@@ -387,3 +387,26 @@ export const pupilSubjectTeachers = pgTable('pupil_subject_teachers', {
 
 
 
+
+// 19. User WebUntis Accounts (Personal Teacher Credentials for WebUntis)
+export const userWebuntisAccounts = pgTable('user_webuntis_accounts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .notNull()
+    .unique(),
+  untisUsername: text('untis_username').notNull(),
+  encryptedSecret: text('encrypted_secret').notNull(),
+  secretIv: text('secret_iv').notNull(),
+  secretAuthTag: text('secret_auth_tag').notNull(),
+  school: text('school').notNull(),
+  server: text('server').notNull(),
+  personId: integer('person_id').notNull(),
+  teacherShort: text('teacher_short').notNull(),
+  authMethod: text('auth_method', { enum: ['password', 'loginkey'] }).default('password').notNull(),
+  lastVerifiedAt: timestamp('last_verified_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  userIdx: index('user_webuntis_accounts_user_idx').on(t.userId),
+}));

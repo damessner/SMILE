@@ -269,6 +269,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'timeout',
         note: storedTask,
         occurredAt: occurrence?.occurredAt,
+        teacherUserId: user.id,
       });
     }
     if (result.cooldownCard) {

@@ -1,5 +1,5 @@
 import { config } from '../../config.js';
-import { webuntis } from './client.js';
+import { webuntis, getWebUntisClientForUser } from './client.js';
 
 export interface DisciplinarySyncPayload {
   pupilId: number;
@@ -7,6 +7,7 @@ export interface DisciplinarySyncPayload {
   type: 'yellow' | 'red' | 'timeout';
   note?: string | null;
   occurredAt?: Date;
+  teacherUserId?: string;
 }
 
 /**
@@ -33,7 +34,8 @@ export function queueWebUntisClassregEvent(payload: DisciplinarySyncPayload): vo
       const cleanNote = payload.note?.trim();
       const text = cleanNote ? `${title} ${cleanNote}` : `${title} Disziplinarischer Vorfall`;
 
-      const result = await webuntis.createKlassenbuchEntry({
+      const client = await getWebUntisClientForUser(payload.teacherUserId);
+      const result = await client.createKlassenbuchEntry({
         studentId: payload.pupilId,
         classId: payload.classId,
         date: payload.occurredAt || new Date(),

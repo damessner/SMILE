@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { eq } from 'drizzle-orm';
 import {
   assertPasswordCurrent,
   badRequest,
@@ -8,9 +9,16 @@ import {
   safeTeacherId,
   MAX_POSTGRES_INTEGER,
 } from '../lib/guards.js';
-import { webuntis } from '../lib/webuntis/client.js';
+import {
+  webuntis,
+  WebUntisClient,
+  getWebUntisClientForUser,
+  invalidateWebUntisUserCache,
+} from '../lib/webuntis/client.js';
+import { encryptSecret } from '../lib/webuntis/crypto.js';
 import { db } from '../db/index.js';
-import { auditLogs } from '../db/schema.js';
+import { auditLogs, userWebuntisAccounts } from '../db/schema.js';
+import { config } from '../config.js';
 
 export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -20,8 +28,179 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const status = await webuntis.getStatus();
+    const client = await getWebUntisClientForUser(user.id);
+    const status = await client.getStatus();
     return reply.send(status);
+  });
+
+  /**
+   * GET /api/webuntis/account — get personal connected WebUntis account details for current teacher.
+   */
+  fastify.get('/account', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    if (!assertPasswordCurrent(user, reply)) return;
+
+    const [account] = await db
+      .select({
+        id: userWebuntisAccounts.id,
+        untisUsername: userWebuntisAccounts.untisUsername,
+        teacherShort: userWebuntisAccounts.teacherShort,
+        school: userWebuntisAccounts.school,
+        server: userWebuntisAccounts.server,
+        authMethod: userWebuntisAccounts.authMethod,
+        lastVerifiedAt: userWebuntisAccounts.lastVerifiedAt,
+      })
+      .from(userWebuntisAccounts)
+      .where(eq(userWebuntisAccounts.userId, user.id))
+      .limit(1);
+
+    if (!account) {
+      return reply.send({ connected: false });
+    }
+
+    return reply.send({
+      connected: true,
+      account: {
+        username: account.untisUsername,
+        teacherShort: account.teacherShort,
+        school: account.school,
+        server: account.server,
+        authMethod: account.authMethod,
+        lastVerifiedAt: account.lastVerifiedAt.toISOString(),
+      },
+    });
+  });
+
+  /**
+   * POST /api/webuntis/account/connect — verify and link personal WebUntis credentials.
+   */
+  fastify.post(
+    '/account/connect',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['username', 'secret'],
+          additionalProperties: false,
+          properties: {
+            server: { type: 'string' },
+            school: { type: 'string' },
+            username: { type: 'string', minLength: 1, maxLength: 100 },
+            secret: { type: 'string', minLength: 1, maxLength: 500 },
+            authMethod: { enum: ['password', 'loginkey'] },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const user = requireAuth(request);
+      if (!assertPasswordCurrent(user, reply)) return;
+
+      const body = request.body as {
+        server?: string;
+        school?: string;
+        username: string;
+        secret: string;
+        authMethod?: 'password' | 'loginkey';
+      };
+
+      const server = (body.server?.trim() || config.webuntis.server).replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+      const school = body.school?.trim() || config.webuntis.school;
+      const username = body.username.trim();
+      const secret = body.secret.trim();
+      const authMethod = body.authMethod || 'password';
+
+      const verification = await WebUntisClient.verifyCredentials({
+        server,
+        school,
+        username,
+        secret,
+        authMethod,
+      });
+
+      if (!verification.valid) {
+        return badRequest(reply, verification.error || 'Verbindung zu WebUntis fehlgeschlagen.');
+      }
+
+      const encrypted = encryptSecret(secret);
+
+      await db
+        .insert(userWebuntisAccounts)
+        .values({
+          userId: user.id,
+          untisUsername: username,
+          encryptedSecret: encrypted.encrypted,
+          secretIv: encrypted.iv,
+          secretAuthTag: encrypted.authTag,
+          school,
+          server,
+          personId: verification.personId,
+          teacherShort: verification.teacherShort || username.toUpperCase(),
+          authMethod,
+          lastVerifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: userWebuntisAccounts.userId,
+          set: {
+            untisUsername: username,
+            encryptedSecret: encrypted.encrypted,
+            secretIv: encrypted.iv,
+            secretAuthTag: encrypted.authTag,
+            school,
+            server,
+            personId: verification.personId,
+            teacherShort: verification.teacherShort || username.toUpperCase(),
+            authMethod,
+            lastVerifiedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+      invalidateWebUntisUserCache(user.id);
+
+      await db.insert(auditLogs).values({
+        actorId: safeTeacherId(user.teacherId),
+        action: 'WEBUNTIS_ACCOUNT_CONNECTED',
+        entity: 'user',
+        entityId: String(user.id),
+        payload: {
+          username,
+          school,
+          server,
+          teacherShort: verification.teacherShort,
+        },
+      });
+
+      return reply.send({
+        success: true,
+        teacherShort: verification.teacherShort,
+        teacherName: verification.teacherName,
+        personId: verification.personId,
+      });
+    },
+  );
+
+  /**
+   * POST /api/webuntis/account/disconnect — disconnect personal WebUntis account.
+   */
+  fastify.post('/account/disconnect', { preValidation: [fastify.authenticate] }, async (request, reply) => {
+    const user = requireAuth(request);
+    if (!assertPasswordCurrent(user, reply)) return;
+
+    await db.delete(userWebuntisAccounts).where(eq(userWebuntisAccounts.userId, user.id));
+    invalidateWebUntisUserCache(user.id);
+
+    await db.insert(auditLogs).values({
+      actorId: safeTeacherId(user.teacherId),
+      action: 'WEBUNTIS_ACCOUNT_DISCONNECTED',
+      entity: 'user',
+      entityId: String(user.id),
+      payload: {},
+    });
+
+    return reply.send({ success: true });
   });
 
   /**
@@ -60,7 +239,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
     const user = requireAuth(request);
     if (!assertPasswordCurrent(user, reply)) return;
 
-    const classes = await webuntis.getClasses();
+    const client = await getWebUntisClientForUser(user.id);
+    const classes = await client.getClasses();
     return reply.send({ classes });
   });
 
@@ -96,7 +276,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
       }
 
-      const absences = await webuntis.getAbsences(targetDate, query.classId);
+      const client = await getWebUntisClientForUser(user.id);
+      const absences = await client.getAbsences(targetDate, query.classId);
       return reply.send({ absences });
     },
   );
@@ -133,7 +314,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
       }
 
-      const lessons = await webuntis.getDailyTimetable(targetDate, query.classId);
+      const client = await getWebUntisClientForUser(user.id);
+      const lessons = await client.getDailyTimetable(targetDate, query.classId);
       return reply.send({ lessons });
     },
   );
@@ -167,7 +349,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         return badRequest(reply, 'Lehrstoff darf nicht leer sein.');
       }
 
-      const res = await webuntis.saveLessonTopic({ lessonId, text: cleanText });
+      const client = await getWebUntisClientForUser(user.id);
+      const res = await client.saveLessonTopic({ lessonId, text: cleanText });
       if (!res.success) {
         return reply.status(502).send({ error: 'Lehrstoff konnte nicht an WebUntis übermittelt werden.' });
       }
@@ -211,7 +394,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
       }
 
-      const events = await webuntis.getRecentEvents(query.classId, query.categoryId);
+      const client = await getWebUntisClientForUser(user.id);
+      const events = await client.getRecentEvents(query.classId, query.categoryId);
       return reply.send({ events });
     },
   );
@@ -264,7 +448,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const cleanText = text.trim();
-      const res = await webuntis.createKlassenbuchEntry({
+      const client = await getWebUntisClientForUser(user.id);
+      const res = await client.createKlassenbuchEntry({
         studentId,
         classId,
         text: cleanText,

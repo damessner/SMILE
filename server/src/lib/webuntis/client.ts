@@ -1,4 +1,8 @@
+import { eq } from 'drizzle-orm';
 import { config } from '../../config.js';
+import { db } from '../../db/index.js';
+import { userWebuntisAccounts } from '../../db/schema.js';
+import { decryptSecret } from './crypto.js';
 import type {
   WebUntisConfig,
   WebUntisEnv,
@@ -23,13 +27,25 @@ function formatTimeInt(date: Date): number {
   return Number(`${h}${m}`);
 }
 
+export interface WebUntisClientOptions {
+  server?: string;
+  school?: string;
+  user?: string;
+  password?: string;
+  personId?: number;
+  teacherShort?: string;
+  environment?: WebUntisEnv;
+}
+
 export class WebUntisClient {
   private currentEnv: WebUntisEnv;
   private session: WebUntisSession | null = null;
   private csrfToken: string | null = null;
+  private customOptions?: WebUntisClientOptions;
 
-  constructor() {
-    this.currentEnv = (config.webuntis.environment as WebUntisEnv) || 'production';
+  constructor(options?: WebUntisClientOptions) {
+    this.customOptions = options;
+    this.currentEnv = options?.environment || (config.webuntis.environment as WebUntisEnv) || 'production';
   }
 
   public getEnvironment(): WebUntisEnv {
@@ -44,12 +60,23 @@ export class WebUntisClient {
     }
   }
 
-  public getConfig(): { server: string; school: string; user: string; env: WebUntisEnv } {
+  public getConfig(): { server: string; school: string; user: string; password?: string; personId?: number; env: WebUntisEnv } {
+    if (this.customOptions) {
+      return {
+        server: this.customOptions.server || config.webuntis.server,
+        school: this.customOptions.school || config.webuntis.school,
+        user: this.customOptions.user || config.webuntis.user,
+        password: this.customOptions.password || config.webuntis.password,
+        personId: this.customOptions.personId,
+        env: this.currentEnv,
+      };
+    }
     const isPlayground = this.currentEnv === 'playground';
     return {
       server: isPlayground ? config.webuntis.playgroundServer : config.webuntis.server,
       school: isPlayground ? config.webuntis.playgroundSchool : config.webuntis.school,
       user: config.webuntis.user,
+      password: config.webuntis.password,
       env: this.currentEnv,
     };
   }
@@ -99,7 +126,7 @@ export class WebUntisClient {
       method: 'authenticate',
       params: {
         user: cfg.user,
-        password: config.webuntis.password,
+        password: cfg.password || config.webuntis.password,
         client: 'SMILE_Teacher_Platform',
       },
       jsonrpc: '2.0',
@@ -308,8 +335,9 @@ export class WebUntisClient {
       options.type = 1; // 1 = Class
     } else {
       const session = await this.authenticate();
-      if (session.personId) {
-        options.id = session.personId;
+      const personId = this.customOptions?.personId || session.personId;
+      if (personId) {
+        options.id = personId;
         options.type = 2; // 2 = Teacher
       }
     }
@@ -327,22 +355,42 @@ export class WebUntisClient {
         activityType?: string;
         code?: string;
         lstext?: string;
+        attendanceChecked?: boolean;
+        isAttendanceChecked?: boolean;
       }>>('getTimetable', { options });
 
       if (!Array.isArray(raw)) return [];
 
-      return raw.map((l) => ({
-        id: l.id,
-        date: l.date,
-        startTime: l.startTime,
-        endTime: l.endTime,
-        classes: l.kl?.map((k) => ({ id: k.id, name: k.name })) || [],
-        teachers: l.te?.map((t) => ({ id: t.id, name: t.name })) || [],
-        subjects: l.su?.map((s) => ({ id: s.id, name: s.name })) || [],
-        rooms: l.ro?.map((r) => ({ id: r.id, name: r.name })) || [],
-        lessonText: l.lstext || '',
-        status: l.code === 'cancelled' ? 'cancelled' : 'regular',
-      }));
+      const now = new Date();
+      const currentDateInt = formatDateInt(now);
+      const currentTimeInt = formatTimeInt(now);
+
+      return raw.map((l) => {
+        const hasContent = Boolean(l.lstext && l.lstext.trim().length > 0);
+        const isPastOrCurrent = l.date < currentDateInt || (l.date === currentDateInt && l.startTime <= currentTimeInt);
+        const isCancelled = l.code === 'cancelled';
+        const rawAttendanceChecked = l.attendanceChecked ?? l.isAttendanceChecked;
+        const attendanceChecked = rawAttendanceChecked !== undefined ? Boolean(rawAttendanceChecked) : false;
+        const missingAttendance = !isCancelled && isPastOrCurrent && !attendanceChecked;
+        const missingTeachingContent = !isCancelled && isPastOrCurrent && !hasContent;
+
+        return {
+          id: l.id,
+          date: l.date,
+          startTime: l.startTime,
+          endTime: l.endTime,
+          classes: l.kl?.map((k) => ({ id: k.id, name: k.name })) || [],
+          teachers: l.te?.map((t) => ({ id: t.id, name: t.name })) || [],
+          subjects: l.su?.map((s) => ({ id: s.id, name: s.name })) || [],
+          rooms: l.ro?.map((r) => ({ id: r.id, name: r.name })) || [],
+          lessonText: l.lstext || '',
+          status: isCancelled ? 'cancelled' : 'regular',
+          hasTeachingContent: hasContent,
+          missingTeachingContent,
+          attendanceChecked,
+          missingAttendance,
+        };
+      });
     } catch {
       return [];
     }
@@ -626,6 +674,192 @@ export class WebUntisClient {
       return { success: false };
     }
   }
+
+  /**
+   * Verify teacher credentials against WebUntis without persisting state.
+   */
+  public static async verifyCredentials(params: {
+    server: string;
+    school: string;
+    username: string;
+    secret: string;
+    authMethod?: 'password' | 'loginkey';
+  }): Promise<{
+    valid: boolean;
+    personId: number;
+    personType: number;
+    teacherShort?: string;
+    teacherName?: string;
+    error?: string;
+  }> {
+    const cleanServer = params.server.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+    const cleanSchool = params.school.trim();
+    const cleanUser = params.username.trim();
+    const secret = params.secret.trim();
+
+    if (!cleanServer || !cleanSchool || !cleanUser || !secret) {
+      return { valid: false, personId: 0, personType: 0, error: 'Alle Felder müssen ausgefüllt sein.' };
+    }
+
+    const rpcUrl = `https://${cleanServer}/WebUntis/jsonrpc.do?school=${encodeURIComponent(cleanSchool)}`;
+    const rpcBody = {
+      id: `verify_${Date.now()}`,
+      method: 'authenticate',
+      params: {
+        user: cleanUser,
+        password: secret,
+        client: 'SMILE_Teacher_Platform',
+      },
+      jsonrpc: '2.0',
+    };
+
+    try {
+      const res = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rpcBody),
+      });
+
+      if (!res.ok) {
+        return { valid: false, personId: 0, personType: 0, error: `Verbindungsfehler: HTTP ${res.status}` };
+      }
+
+      const data = (await res.json()) as {
+        result?: { sessionId: string; personType: number; personId: number };
+        error?: { code: number; message: string };
+      };
+
+      if (data.error || !data.result) {
+        return {
+          valid: false,
+          personId: 0,
+          personType: 0,
+          error: data.error?.message || 'Ungültige WebUntis-Anmeldedaten.',
+        };
+      }
+
+      const { personId, personType } = data.result;
+
+      // Extract cookies for follow-up teacher info query
+      const cookieHeader = res.headers.get('set-cookie') || '';
+      const cookies = cookieHeader.split(/,(?=[^;]+=[^;]+)/g).map((c) => c.trim().split(';')[0]);
+      if (!cookies.some((c) => c.startsWith('schoolname='))) {
+        cookies.push(`schoolname="${cleanSchool}"`);
+      }
+
+      let teacherShort = cleanUser.toUpperCase();
+      let teacherName: string | undefined;
+
+      try {
+        const teachersRes = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: cookies.join('; '),
+          },
+          body: JSON.stringify({
+            id: `teachers_${Date.now()}`,
+            method: 'getTeachers',
+            params: {},
+            jsonrpc: '2.0',
+          }),
+        });
+
+        if (teachersRes.ok) {
+          const tData = (await teachersRes.json()) as {
+            result?: Array<{ id: number; name: string; foreName?: string; longName?: string }>;
+          };
+          if (Array.isArray(tData.result)) {
+            const found = tData.result.find((t) => t.id === personId);
+            if (found) {
+              teacherShort = found.name;
+              teacherName = `${found.foreName || ''} ${found.longName || ''}`.trim();
+            }
+          }
+        }
+      } catch {
+        // Teacher query optional
+      }
+
+      // Logout gracefully
+      try {
+        await fetch(rpcUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: cookies.join('; '),
+          },
+          body: JSON.stringify({
+            id: `logout_${Date.now()}`,
+            method: 'logout',
+            params: {},
+            jsonrpc: '2.0',
+          }),
+        });
+      } catch {}
+
+      return {
+        valid: true,
+        personId,
+        personType,
+        teacherShort,
+        teacherName,
+      };
+    } catch (err) {
+      return {
+        valid: false,
+        personId: 0,
+        personType: 0,
+        error: err instanceof Error ? err.message : 'Keine Verbindung zu WebUntis möglich.',
+      };
+    }
+  }
+}
+
+/** In-memory client cache per user ID (15 minute TTL) */
+const userClientCache = new Map<string, { client: WebUntisClient; cachedAt: number }>();
+
+export async function getWebUntisClientForUser(userId?: string | null): Promise<WebUntisClient> {
+  if (!userId) return webuntis;
+
+  const cached = userClientCache.get(userId);
+  if (cached && Date.now() - cached.cachedAt < 15 * 60 * 1000) {
+    return cached.client;
+  }
+
+  try {
+    const [account] = await db
+      .select()
+      .from(userWebuntisAccounts)
+      .where(eq(userWebuntisAccounts.userId, userId))
+      .limit(1);
+
+    if (account) {
+      const password = decryptSecret(
+        account.encryptedSecret,
+        account.secretIv,
+        account.secretAuthTag,
+      );
+      const client = new WebUntisClient({
+        server: account.server,
+        school: account.school,
+        user: account.untisUsername,
+        password,
+        personId: account.personId,
+        teacherShort: account.teacherShort,
+      });
+      userClientCache.set(userId, { client, cachedAt: Date.now() });
+      return client;
+    }
+  } catch {
+    // If decryption or db query fails, fallback to central client
+  }
+
+  return webuntis;
+}
+
+export function invalidateWebUntisUserCache(userId: string): void {
+  userClientCache.delete(userId);
 }
 
 /** Singleton instance for the server runtime */

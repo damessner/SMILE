@@ -643,6 +643,11 @@ export interface WebUntisLessonItem {
   rooms: Array<{ id: number; name: string }>;
   lessonText?: string;
   status?: string;
+  hasTeachingContent?: boolean;
+  missingTeachingContent?: boolean;
+  missingAttendance?: boolean;
+  attendanceChecked?: boolean;
+  absenceCount?: number;
 }
 
 export interface WebUntisAbsenceItem {
@@ -735,6 +740,44 @@ export async function createWebUntisEvent(params: {
   const res = await apiFetch('/webuntis/events', {
     method: 'POST',
     body: JSON.stringify(params),
+  });
+  return unwrap(res);
+}
+
+export interface WebUntisAccountStatus {
+  connected: boolean;
+  account?: {
+    username: string;
+    teacherShort: string;
+    school: string;
+    server: string;
+    authMethod: string;
+    lastVerifiedAt: string;
+  };
+}
+
+export async function getWebUntisAccount(): Promise<WebUntisAccountStatus> {
+  const res = await apiFetch('/webuntis/account');
+  return unwrap(res);
+}
+
+export async function connectWebUntisAccount(params: {
+  username: string;
+  secret: string;
+  server?: string;
+  school?: string;
+  authMethod?: 'password' | 'loginkey';
+}): Promise<{ success: boolean; teacherShort: string; teacherName?: string; personId?: number }> {
+  const res = await apiFetch('/webuntis/account/connect', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return unwrap(res);
+}
+
+export async function disconnectWebUntisAccount(): Promise<{ success: boolean }> {
+  const res = await apiFetch('/webuntis/account/disconnect', {
+    method: 'POST',
   });
   return unwrap(res);
 }

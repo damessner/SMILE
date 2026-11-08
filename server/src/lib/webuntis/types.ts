@@ -48,6 +48,11 @@ export interface WebUntisLesson {
   lessonText?: string; // Lehrstoff
   homework?: string;
   status?: string; // regular, cancelled, substitution
+  hasTeachingContent?: boolean;
+  missingTeachingContent?: boolean;
+  missingAttendance?: boolean;
+  attendanceChecked?: boolean;
+  absenceCount?: number;
 }
 
 export interface WebUntisClassregEvent {

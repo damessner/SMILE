@@ -171,6 +171,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
         classId,
         type: typedCard,
         note: cleanNote ?? null,
+        teacherUserId: user.id,
       });
     }
 

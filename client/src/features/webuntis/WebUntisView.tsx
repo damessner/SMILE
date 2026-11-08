@@ -1,3 +1,4 @@
+import { WebUntisConnectModal } from './WebUntisConnectModal';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen,
@@ -23,6 +24,8 @@ import {
 import type { SchoolClass, User, PupilWithData } from '../../types';
 import {
   getWebUntisStatus,
+  getWebUntisAccount,
+  type WebUntisAccountStatus,
   setWebUntisEnvironment,
   getWebUntisTimetable,
   saveWebUntisTeachingContent,
@@ -54,6 +57,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   const [loadingStatus, setLoadingStatus] = useState<boolean>(true);
   const [switchingEnv, setSwitchingEnv] = useState<boolean>(false);
 
+  // Personal WebUntis Account
+  const [accountStatus, setAccountStatus] = useState<WebUntisAccountStatus | null>(null);
+  const [loadingAccount, setLoadingAccount] = useState<boolean>(true);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
+
   // Timetable & Teaching Content
   const [lessons, setLessons] = useState<WebUntisLessonItem[]>([]);
   const [loadingLessons, setLoadingLessons] = useState<boolean>(false);
@@ -78,6 +86,19 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   const [modalText, setModalText] = useState<string>('');
   const [submittingEvent, setSubmittingEvent] = useState<boolean>(false);
   const [eventError, setEventError] = useState<string | null>(null);
+
+  // Load Personal WebUntis Account
+  const loadAccount = async () => {
+    try {
+      setLoadingAccount(true);
+      const acc = await getWebUntisAccount();
+      setAccountStatus(acc);
+    } catch {
+      setAccountStatus(null);
+    } finally {
+      setLoadingAccount(false);
+    }
+  };
 
   // Load Status
   const loadStatus = async () => {
@@ -185,6 +206,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
   useEffect(() => {
     loadStatus();
+    loadAccount();
   }, []);
 
   useEffect(() => {
@@ -199,6 +221,16 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   };
 
   const isToday = selectedDate === new Date().toISOString().slice(0, 10);
+
+  // Missing counts
+  const missingLehrstoffCount = useMemo(
+    () => lessons.filter((l) => l.missingTeachingContent).length,
+    [lessons]
+  );
+  const missingAttendanceCount = useMemo(
+    () => lessons.filter((l) => l.missingAttendance).length,
+    [lessons]
+  );
 
   // Filtered Absences
   const filteredAbsences = useMemo(() => {
@@ -293,8 +325,32 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             </div>
           </div>
 
-          {/* Environment Switcher & Refresh */}
-          <div className="flex items-center gap-2">
+          {/* Top Actions: Personal Account Wizard, Environment Switcher & Refresh */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setIsConnectModalOpen(true)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-2 shadow-sm ${
+                accountStatus?.connected
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                  : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 border-transparent shadow-sky-500/20 font-extrabold'
+              }`}
+              title={
+                accountStatus?.connected
+                  ? `Verbunden als ${accountStatus.account?.teacherShort || accountStatus.account?.username} (${accountStatus.account?.server}). Klicken zum Verwalten oder Trennen.`
+                  : 'Eigenes persönliches WebUntis-Konto verknüpfen'
+              }
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>
+                {accountStatus?.connected
+                  ? `WebUntis: ${accountStatus.account?.teacherShort || accountStatus.account?.username}`
+                  : 'Eigenes WebUntis-Konto verknüpfen'}
+              </span>
+              {accountStatus?.connected && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              )}
+            </button>
+
             <button
               onClick={handleToggleEnvironment}
               disabled={switchingEnv || loadingStatus}
@@ -378,6 +434,35 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
         </div>
       </div>
 
+      {/* Banner if personal account not connected */}
+      {accountStatus && !accountStatus.connected && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-950/40 via-slate-900 to-indigo-950/40 border border-sky-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <span>Eigenes WebUntis-Konto noch nicht verknüpft</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Empfohlen
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Verbinden Sie Ihren persönlichen WebUntis-Account, um Ihre Stunden, fehlenden Lehrstoff und offene Anwesenheiten direkt zu sehen.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsConnectModalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-2 shrink-0 shadow-md transition"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Jetzt verknüpfen</span>
+          </button>
+        </div>
+      )}
+
       {/* Main Feature Navigation Sub-Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
         <button
@@ -447,14 +532,47 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
       {/* SUB-TAB 1: Stundenplan & Lehrstoff */}
       {activeSubTab === 'timetable' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <FileEdit className="w-4 h-4 text-sky-400" />
-              <span>Unterrichtsstunden & Lehrstoff ({lessons.length})</span>
-            </h2>
-            <span className="text-xs text-slate-400">
-              Tragen Sie hier direkt ein, was in der Stunde erarbeitet wurde.
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <FileEdit className="w-4 h-4 text-sky-400" />
+                <span>Unterrichtsstunden & Lehrstoff ({lessons.length})</span>
+              </h2>
+              <span className="text-xs text-slate-400">
+                Tragen Sie hier direkt ein, was in der Stunde erarbeitet wurde.
+              </span>
+            </div>
+
+            {/* Timetable status chips */}
+            <div className="flex flex-wrap items-center gap-2">
+              {missingLehrstoffCount > 0 ? (
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                  {missingLehrstoffCount}x Lehrstoff fehlt
+                </span>
+              ) : lessons.length > 0 ? (
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Lehrstoff vollständig
+                </span>
+              ) : null}
+
+              {missingAttendanceCount > 0 ? (
+                <button
+                  onClick={() => setActiveSubTab('absences')}
+                  className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 transition cursor-pointer"
+                  title="Zur Abwesenheitsliste wechseln"
+                >
+                  <UserX className="w-3.5 h-3.5 text-rose-400" />
+                  {missingAttendanceCount}x Anwesenheit fehlt
+                </button>
+              ) : lessons.length > 0 ? (
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  Anwesenheiten geprüft
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {loadingLessons ? (
@@ -511,6 +629,37 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                         </span>
                         <span className="text-[10px] text-slate-500">{teacher}</span>
                       </div>
+                    </div>
+
+                    {/* Status Badges: Lehrstoff fehlt / Anwesenheit fehlt */}
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      {lesson.missingTeachingContent ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 text-amber-400" />
+                          Lehrstoff fehlt
+                        </span>
+                      ) : lesson.hasTeachingContent ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          Lehrstoff erfasst
+                        </span>
+                      ) : null}
+
+                      {lesson.missingAttendance ? (
+                        <button
+                          onClick={() => setActiveSubTab('absences')}
+                          className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
+                          title="Anwesenheitsliste für diese Stunde prüfen"
+                        >
+                          <UserX className="w-3 h-3 text-rose-400" />
+                          Anwesenheit fehlt
+                        </button>
+                      ) : lesson.attendanceChecked ? (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                          <UserCheck className="w-3 h-3 text-emerald-400" />
+                          Anwesenheit erfasst
+                        </span>
+                      ) : null}
                     </div>
 
                     {/* Lehrstoff Input */}
@@ -753,6 +902,21 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           )}
         </div>
       )}
+
+      {/* MODAL: WebUntis Personal Account Connect Wizard */}
+      <WebUntisConnectModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        accountStatus={accountStatus}
+        onSuccess={() => {
+          loadAccount();
+          refreshData();
+        }}
+        onDisconnected={() => {
+          loadAccount();
+          refreshData();
+        }}
+      />
 
       {/* MODAL: Neuer Klassenbucheintrag */}
       {isNewEventModalOpen && (
