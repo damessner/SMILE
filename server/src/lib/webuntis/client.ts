@@ -132,11 +132,42 @@ export function normalizeWebUntisHost(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Duty / Supervision slots (MM = Mittagsbetreuung, SPR = Sprechstunde, BS = Pausenaufsicht)
+// Middle management / Administrative slots (MM = Mittleres Management)
+// These are non-teaching administrative blocks and should not be shown in the
+// SMILE teaching timetable.
+// ---------------------------------------------------------------------------
+
+export function isMiddleManagement(
+  lesson: {
+    activityType?: string;
+    sg?: string;
+    su?: Array<{ id: number; name?: string }>;
+    subjects?: Array<{ id: number; name?: string }>;
+  },
+  masterSubjects?: Map<number, string>,
+): boolean {
+  if (lesson.activityType && /^(MM|MITTLERES\s*MANAGEMENT)$/i.test(lesson.activityType.trim())) {
+    return true;
+  }
+  if (lesson.sg && /^(MM|MITTLERES\s*MANAGEMENT)$/i.test(lesson.sg.trim())) {
+    return true;
+  }
+  const subs = lesson.subjects || lesson.su || [];
+  for (const s of subs) {
+    const name = s.name || (masterSubjects && masterSubjects.get(s.id)) || '';
+    if (/^(MM|MITTLERES\s*MANAGEMENT)$/i.test(name.trim())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Duty / Supervision slots (SPR = Sprechstunde, BS = Pausenaufsicht)
 // Teachers do not conduct instruction or take class attendance during duty slots.
 // ---------------------------------------------------------------------------
 
-const DUTY_LUNCH_REGEX = /\b(MM|MITTAGSBETREUUNG)\b/i;
+const DUTY_LUNCH_REGEX = /^(MITTAGSBETREUUNG)$/i;
 const DUTY_OFFICE_REGEX = /\b(SPR|SPRECHSTUNDE|OFFICE\s*HOURS?)\b/i;
 const DUTY_SUPERVISION_REGEX = /\b(AUFSICHT|PAUSENAUFSICHT|BEREITSCHAFT)\b/i;
 
@@ -739,7 +770,9 @@ export class WebUntisClient {
     const currentDateInt = formatDateInt(now);
     const currentTimeInt = formatTimeInt(now);
 
-    return raw.map((lesson) => {
+    return raw
+      .filter((lesson) => !isMiddleManagement(lesson, masterData.subjects))
+      .map((lesson) => {
       let subjects = (lesson.su || []).map((s) => ({
         id: s.id,
         name: s.name || masterData.subjects.get(s.id) || '',

@@ -332,7 +332,7 @@ describe('WebUntisView', () => {
     expect(screen.queryByText('Keine Stunden für diesen Zeitraum gefunden.')).not.toBeInTheDocument();
   });
 
-  it('renders duty slots (MM, SPR) with badges and no Lehrstoff input, collapsing coincident slots', async () => {
+  it('renders duty slots (SPR, Aufsicht) with badges and no Lehrstoff input, collapsing coincident slots', async () => {
     vi.mocked(api.getWebUntisTimetable).mockResolvedValueOnce({
       lessons: [
         {
@@ -342,15 +342,15 @@ describe('WebUntisView', () => {
           endTime: 1235,
           classes: [{ id: 101, name: '1A' }],
           teachers: [{ id: 10, name: 'MED' }],
-          subjects: [{ id: 61, name: 'MM' }],
-          rooms: [{ id: 12, name: 'Speisesaal' }],
+          subjects: [{ id: 70, name: 'SPR' }],
+          rooms: [{ id: 12, name: 'Konferenzzimmer' }],
           hasTeachingContent: false,
           missingTeachingContent: false,
           missingAttendance: false,
           attendanceChecked: null,
           status: 'regular',
           isDuty: true,
-          dutyType: 'lunch',
+          dutyType: 'office_hour',
         },
         {
           id: 602,
@@ -359,15 +359,15 @@ describe('WebUntisView', () => {
           endTime: 1235,
           classes: [{ id: 102, name: '1B' }],
           teachers: [{ id: 10, name: 'MED' }],
-          subjects: [{ id: 61, name: 'MM' }],
-          rooms: [{ id: 12, name: 'Speisesaal' }],
+          subjects: [{ id: 70, name: 'SPR' }],
+          rooms: [{ id: 12, name: 'Konferenzzimmer' }],
           hasTeachingContent: false,
           missingTeachingContent: false,
           missingAttendance: false,
           attendanceChecked: null,
           status: 'regular',
           isDuty: true,
-          dutyType: 'lunch',
+          dutyType: 'office_hour',
         },
       ],
     });
@@ -382,12 +382,43 @@ describe('WebUntisView', () => {
     );
 
     // Shows duty badge
-    expect(await screen.findByText('Mittagsbetreuung')).toBeInTheDocument();
+    expect(await screen.findByText('Sprechstunde')).toBeInTheDocument();
     // Classes are merged together in the collapsed duty card
     expect(screen.getByText('1A, 1B')).toBeInTheDocument();
     // Does not show Lehrstoff fehlt or Lehrstoff input
     expect(screen.queryByText('Lehrstoff fehlt')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Thema / Lehrstoff...')).not.toBeInTheDocument();
     expect(screen.queryByText('Anwesenheit fehlt')).not.toBeInTheDocument();
+  });
+
+  it('filters out MM (Mittleres Management) from the timetable', async () => {
+    vi.mocked(api.getWebUntisTimetable).mockResolvedValueOnce({
+      lessons: [
+        {
+          id: 701,
+          date: getTestMonday().dateInt,
+          startTime: 1145,
+          endTime: 1235,
+          classes: [{ id: 101, name: '1A' }],
+          teachers: [{ id: 10, name: 'MED' }],
+          subjects: [{ id: 61, name: 'MM' }],
+          rooms: [{ id: 12, name: 'Direktion' }],
+          status: 'regular',
+        },
+      ],
+    });
+
+    render(
+      <WebUntisView
+        currentClass={null}
+        classes={[]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    // MM is not displayed anywhere in the timetable
+    expect(screen.queryByText('MM')).not.toBeInTheDocument();
+    expect(screen.queryByText('Mittleres Management')).not.toBeInTheDocument();
   });
 });

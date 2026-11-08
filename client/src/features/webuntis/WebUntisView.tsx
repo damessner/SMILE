@@ -90,10 +90,10 @@ export interface DutyBadgeInfo {
 }
 
 export function getDutyBadge(lesson: WebUntisLessonItem): DutyBadgeInfo | null {
-  const isMM =
+  const isLunch =
     lesson.dutyType === 'lunch' ||
-    lesson.subjects.some((s) => /^(MM|MITTAGSBETREUUNG)$/i.test(s.name?.trim() || ''));
-  if (isMM) {
+    lesson.subjects.some((s) => /^MITTAGSBETREUUNG$/i.test(s.name?.trim() || ''));
+  if (isLunch) {
     return {
       label: 'Mittagsbetreuung',
       icon: '🍽️',
@@ -451,11 +451,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
   const isToday = selectedDate === formatLocalDateIso(new Date());
 
-  // Filter lessons by selected class if specific class chosen
+  // Filter lessons by selected class if specific class chosen, and exclude MM (Mittleres Management)
   const filteredLessons = useMemo(() => {
-    if (selectedClassId === 'all') return lessons;
+    const list = lessons.filter(
+      (l) => !l.subjects.some((s) => /^(MM|MITTLERES\s*MANAGEMENT)$/i.test(s.name?.trim() || ''))
+    );
+    if (selectedClassId === 'all') return list;
     const selectedClass = classes.find((c) => c.id === selectedClassId);
-    return lessons.filter(
+    return list.filter(
       (l) =>
         l.classes.some((c) => c.id === selectedClassId) ||
         (selectedClass && l.classes.some((c) => c.name.toLowerCase() === selectedClass.name.toLowerCase())),

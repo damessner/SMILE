@@ -6,6 +6,7 @@ import {
   parseDateOnly,
   toUntisDateInt,
   classifyDutySlot,
+  isMiddleManagement,
 } from './client.js';
 import { classregText, queueWebUntisClassregCorrection, queueWebUntisClassregEvent } from './sync.js';
 import { isWebUntisError } from './errors.js';
@@ -84,12 +85,18 @@ describe('WebUntis date handling', () => {
   });
 });
 
+describe('WebUntis middle management slot filtering', () => {
+  it('identifies MM / Mittleres Management slots to exclude from timetable', () => {
+    expect(isMiddleManagement({ subjects: [{ id: 61, name: 'MM' }] })).toBe(true);
+    expect(isMiddleManagement({ subjects: [{ id: 61, name: 'Mittleres Management' }] })).toBe(true);
+    expect(isMiddleManagement({ activityType: 'MM' })).toBe(true);
+    expect(isMiddleManagement({ sg: 'MM' })).toBe(true);
+    expect(isMiddleManagement({ subjects: [{ id: 1, name: 'D' }] })).toBe(false);
+  });
+});
+
 describe('WebUntis duty / supervision slot classification', () => {
-  it('classifies MM / Mittagsbetreuung as lunch duty', () => {
-    expect(classifyDutySlot({ subjects: [{ id: 61, name: 'MM' }] })).toEqual({
-      isDuty: true,
-      dutyType: 'lunch',
-    });
+  it('classifies Mittagsbetreuung as lunch duty', () => {
     expect(classifyDutySlot({ subjects: [{ id: 61, name: 'Mittagsbetreuung' }] })).toEqual({
       isDuty: true,
       dutyType: 'lunch',
