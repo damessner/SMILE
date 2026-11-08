@@ -374,3 +374,155 @@ describe('Schulalltag retroactive Time-Out', () => {
   });
 });
 
+describe('Schulalltag pupil sorting', () => {
+  function behaviourCard(
+    id: string,
+    pupilId: number,
+    cardType: 'green' | 'yellow' | 'red',
+  ) {
+    return {
+      id,
+      pupil_id: pupilId,
+      class_id: CLASS_ID,
+      teacher_id: 1,
+      teacher_short: 'TST',
+      teacher_name: 'Test',
+      card_type: cardType,
+      created_at: '2026-11-01T10:00:00Z',
+    };
+  }
+
+  function timeoutItem(id: string, pupilId: number) {
+    return {
+      id,
+      pupil_id: pupilId,
+      class_id: CLASS_ID,
+      sent_by_teacher_id: 1,
+      sent_at: '2026-11-01T10:00:00Z',
+      task_assignment: 'Arbeitsblatt',
+      kind: 'timeout' as const,
+      status: 'resolved' as const,
+      pupil_name: 'Pupil',
+      class_name: '3a',
+      sent_by_short: 'TST',
+      sent_by_name: 'Test',
+    };
+  }
+
+  function pupilNames(): string[] {
+    return screen.getAllByTestId('pupil-name').map((el) => el.textContent ?? '');
+  }
+
+  const threePupils = () => [
+    pupil(1, 'Anna'),
+    pupil(2, 'Bella'),
+    pupil(3, 'Carl'),
+  ];
+
+  it('sorts alphabetically by name', async () => {
+    renderSchulalltag([pupil(3, 'Carl'), pupil(1, 'Anna'), pupil(2, 'Bella')]);
+
+    await screen.findByText('Carl');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'name');
+
+    expect(pupilNames()).toEqual(['Anna', 'Bella', 'Carl']);
+  });
+
+  it('sorts by rank from Meister to Lehrling, with pending last', async () => {
+    renderSchulalltag([
+      { ...pupil(1, 'Anna'), finalRank: 'Lehrling' as const },
+      { ...pupil(2, 'Bella'), finalRank: 'Meister' as const },
+      pupil(3, 'Carl'),
+      { ...pupil(4, 'Dora'), finalRank: 'Geselle' as const },
+    ]);
+
+    await screen.findByText('Anna');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'rank');
+
+    expect(pupilNames()).toEqual(['Bella', 'Dora', 'Anna', 'Carl']);
+  });
+
+  it('sorts by green cards with the most first', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      behaviourCard('g1', 1, 'green'),
+      behaviourCard('g2', 2, 'green'),
+      behaviourCard('g3', 2, 'green'),
+      behaviourCard('g4', 2, 'green'),
+      behaviourCard('g5', 3, 'green'),
+      behaviourCard('g6', 3, 'green'),
+    ] as any);
+
+    renderSchulalltag(threePupils());
+    await screen.findByText('Anna');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'green');
+
+    await waitFor(() => expect(pupilNames()).toEqual(['Bella', 'Carl', 'Anna']));
+  });
+
+  it('sorts by yellow cards with the most first', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      behaviourCard('y1', 1, 'yellow'),
+      behaviourCard('y2', 1, 'yellow'),
+      behaviourCard('y3', 2, 'yellow'),
+    ] as any);
+
+    renderSchulalltag(threePupils());
+    await screen.findByText('Anna');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'yellow');
+
+    await waitFor(() => expect(pupilNames()).toEqual(['Anna', 'Bella', 'Carl']));
+  });
+
+  it('sorts by red cards with the most first', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      behaviourCard('r1', 2, 'red'),
+      behaviourCard('r2', 1, 'red'),
+      behaviourCard('r3', 1, 'red'),
+    ] as any);
+
+    renderSchulalltag(threePupils());
+    await screen.findByText('Anna');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'red');
+
+    await waitFor(() => expect(pupilNames()).toEqual(['Anna', 'Bella', 'Carl']));
+  });
+
+  it('sorts by time-outs with the most first', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassTimeouts).mockResolvedValueOnce([
+      timeoutItem('t1', 3),
+      timeoutItem('t2', 3),
+      timeoutItem('t3', 1),
+    ] as any);
+
+    renderSchulalltag(threePupils());
+    await screen.findByText('Anna');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'timeout');
+
+    await waitFor(() => expect(pupilNames()).toEqual(['Carl', 'Anna', 'Bella']));
+  });
+
+  it('sorts by combined yellow/red/time-out incidents with the most first', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      behaviourCard('y1', 1, 'yellow'),
+      behaviourCard('y2', 1, 'yellow'),
+      behaviourCard('r1', 2, 'red'),
+    ] as any);
+    vi.mocked(api.getClassTimeouts).mockResolvedValueOnce([
+      timeoutItem('t1', 3),
+      timeoutItem('t2', 3),
+      timeoutItem('t3', 3),
+    ] as any);
+
+    renderSchulalltag(threePupils());
+    await screen.findByText('Anna');
+    await userEvent.selectOptions(screen.getByLabelText('Sortieren:'), 'incidents');
+
+    await waitFor(() => expect(pupilNames()).toEqual(['Carl', 'Anna', 'Bella']));
+  });
+});
+

@@ -122,6 +122,19 @@ describe('WebUntis outbox worker', () => {
     );
   });
 
+  it('retries a rejected entry instead of marking it done', async () => {
+    const row = pendingRow();
+    mocks.rows.push(row);
+    mocks.createEntry.mockResolvedValueOnce({ success: false });
+
+    const result = await processWebUntisOutbox({ now: new Date(2026, 10, 5, 9, 40) });
+
+    expect(result).toMatchObject({ processed: 1, retried: 1, failed: 0 });
+    expect(row.status).toBe('pending');
+    expect(row.attempts).toBe(1);
+    expect(row.lastError).toContain('nicht übernommen');
+  });
+
   it('marks a permanent failure as failed instead of retrying forever', async () => {
     const row = pendingRow();
     mocks.rows.push(row);

@@ -99,7 +99,7 @@ async function processItem(row: typeof webuntisSyncOutbox.$inferSelect): Promise
     );
   }
 
-  await resolved.client.createKlassenbuchEntry({
+  const result = await resolved.client.createKlassenbuchEntry({
     studentId: payload.pupilId,
     classId: payload.classId,
     date,
@@ -107,6 +107,17 @@ async function processItem(row: typeof webuntisSyncOutbox.$inferSelect): Promise
     categoryId: payload.categoryId,
     text: payload.text,
   });
+
+  // The client reports a rejected form/login page as `{ success: false }`
+  // rather than throwing. Treating that as done would drop an official entry
+  // while the outbox claims it was mirrored.
+  if (!result.success) {
+    throw new WebUntisError(
+      'WEBUNTIS_UNAVAILABLE',
+      'WebUntis hat den Klassenbucheintrag nicht übernommen.',
+      { retryable: true },
+    );
+  }
 }
 
 /**

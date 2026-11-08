@@ -57,6 +57,18 @@ interface BehaviorCardItem {
 const RETROACTIVE_TIMEOUT_DAYS = 7;
 const YELLOW_RANK_LOSS_THRESHOLD = 3;
 
+type PupilSortMode = 'name' | 'rank' | 'green' | 'yellow' | 'red' | 'timeout' | 'incidents';
+
+const PUPIL_SORT_OPTIONS: Array<{ value: PupilSortMode; label: string }> = [
+  { value: 'name', label: 'Name (A–Z)' },
+  { value: 'rank', label: 'Rang (Meister → Lehrling)' },
+  { value: 'green', label: 'Grüne Karten (meiste zuerst)' },
+  { value: 'yellow', label: 'Gelbe Karten (meiste zuerst)' },
+  { value: 'red', label: 'Rote Karten (meiste zuerst)' },
+  { value: 'timeout', label: 'Time-Outs (meiste zuerst)' },
+  { value: 'incidents', label: 'Gelb/Rot/Time-Out (meiste zuerst)' },
+];
+
 function localDateKey(date: Date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -116,6 +128,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const [timetableData, setTimetableData] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRank, setFilterRank] = useState<'all' | 'Lehrling' | 'Geselle' | 'Meister'>('all');
+  const [sortMode, setSortMode] = useState<PupilSortMode>('name');
   const [expandedPupilId, setExpandedPupilId] = useState<number | null>(null);
   const [activeProfilePupilId, setActiveProfilePupilId] = useState<number | null>(null);
 
@@ -740,20 +753,79 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       ? currentLesson?.subjectCode || currentLesson?.subject_code
       : null) || currentClass?.mySubjects?.[0]?.code;
 
-  // Filtered pupils list
+  // Filtered and sorted pupils list. Sorting is intentionally client-side: the
+  // whole class roster and its card/time-out counters are already loaded, so
+  // changing the order must not refetch or mutate anything.
   const filteredPupils = useMemo(() => {
-    return pupils.filter((p) => {
-      const matchesSearch = p.fullName.toLowerCase().includes(searchQuery.toLowerCase());
-      const { demotionSteps, subjectResults } = getPupilRank(p);
-      const displayedRank = getDisplayedRank(p, subjectResults, demotionSteps);
-      const matchesRank = filterRank === 'all' || displayedRank === filterRank;
-      return matchesSearch && matchesRank;
+    const rankOrder: Record<AssessmentRank | 'Ausstehend', number> = {
+      Meister: 3,
+      Geselle: 2,
+      Lehrling: 1,
+      Ausstehend: 0,
+    };
+    const byName = (a: PupilWithData, b: PupilWithData) =>
+      a.fullName.localeCompare(b.fullName, 'de', { sensitivity: 'base' });
+
+    const decorated = pupils
+      .map((p) => {
+        const { demotionSteps, subjectResults } = getPupilRank(p);
+        const displayedRank = getDisplayedRank(p, subjectResults, demotionSteps);
+        const pupilCards = cards.filter((c) => c.pupil_id === p.id);
+        const green = pupilCards.filter((c) => c.card_type === 'green').length;
+        const yellow = pupilCards.filter((c) => c.card_type === 'yellow').length;
+        const red = pupilCards.filter((c) => c.card_type === 'red').length;
+        const timeouts = classTimeouts.filter(
+          (ti) => ti.pupil_id === p.id && (ti.kind === 'timeout' || !ti.kind),
+        ).length;
+        return {
+          pupil: p,
+          displayedRank,
+          green,
+          yellow,
+          red,
+          timeouts,
+          incidents: yellow + red + timeouts,
+        };
+      })
+      .filter((entry) => {
+        const matchesSearch = entry.pupil.fullName
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase());
+        const matchesRank = filterRank === 'all' || entry.displayedRank === filterRank;
+        return matchesSearch && matchesRank;
+      });
+
+    decorated.sort((a, b) => {
+      switch (sortMode) {
+        case 'rank':
+          return (
+            rankOrder[b.displayedRank ?? 'Ausstehend'] -
+              rankOrder[a.displayedRank ?? 'Ausstehend'] || byName(a.pupil, b.pupil)
+          );
+        case 'green':
+          return b.green - a.green || byName(a.pupil, b.pupil);
+        case 'yellow':
+          return b.yellow - a.yellow || byName(a.pupil, b.pupil);
+        case 'red':
+          return b.red - a.red || byName(a.pupil, b.pupil);
+        case 'timeout':
+          return b.timeouts - a.timeouts || byName(a.pupil, b.pupil);
+        case 'incidents':
+          return b.incidents - a.incidents || byName(a.pupil, b.pupil);
+        case 'name':
+        default:
+          return byName(a.pupil, b.pupil);
+      }
     });
+
+    return decorated.map((entry) => entry.pupil);
   }, [
     pupils,
     searchQuery,
     filterRank,
+    sortMode,
     cards,
+    classTimeouts,
     rubricItemKeys,
     currentClass?.mySubjects,
     lessonSubjectCode,
@@ -1103,6 +1175,27 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                 Meister
               </button>
+
+              <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-slate-700 pl-2">
+                <label
+                  htmlFor="pupil-sort"
+                  className="whitespace-nowrap text-xs font-semibold text-slate-400"
+                >
+                  Sortieren:
+                </label>
+                <select
+                  id="pupil-sort"
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as PupilSortMode)}
+                  className="min-h-[40px] rounded-xl border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs font-bold text-slate-100 focus:border-amber-400 focus:outline-none"
+                >
+                  {PUPIL_SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -1189,7 +1282,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           className={`flex min-h-[56px] min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-400 ${rankBoxClass}`}
                           title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
                         >
-                          <span className="truncate text-base font-extrabold">{pupil.fullName}</span>
+                          <span data-testid="pupil-name" className="truncate text-base font-extrabold">{pupil.fullName}</span>
                           <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
                             {rankLabel}
                           </span>

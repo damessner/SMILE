@@ -314,6 +314,24 @@ describe('WebUntisView', () => {
     });
   });
 
+  it('does not write to WebUntis while Lehrstoff is only being typed', async () => {
+    render(
+      <WebUntisView
+        currentClass={mockClass}
+        classes={[mockClass]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    const input = await screen.findByDisplayValue('Grammatik Grundlagen');
+    fireEvent.change(input, { target: { value: 'Noch nicht gespeichert' } });
+
+    // Typing only updates local state. The WebUntis write happens on the
+    // explicit save button, never on change/blur.
+    expect(api.saveWebUntisTeachingContent).not.toHaveBeenCalled();
+  });
+
   it('shows an error banner instead of claiming an empty timetable on failure', async () => {
     vi.mocked(api.getWebUntisTimetable).mockRejectedValueOnce(
       new Error('WebUntis ist nicht erreichbar.'),
