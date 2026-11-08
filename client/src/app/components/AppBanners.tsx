@@ -13,7 +13,7 @@ export interface AppBannersProps {
 }
 
 /** Alert-load failure and conference-lock notices shown above the main content. */
-export function AppBanners({ yellowAlertError, yellowAlerts, onRetryAlerts, isLockedByConference }: AppBannersProps) {
+export function AppBanners({ yellowAlertError, onRetryAlerts, isLockedByConference }: AppBannersProps) {
   return (
     <>
       {/* Alert Load Error Banner */}
@@ -30,21 +30,6 @@ export function AppBanners({ yellowAlertError, yellowAlerts, onRetryAlerts, isLo
           >
             Erneut versuchen
           </button>
-        </div>
-      )}
-
-      {yellowAlerts.length > 0 && (
-        <div
-          role="alert"
-          className="bg-amber-500/15 border-b border-amber-500/40 px-6 py-2 text-xs text-amber-100"
-        >
-          <strong>Gelbe-Karten-Alarm:</strong>{' '}
-          {yellowAlerts.slice(0, 3).map((alert) => (
-            <span key={`${alert.pupil_id}-${alert.class_name}`} className="mr-2">
-              {alert.pupil_name} ({alert.class_name}, {alert.yellow_count}×)
-            </span>
-          ))}
-          {yellowAlerts.length > 3 && <span>und {yellowAlerts.length - 3} weitere</span>}
         </div>
       )}
 
