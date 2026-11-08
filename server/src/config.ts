@@ -410,6 +410,18 @@ export const config = {
       .map((address) => address.trim())
       .filter(Boolean),
   },
+
+  // --- WebUntis Integration -------------------------------------------------
+  webuntis: {
+    server: (process.env.WEBUNTIS_SERVER ?? '').trim() || 'ms-telfs.webuntis.com',
+    school: (process.env.WEBUNTIS_SCHOOL ?? '').trim() || 'ms-telfs',
+    user: (process.env.WEBUNTIS_USER ?? '').trim() || 'untis_monitor',
+    password: process.env.WEBUNTIS_PASSWORD ?? 'Smile2026!!',
+    playgroundServer: 'playground.webuntis.com',
+    playgroundSchool: 'PG6ef0f7d3-abdf-49b5-ab74-044ef932d877',
+    environment: (process.env.WEBUNTIS_ENV ?? 'production').trim() as 'production' | 'playground',
+    autoSyncDisciplinary: readBool('WEBUNTIS_AUTO_SYNC_DISCIPLINARY', true),
+  },
 } as const;
 
 export type AppConfig = typeof config;

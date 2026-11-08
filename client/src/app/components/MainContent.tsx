@@ -4,6 +4,7 @@ import { BeobachtungsGrid } from '../../components/BeobachtungsGrid';
 import type { BeobachtungsGridProps } from '../../components/beobachtungsGrid/types';
 import { Schulalltag } from '../../components/Schulalltag';
 import { SchoolStatistics } from '../../components/SchoolStatistics';
+import { WebUntisView } from '../../features/webuntis/WebUntisView';
 import type { AppModals } from '../hooks/useAppModals';
 import type { AppTab } from '../types';
 
@@ -69,6 +70,16 @@ export function MainContent({
 
   if (activeTab === 'statistics') {
     return <SchoolStatistics currentUser={currentUser} />;
+  }
+  if (activeTab === 'webuntis') {
+    return (
+      <WebUntisView
+        currentClass={currentClass}
+        classes={classes}
+        currentUser={currentUser}
+        pupils={pupils}
+      />
+    );
   }
   if (loadingClass && pupils.length === 0) {
     return (

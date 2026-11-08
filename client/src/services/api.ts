@@ -619,3 +619,122 @@ export async function saveNotificationPreferences(data: {
   });
   return unwrap(res);
 }
+
+// --- WebUntis Integration ---------------------------------------------------
+
+export interface WebUntisStatus {
+  connected: boolean;
+  environment: 'production' | 'playground';
+  server: string;
+  school: string;
+  user: string;
+  personId?: number;
+  error?: string;
+}
+
+export interface WebUntisLessonItem {
+  id: number;
+  date: number;
+  startTime: number;
+  endTime: number;
+  classes: Array<{ id: number; name: string }>;
+  teachers: Array<{ id: number; name: string }>;
+  subjects: Array<{ id: number; name: string }>;
+  rooms: Array<{ id: number; name: string }>;
+  lessonText?: string;
+  status?: string;
+}
+
+export interface WebUntisAbsenceItem {
+  id: number;
+  studentId: number;
+  studentName?: string;
+  classId?: number;
+  className?: string;
+  startTime: string;
+  endTime: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  excused: boolean;
+  text?: string;
+}
+
+export interface WebUntisEventItem {
+  id: number;
+  studentId: number;
+  studentName?: string;
+  classId?: number;
+  className?: string;
+  categoryId: number;
+  categoryName?: string;
+  teacherId?: number;
+  teacherName?: string;
+  date: number;
+  time: number;
+  text: string;
+  syncedFromSmile?: boolean;
+}
+
+export async function getWebUntisStatus(): Promise<WebUntisStatus> {
+  const res = await apiFetch('/webuntis/status');
+  return unwrap(res);
+}
+
+export async function setWebUntisEnvironment(environment: 'production' | 'playground'): Promise<WebUntisStatus> {
+  const res = await apiFetch('/webuntis/environment', {
+    method: 'POST',
+    body: JSON.stringify({ environment }),
+  });
+  return unwrap(res);
+}
+
+export async function getWebUntisTimetable(date?: string, classId?: number): Promise<{ lessons: WebUntisLessonItem[] }> {
+  const params = new URLSearchParams();
+  if (date) params.append('date', date);
+  if (classId) params.append('classId', String(classId));
+  const qs = params.toString() ? '?' + params.toString() : '';
+  const res = await apiFetch('/webuntis/timetable' + qs);
+  return unwrap(res);
+}
+
+export async function saveWebUntisTeachingContent(lessonId: number, text: string): Promise<{ success: boolean }> {
+  const res = await apiFetch('/webuntis/teaching-content', {
+    method: 'POST',
+    body: JSON.stringify({ lessonId, text }),
+  });
+  return unwrap(res);
+}
+
+export async function getWebUntisAbsences(date?: string, classId?: number): Promise<{ absences: WebUntisAbsenceItem[] }> {
+  const params = new URLSearchParams();
+  if (date) params.append('date', date);
+  if (classId) params.append('classId', String(classId));
+  const qs = params.toString() ? '?' + params.toString() : '';
+  const res = await apiFetch('/webuntis/absences' + qs);
+  return unwrap(res);
+}
+
+export async function getWebUntisEvents(classId?: number, categoryId?: number): Promise<{ events: WebUntisEventItem[] }> {
+  const params = new URLSearchParams();
+  if (classId) params.append('classId', String(classId));
+  if (categoryId) params.append('categoryId', String(categoryId));
+  const qs = params.toString() ? '?' + params.toString() : '';
+  const res = await apiFetch('/webuntis/events' + qs);
+  return unwrap(res);
+}
+
+export async function createWebUntisEvent(params: {
+  studentId: number;
+  classId: number;
+  text: string;
+  categoryId?: number;
+  date?: string;
+  time?: string;
+}): Promise<{ success: boolean; eventId?: number }> {
+  const res = await apiFetch('/webuntis/events', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return unwrap(res);
+}

@@ -15,6 +15,7 @@ import {
   KeyRound,
   RotateCcw,
   Bell,
+  BookOpen,
 } from 'lucide-react';
 import type { SchoolClass, User } from '../../types';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -85,14 +86,15 @@ export function AppHeader({
             <span className="hidden sm:inline">SMILE</span>
           </div>
 
-          {/* Navigation tabs */}
+          {/* Navigation tabs: [Schulalltag] [WebUntis] [Schulstatistik] (hidden: [Einstufung]) */}
           <div data-tour="nav-tabs" className="flex items-center gap-1.5 shrink-0">
             <div className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
               {(
                 [
                   ['schulalltag', 'Schulalltag', Calendar],
-                  ...(showAllModules ? [['bewertung', 'Bewertung', ClipboardList] as const] : []),
+                  ['webuntis', 'WebUntis', BookOpen],
                   ['statistics', 'Schulstatistik', BarChart3],
+                  ...(showAllModules ? [['bewertung', 'Einstufung', ClipboardList] as const] : []),
                 ] as const
               ).map(([key, label, Icon]) => (
                 <button
@@ -108,13 +110,13 @@ export function AppHeader({
                     }`}
                 >
                   <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  <span className="hidden lg:inline">{label}</span>
-                  <span className="md:hidden">{label.split(' ')[0]}</span>
+                  <span className="hidden sm:inline">{label}</span>
+                  <span className="sm:hidden">{label.split(' ')[0]}</span>
                 </button>
               ))}
             </div>
 
-            {/* 1-Click Toggle to Show / Hide Bewertung for Conferences */}
+            {/* 1-Click Toggle to Show / Hide Einstufung for Conferences */}
             <button
               onClick={toggleAllModules}
               className={`p-2 rounded-xl transition border text-xs flex items-center gap-1.5 ${
@@ -124,14 +126,14 @@ export function AppHeader({
               }`}
               title={
                 showAllModules
-                  ? 'Bewertungsmodul wieder ausblenden (Schulalltag-Fokus)'
-                  : 'Bewertungsmodul für Konferenz einblenden'
+                  ? 'Einstufungsmodul wieder ausblenden (Schulalltag-Fokus)'
+                  : 'Einstufungsmodul für Konferenz einblenden'
               }
-              aria-label={showAllModules ? 'Bewertungsmodul ausblenden' : 'Bewertungsmodul einblenden'}
+              aria-label={showAllModules ? 'Einstufungsmodul ausblenden' : 'Einstufungsmodul einblenden'}
             >
               <ClipboardList className="w-4 h-4" />
               <span className="hidden 2xl:inline text-[11px] font-semibold">
-                {showAllModules ? 'Bewertung aktiv' : 'Bewertung'}
+                {showAllModules ? 'Einstufung aktiv' : 'Einstufung'}
               </span>
             </button>
           </div>

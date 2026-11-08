@@ -26,6 +26,7 @@ import { canActOnTimeout, timeoutVisibility } from '../lib/lw-duty.js';
 import { timeoutExpiry } from '../lib/period-times.js';
 import { resolveRetroactiveOccurrence } from '../lib/retroactive-timeout.js';
 import { broadcastToClass } from '../ws/live-sync.js';
+import { queueWebUntisClassregEvent } from '../lib/webuntis/sync.js';
 import {
   queueClassEventNotification,
   queueTimeoutEscalationNotification,
@@ -260,6 +261,14 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         note: storedTask,
         occurredAt: occurrence?.occurredAt,
         retroactive: isRetroactive,
+      });
+
+      queueWebUntisClassregEvent({
+        pupilId,
+        classId,
+        type: 'timeout',
+        note: storedTask,
+        occurredAt: occurrence?.occurredAt,
       });
     }
     if (result.cooldownCard) {

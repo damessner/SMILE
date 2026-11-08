@@ -19,6 +19,7 @@ import {
 import { broadcastToClass } from '../ws/live-sync.js';
 import { queueRedCardRankChange } from '../lib/teams.js';
 import { queueClassEventNotification } from '../lib/notification-events.js';
+import { queueWebUntisClassregEvent } from '../lib/webuntis/sync.js';
 
 const CARD_TYPES = new Set(['green', 'yellow', 'red']);
 
@@ -163,6 +164,15 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       teacherId: actorId,
       note: cleanNote ?? null,
     });
+
+    if (typedCard === 'yellow' || typedCard === 'red') {
+      queueWebUntisClassregEvent({
+        pupilId,
+        classId,
+        type: typedCard,
+        note: cleanNote ?? null,
+      });
+    }
 
     if (typedCard === 'red') {
       queueRedCardRankChange({

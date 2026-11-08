@@ -20,18 +20,19 @@ import {
   MousePointerClick,
 } from 'lucide-react';
 import { User } from '../types';
+import type { AppTab } from '../app/types';
 
 interface OnboardingTourProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User | null;
-  activeTab: 'schulalltag' | 'bewertung' | 'statistics';
-  setActiveTab: (tab: 'schulalltag' | 'bewertung' | 'statistics') => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
 }
 
 interface TourStep {
   targetSelector?: string;
-  requiredTab?: 'schulalltag' | 'bewertung' | 'statistics';
+  requiredTab?: AppTab;
   badge: string;
   badgeColor: string;
   title: string;

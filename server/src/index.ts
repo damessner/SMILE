@@ -24,6 +24,7 @@ import { cardRoutes } from './routes/cards.js';
 import { evaluationRoutes } from './routes/evaluations.js';
 import { conferenceRoutes } from './routes/conferences.js';
 import { backupRoutes } from './routes/backup.js';
+import { webuntisRoutes } from './routes/webuntis.js';
 import { statisticsRoutes } from './routes/statistics.js';
 import { timetableRoutes } from './routes/timetable.js';
 import { timeoutRoutes } from './routes/timeouts.js';
@@ -255,6 +256,7 @@ export async function buildServer(
   await fastify.register(timeoutRoutes, { prefix: '/api/timeouts' });
   await fastify.register(notificationRoutes, { prefix: '/api/notifications' });
   await fastify.register(backupRoutes, { prefix: '/api/backup' });
+  await fastify.register(webuntisRoutes, { prefix: '/api/webuntis' });
 
   // --- Static client ------------------------------------------------------
   const clientDistPath = path.resolve(__dirname, '../../client/dist');
