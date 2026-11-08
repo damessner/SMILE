@@ -257,10 +257,7 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
       if (!assertPasswordCurrent(user, reply)) return;
 
       const query = request.query as { date?: string; classId?: string | number };
-      const targetDate = query.date ? new Date(query.date) : new Date();
-      if (Number.isNaN(targetDate.getTime())) {
-        return badRequest(reply, 'Ungültiges Datum.');
-      }
+      const targetDate = query.date || new Date();
 
       const classIdNum = query.classId ? Number(query.classId) : undefined;
       if (classIdNum && Number.isFinite(classIdNum) && classIdNum > 0) {
@@ -293,20 +290,8 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
         classId?: string | number;
       };
 
-      const start = query.startDate
-        ? new Date(query.startDate)
-        : query.date
-        ? new Date(query.date)
-        : new Date();
-      const end = query.endDate
-        ? new Date(query.endDate)
-        : query.date
-        ? new Date(query.date)
-        : start;
-
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return badRequest(reply, 'Ungültiges Datum.');
-      }
+      const start = query.startDate || query.date || new Date();
+      const end = query.endDate || query.date || start;
 
       const classIdNum = query.classId ? Number(query.classId) : undefined;
       if (classIdNum && Number.isFinite(classIdNum) && classIdNum > 0) {

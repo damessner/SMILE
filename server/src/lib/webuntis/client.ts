@@ -14,11 +14,46 @@ import type {
   SaveLessonTopicParams,
 } from './types.js';
 
-function formatDateInt(date: Date): number {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return Number(`${y}${m}${d}`);
+export function toUntisDateInt(date: Date | string | number): number {
+  if (typeof date === 'number') {
+    return date;
+  }
+  if (typeof date === 'string') {
+    const cleaned = date.trim().replace(/-/g, '').slice(0, 8);
+    if (/^\d{8}$/.test(cleaned)) {
+      return Number(cleaned);
+    }
+  }
+  const d = date instanceof Date ? date : new Date(date);
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return Number(`${y}${m}${day}`);
+  }
+  return Number(date);
+}
+
+export function toUntisDateStr(date: Date | string | number): string {
+  if (typeof date === 'string') {
+    const cleaned = date.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+      return cleaned;
+    }
+    if (/^\d{8}$/.test(cleaned)) {
+      return `${cleaned.slice(0, 4)}-${cleaned.slice(4, 6)}-${cleaned.slice(6, 8)}`;
+    }
+  }
+  const intVal = toUntisDateInt(date);
+  const s = String(intVal);
+  if (s.length === 8) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  }
+  return s;
+}
+
+function formatDateInt(date: Date | string | number): number {
+  return toUntisDateInt(date);
 }
 
 function formatTimeInt(date: Date): number {
@@ -382,8 +417,8 @@ export class WebUntisClient {
    * Fetch timetable lessons for a date range (e.g. an entire school week).
    */
   public async getTimetableRange(
-    startDate = new Date(),
-    endDate = new Date(),
+    startDate: Date | string | number = new Date(),
+    endDate: Date | string | number = new Date(),
     classId?: number,
   ): Promise<WebUntisLesson[]> {
     const startDateInt = formatDateInt(startDate);
@@ -513,17 +548,23 @@ export class WebUntisClient {
   /**
    * Fetch daily timetable for a class or teacher.
    */
-  public async getDailyTimetable(targetDate = new Date(), classId?: number): Promise<WebUntisLesson[]> {
+  public async getDailyTimetable(
+    targetDate: Date | string | number = new Date(),
+    classId?: number,
+  ): Promise<WebUntisLesson[]> {
     return this.getTimetableRange(targetDate, targetDate, classId);
   }
 
   /**
    * Fetch absences for a given date and class.
    */
-  public async getAbsences(targetDate = new Date(), classId?: number): Promise<WebUntisAbsence[]> {
+  public async getAbsences(
+    targetDate: Date | string | number = new Date(),
+    classId?: number,
+  ): Promise<WebUntisAbsence[]> {
     await this.authenticate();
-    const dateStr = targetDate.toISOString().slice(0, 10);
-    const dateInt = formatDateInt(targetDate);
+    const dateStr = toUntisDateStr(targetDate);
+    const dateInt = toUntisDateInt(targetDate);
 
     // Try modern REST absence endpoint first
     try {

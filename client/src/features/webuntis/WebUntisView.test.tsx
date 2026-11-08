@@ -30,6 +30,21 @@ const mockClass = {
   grade: 1,
 };
 
+function getTestMonday() {
+  const d = new Date();
+  const day = d.getDay();
+  const diffToMonday = day === 0 ? 1 : day === 6 ? 2 : 1 - day;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const dd = String(monday.getDate()).padStart(2, '0');
+  return {
+    dateInt: Number(`${y}${m}${dd}`),
+    dateStr: `${y}-${m}-${dd}`,
+  };
+}
+
 describe('WebUntisView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,7 +62,7 @@ describe('WebUntisView', () => {
       lessons: [
         {
           id: 501,
-          date: 20261108,
+          date: getTestMonday().dateInt,
           startTime: 800,
           endTime: 850,
           classes: [{ id: 430, name: '1B' }],
@@ -169,7 +184,7 @@ describe('WebUntisView', () => {
       lessons: [
         {
           id: 502,
-          date: 20261108,
+          date: getTestMonday().dateInt,
           startTime: 855,
           endTime: 945,
           classes: [{ id: 430, name: '1B' }],
@@ -206,7 +221,7 @@ describe('WebUntisView', () => {
 
     // Clicking missing attendance navigates to absences tab
     fireEvent.click(missingAttendanceBadge);
-    expect(await screen.findByText('Abwesenheiten am 2026-11-08 (1)')).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`Abwesenheiten am ${getTestMonday().dateStr}`))).toBeInTheDocument();
   });
 
   it('switches to absences tab and displays absent pupils', async () => {

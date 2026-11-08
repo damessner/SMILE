@@ -47,6 +47,27 @@ interface WebUntisViewProps {
 type SubTab = 'timetable' | 'absences' | 'events';
 type TimetableMode = 'calendar' | 'list';
 
+/**
+ * Format a Date object to 'YYYY-MM-DD' using local calendar components.
+ * Prevents UTC timezone off-by-one errors (e.g. midnight CET -> previous day UTC).
+ */
+export function formatLocalDateIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Format a Date object to YYYYMMDD integer using local calendar components.
+ */
+export function formatLocalDateInt(d: Date): number {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return Number(`${y}${m}${day}`);
+}
+
 export function WebUntisView({ currentClass, classes, currentUser, pupils }: WebUntisViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('timetable');
   const [selectedClassId, setSelectedClassId] = useState<number | 'all'>('all');
@@ -54,7 +75,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
   // Dates
   const [refDate, setRefDate] = useState<Date>(() => new Date());
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDateIso(new Date()));
 
   // Status & Environment
   const [status, setStatus] = useState<WebUntisStatus | null>(null);
@@ -99,11 +120,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     const diffToMonday = day === 0 ? 1 : day === 6 ? 2 : 1 - day;
     const monday = new Date(d);
     monday.setDate(d.getDate() + diffToMonday);
-    monday.setHours(0, 0, 0, 0);
+    monday.setHours(12, 0, 0, 0); // Noon prevents any DST or midnight boundary rollovers
 
     const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
     const dayShorts = ['Mo', 'Di', 'Mi', 'Do', 'Fr'];
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = formatLocalDateIso(new Date());
 
     const days: Array<{
       date: Date;
@@ -118,8 +139,8 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     for (let i = 0; i < 5; i++) {
       const cur = new Date(monday);
       cur.setDate(monday.getDate() + i);
-      const dateStr = cur.toISOString().slice(0, 10);
-      const dateInt = Number(dateStr.replace(/-/g, ''));
+      const dateStr = formatLocalDateIso(cur);
+      const dateInt = formatLocalDateInt(cur);
       const dd = String(cur.getDate()).padStart(2, '0');
       const mm = String(cur.getMonth() + 1).padStart(2, '0');
 
@@ -157,8 +178,8 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     return {
       monday,
       friday,
-      mondayStr: monday.toISOString().slice(0, 10),
-      fridayStr: friday.toISOString().slice(0, 10),
+      mondayStr: formatLocalDateIso(monday),
+      fridayStr: formatLocalDateIso(friday),
       kw,
       label: `Schulwoche KW ${kw} (${moDay}.${moMonth}. – ${frDay}.${frMonth}.${year})`,
       days,
@@ -317,12 +338,13 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
   // Date shifting (for list view)
   const handleShiftDate = (days: number) => {
-    const d = new Date(selectedDate);
+    const parts = selectedDate.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
     d.setDate(d.getDate() + days);
-    setSelectedDate(d.toISOString().slice(0, 10));
+    setSelectedDate(formatLocalDateIso(d));
   };
 
-  const isToday = selectedDate === new Date().toISOString().slice(0, 10);
+  const isToday = selectedDate === formatLocalDateIso(new Date());
 
   // Filter lessons by selected class if specific class chosen
   const filteredLessons = useMemo(() => {
@@ -591,7 +613,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
               {!isToday && (
                 <button
-                  onClick={() => setSelectedDate(new Date().toISOString().slice(0, 10))}
+                  onClick={() => setSelectedDate(formatLocalDateIso(new Date()))}
                   className="ml-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-[11px] font-bold hover:bg-sky-500/30 transition"
                 >
                   Heute
