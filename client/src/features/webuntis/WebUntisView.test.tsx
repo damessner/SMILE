@@ -243,4 +243,33 @@ describe('WebUntisView', () => {
     expect(await screen.findByText(/Gelbe Karte \(SMILE\)/)).toBeInTheDocument();
     expect(screen.getByText('[Gelbe Karte] Unterricht gestört')).toBeInTheDocument();
   });
+
+  it('renders 5-day school week calendar and allows shifting weeks', async () => {
+    render(
+      <WebUntisView
+        currentClass={mockClass}
+        classes={[mockClass]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    expect(await screen.findByText('Wochen-Kalender')).toBeInTheDocument();
+    expect(screen.getByText('Tages-Liste')).toBeInTheDocument();
+
+    // 5 day column headers
+    expect(screen.getByText('Montag')).toBeInTheDocument();
+    expect(screen.getByText('Dienstag')).toBeInTheDocument();
+    expect(screen.getByText('Mittwoch')).toBeInTheDocument();
+    expect(screen.getByText('Donnerstag')).toBeInTheDocument();
+    expect(screen.getByText('Freitag')).toBeInTheDocument();
+
+    // Next week navigation
+    const nextWeekBtn = screen.getByTitle('Nächste Schulwoche');
+    fireEvent.click(nextWeekBtn);
+
+    await waitFor(() => {
+      expect(api.getWebUntisTimetable).toHaveBeenCalledTimes(2);
+    });
+  });
 });

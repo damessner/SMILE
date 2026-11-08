@@ -694,10 +694,20 @@ export async function setWebUntisEnvironment(environment: 'production' | 'playgr
   return unwrap(res);
 }
 
-export async function getWebUntisTimetable(date?: string, classId?: number): Promise<{ lessons: WebUntisLessonItem[] }> {
+export async function getWebUntisTimetable(
+  dateOrParams?: { date?: string; startDate?: string; endDate?: string; classId?: number } | string,
+  classId?: number,
+): Promise<{ lessons: WebUntisLessonItem[] }> {
   const params = new URLSearchParams();
-  if (date) params.append('date', date);
-  if (classId) params.append('classId', String(classId));
+  if (typeof dateOrParams === 'string') {
+    params.append('date', dateOrParams);
+    if (classId) params.append('classId', String(classId));
+  } else if (dateOrParams) {
+    if (dateOrParams.startDate) params.append('startDate', dateOrParams.startDate);
+    if (dateOrParams.endDate) params.append('endDate', dateOrParams.endDate);
+    if (dateOrParams.date && !dateOrParams.startDate) params.append('date', dateOrParams.date);
+    if (dateOrParams.classId) params.append('classId', String(dateOrParams.classId));
+  }
   const qs = params.toString() ? '?' + params.toString() : '';
   const res = await apiFetch('/webuntis/timetable' + qs);
   return unwrap(res);

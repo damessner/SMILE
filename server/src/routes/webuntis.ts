@@ -251,71 +251,71 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
     '/absences',
     {
       preValidation: [fastify.authenticate],
-      schema: {
-        querystring: {
-          type: 'object',
-          properties: {
-            date: { type: 'string' },
-            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
-          },
-        },
-      },
     },
     async (request, reply) => {
       const user = requireAuth(request);
       if (!assertPasswordCurrent(user, reply)) return;
 
-      const query = request.query as { date?: string; classId?: number };
+      const query = request.query as { date?: string; classId?: string | number };
       const targetDate = query.date ? new Date(query.date) : new Date();
       if (Number.isNaN(targetDate.getTime())) {
         return badRequest(reply, 'Ungültiges Datum.');
       }
 
-      if (query.classId) {
-        const access = await getClassAccess(user, query.classId);
+      const classIdNum = query.classId ? Number(query.classId) : undefined;
+      if (classIdNum && Number.isFinite(classIdNum) && classIdNum > 0) {
+        const access = await getClassAccess(user, classIdNum);
         if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
       }
 
       const client = await getWebUntisClientForUser(user.id);
-      const absences = await client.getAbsences(targetDate, query.classId);
+      const absences = await client.getAbsences(targetDate, classIdNum);
       return reply.send({ absences });
     },
   );
 
   /**
-   * GET /api/webuntis/timetable — get timetable lessons and teaching content for a date.
+   * GET /api/webuntis/timetable — get timetable lessons and teaching content for a date or date range.
    */
   fastify.get(
     '/timetable',
     {
       preValidation: [fastify.authenticate],
-      schema: {
-        querystring: {
-          type: 'object',
-          properties: {
-            date: { type: 'string' },
-            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
-          },
-        },
-      },
     },
     async (request, reply) => {
       const user = requireAuth(request);
       if (!assertPasswordCurrent(user, reply)) return;
 
-      const query = request.query as { date?: string; classId?: number };
-      const targetDate = query.date ? new Date(query.date) : new Date();
-      if (Number.isNaN(targetDate.getTime())) {
+      const query = request.query as {
+        date?: string;
+        startDate?: string;
+        endDate?: string;
+        classId?: string | number;
+      };
+
+      const start = query.startDate
+        ? new Date(query.startDate)
+        : query.date
+        ? new Date(query.date)
+        : new Date();
+      const end = query.endDate
+        ? new Date(query.endDate)
+        : query.date
+        ? new Date(query.date)
+        : start;
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
         return badRequest(reply, 'Ungültiges Datum.');
       }
 
-      if (query.classId) {
-        const access = await getClassAccess(user, query.classId);
+      const classIdNum = query.classId ? Number(query.classId) : undefined;
+      if (classIdNum && Number.isFinite(classIdNum) && classIdNum > 0) {
+        const access = await getClassAccess(user, classIdNum);
         if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
       }
 
       const client = await getWebUntisClientForUser(user.id);
-      const lessons = await client.getDailyTimetable(targetDate, query.classId);
+      const lessons = await client.getTimetableRange(start, end, classIdNum);
       return reply.send({ lessons });
     },
   );
@@ -374,28 +374,22 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
     '/events',
     {
       preValidation: [fastify.authenticate],
-      schema: {
-        querystring: {
-          type: 'object',
-          properties: {
-            classId: { type: 'integer', minimum: 1, maximum: MAX_POSTGRES_INTEGER },
-            categoryId: { type: 'integer' },
-          },
-        },
-      },
     },
     async (request, reply) => {
       const user = requireAuth(request);
       if (!assertPasswordCurrent(user, reply)) return;
 
-      const query = request.query as { classId?: number; categoryId?: number };
-      if (query.classId) {
-        const access = await getClassAccess(user, query.classId);
+      const query = request.query as { classId?: string | number; categoryId?: string | number };
+      const classIdNum = query.classId ? Number(query.classId) : undefined;
+      const categoryIdNum = query.categoryId ? Number(query.categoryId) : undefined;
+
+      if (classIdNum && Number.isFinite(classIdNum) && classIdNum > 0) {
+        const access = await getClassAccess(user, classIdNum);
         if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
       }
 
       const client = await getWebUntisClientForUser(user.id);
-      const events = await client.getRecentEvents(query.classId, query.categoryId);
+      const events = await client.getRecentEvents(classIdNum, categoryIdNum);
       return reply.send({ events });
     },
   );

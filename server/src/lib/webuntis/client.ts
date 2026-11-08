@@ -313,6 +313,63 @@ export class WebUntisClient {
     }
   }
 
+  private masterDataCache: {
+    classes: Map<number, string>;
+    subjects: Map<number, string>;
+    rooms: Map<number, string>;
+    timestamp: number;
+  } | null = null;
+
+  /**
+   * Fetch and cache WebUntis master data maps (classes, subjects, rooms) to enrich timetable records.
+   */
+  public async getMasterData(): Promise<{
+    classes: Map<number, string>;
+    subjects: Map<number, string>;
+    rooms: Map<number, string>;
+  }> {
+    if (this.masterDataCache && Date.now() - this.masterDataCache.timestamp < 30 * 60 * 1000) {
+      return this.masterDataCache;
+    }
+
+    const classesMap = new Map<number, string>();
+    const subjectsMap = new Map<number, string>();
+    const roomsMap = new Map<number, string>();
+
+    try {
+      const [kRes, sRes, rRes] = await Promise.allSettled([
+        this.rpc<Array<{ id: number; name: string }>>('getKlassen'),
+        this.rpc<Array<{ id: number; name: string }>>('getSubjects'),
+        this.rpc<Array<{ id: number; name: string }>>('getRooms'),
+      ]);
+
+      if (kRes.status === 'fulfilled' && Array.isArray(kRes.value)) {
+        for (const k of kRes.value) classesMap.set(k.id, k.name);
+      }
+      if (sRes.status === 'fulfilled' && Array.isArray(sRes.value)) {
+        for (const s of sRes.value) subjectsMap.set(s.id, s.name);
+      }
+      if (rRes.status === 'fulfilled' && Array.isArray(rRes.value)) {
+        for (const r of rRes.value) roomsMap.set(r.id, r.name);
+      }
+
+      this.masterDataCache = {
+        classes: classesMap,
+        subjects: subjectsMap,
+        rooms: roomsMap,
+        timestamp: Date.now(),
+      };
+    } catch {
+      // keep whatever was loaded
+    }
+
+    return {
+      classes: classesMap,
+      subjects: subjectsMap,
+      rooms: roomsMap,
+    };
+  }
+
   /**
    * Fetch all classes from WebUntis.
    */
@@ -322,42 +379,66 @@ export class WebUntisClient {
   }
 
   /**
-   * Fetch daily timetable for a class or teacher.
+   * Fetch timetable lessons for a date range (e.g. an entire school week).
    */
-  public async getDailyTimetable(targetDate = new Date(), classId?: number): Promise<WebUntisLesson[]> {
-    const dateInt = formatDateInt(targetDate);
+  public async getTimetableRange(
+    startDate = new Date(),
+    endDate = new Date(),
+    classId?: number,
+  ): Promise<WebUntisLesson[]> {
+    const startDateInt = formatDateInt(startDate);
+    const endDateInt = formatDateInt(endDate);
+
     const options: Record<string, unknown> = {
-      startDate: dateInt,
-      endDate: dateInt,
+      startDate: startDateInt,
+      endDate: endDateInt,
+      showLsText: true,
+      showStudentgroup: true,
     };
+
+    let targetId: number | undefined;
+    let targetType: number | undefined;
+
     if (classId) {
-      options.id = classId;
-      options.type = 1; // 1 = Class
+      targetId = classId;
+      targetType = 1; // 1 = Class
     } else {
       const session = await this.authenticate();
       const personId = this.customOptions?.personId || session.personId;
       if (personId) {
-        options.id = personId;
-        options.type = 2; // 2 = Teacher
+        targetId = personId;
+        targetType = 2; // 2 = Teacher
       }
     }
 
+    if (targetId && targetType) {
+      // WebUntis requires options.element = { id, type } to avoid error -7002 "no element provided"
+      options.element = { id: targetId, type: targetType };
+      options.id = targetId;
+      options.type = targetType;
+    }
+
     try {
-      const raw = await this.rpc<Array<{
-        id: number;
-        date: number;
-        startTime: number;
-        endTime: number;
-        kl?: Array<{ id: number; name: string }>;
-        te?: Array<{ id: number; name: string }>;
-        su?: Array<{ id: number; name: string }>;
-        ro?: Array<{ id: number; name: string }>;
-        activityType?: string;
-        code?: string;
-        lstext?: string;
-        attendanceChecked?: boolean;
-        isAttendanceChecked?: boolean;
-      }>>('getTimetable', { options });
+      const [raw, masterData] = await Promise.all([
+        this.rpc<Array<{
+          id: number;
+          date: number;
+          startTime: number;
+          endTime: number;
+          kl?: Array<{ id: number; name?: string }>;
+          te?: Array<{ id: number; name?: string }>;
+          su?: Array<{ id: number; name?: string }>;
+          ro?: Array<{ id: number; name?: string }>;
+          activityType?: string;
+          lstype?: string;
+          code?: string;
+          sg?: string;
+          lstext?: string;
+          attendanceChecked?: boolean;
+          isAttendanceChecked?: boolean;
+        }>>('getTimetable', { options }),
+        this.getMasterData(),
+      ]);
 
       if (!Array.isArray(raw)) return [];
 
@@ -367,22 +448,55 @@ export class WebUntisClient {
 
       return raw.map((l) => {
         const hasContent = Boolean(l.lstext && l.lstext.trim().length > 0);
-        const isPastOrCurrent = l.date < currentDateInt || (l.date === currentDateInt && l.startTime <= currentTimeInt);
+        const isPastOrCurrent =
+          l.date < currentDateInt || (l.date === currentDateInt && l.startTime <= currentTimeInt);
         const isCancelled = l.code === 'cancelled';
         const rawAttendanceChecked = l.attendanceChecked ?? l.isAttendanceChecked;
-        const attendanceChecked = rawAttendanceChecked !== undefined ? Boolean(rawAttendanceChecked) : false;
+        const attendanceChecked =
+          rawAttendanceChecked !== undefined ? Boolean(rawAttendanceChecked) : false;
         const missingAttendance = !isCancelled && isPastOrCurrent && !attendanceChecked;
         const missingTeachingContent = !isCancelled && isPastOrCurrent && !hasContent;
+
+        const classes = (l.kl || []).map((k) => ({
+          id: k.id,
+          name: k.name || masterData.classes.get(k.id) || '',
+        }));
+
+        let subjects = (l.su || []).map((s) => ({
+          id: s.id,
+          name: s.name || masterData.subjects.get(s.id) || '',
+        }));
+
+        // Fallback for subjects if not in su array (e.g. Aufsichten / Nachmittagsbetreuung / Lernwerkstatt)
+        if (subjects.length === 0 || subjects.every((s) => !s.name)) {
+          if (l.lstype === 'bs') {
+            subjects = [{ id: 0, name: 'Aufsicht' }];
+          } else if (l.activityType) {
+            subjects = [{ id: 0, name: l.activityType }];
+          } else if (l.sg) {
+            subjects = [{ id: 0, name: l.sg }];
+          }
+        }
+
+        const rooms = (l.ro || []).map((r) => ({
+          id: r.id,
+          name: r.name || masterData.rooms.get(r.id) || '',
+        }));
+
+        const teachers = (l.te || []).map((t) => ({
+          id: t.id,
+          name: t.name || (this.customOptions?.teacherShort ?? ''),
+        }));
 
         return {
           id: l.id,
           date: l.date,
           startTime: l.startTime,
           endTime: l.endTime,
-          classes: l.kl?.map((k) => ({ id: k.id, name: k.name })) || [],
-          teachers: l.te?.map((t) => ({ id: t.id, name: t.name })) || [],
-          subjects: l.su?.map((s) => ({ id: s.id, name: s.name })) || [],
-          rooms: l.ro?.map((r) => ({ id: r.id, name: r.name })) || [],
+          classes,
+          teachers,
+          subjects,
+          rooms,
           lessonText: l.lstext || '',
           status: isCancelled ? 'cancelled' : 'regular',
           hasTeachingContent: hasContent,
@@ -394,6 +508,13 @@ export class WebUntisClient {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Fetch daily timetable for a class or teacher.
+   */
+  public async getDailyTimetable(targetDate = new Date(), classId?: number): Promise<WebUntisLesson[]> {
+    return this.getTimetableRange(targetDate, targetDate, classId);
   }
 
   /**
