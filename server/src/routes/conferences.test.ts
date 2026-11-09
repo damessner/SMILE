@@ -19,6 +19,8 @@ const lockState = vi.hoisted(() => ({
   inserts: [] as Array<{ table: unknown; values: Record<string, unknown> }>,
   updates: [] as Array<{ table: unknown; values: Record<string, unknown> }>,
   deletes: [] as Array<{ table: unknown }>,
+  /** Rows the mocked DELETE ... RETURNING returns; empty simulates "nothing matched". */
+  deletedRankRows: [] as Array<Record<string, unknown>>,
   transactionCalls: 0,
   /** Flips the audit-log insert into a failure so tests can pin fail-closed writes. */
   auditInsertFails: false,
@@ -144,8 +146,14 @@ vi.mock('../db/index.js', async (importOriginal) => {
         },
       }),
       delete: (table: unknown) => ({
-        where: async () => {
+        where: () => {
           lockState.deletes.push({ table });
+          const pending = Promise.resolve(undefined) as Promise<undefined> & {
+            returning: () => Promise<Array<Record<string, unknown>>>;
+          };
+          pending.returning = async () =>
+            tableName(table) === 'final_ranks' ? lockState.deletedRankRows : [];
+          return pending;
         },
       }),
       update: (table: unknown) => ({
@@ -443,6 +451,7 @@ function resetLockState(): void {
   lockState.inserts = [];
   lockState.updates = [];
   lockState.deletes = [];
+  lockState.deletedRankRows = [{ pupilId: 7001 }];
   lockState.transactionCalls = 0;
   lockState.auditInsertFails = false;
 }
@@ -620,6 +629,26 @@ describe('conference decisions remain usable while the class is locked', () => {
     expect(res.statusCode).toBe(200);
     expect(lockState.deletes.some((d) => d.table === lockState.schemaTables.finalRanks)).toBe(true);
     expect(lockState.broadcasts.some((b) => b.payload.type === 'FINAL_RANK_REVOKED')).toBe(true);
+  });
+
+  it('records and broadcasts nothing when there was no confirmed rank to revoke', async () => {
+    // A stale board or a crafted request used to answer 200, write a
+    // CONFERENCE_VOTE_REVOKED audit row and broadcast a withdrawal for a pupil who
+    // had never been confirmed: the official record then said a conference decision
+    // was withdrawn although none existed.
+    resetLockState();
+    lockState.deletedRankRows = [];
+
+    const res = await lockApp!.inject({
+      method: 'POST',
+      url: '/api/conferences/1/vote',
+      headers: { cookie: 'smile_session=' + lockSessionCookie(lockApp!) },
+      payload: { pupilId: 7001, action: 'unconfirm' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(lockState.inserts.some((i) => tableName(i.table) === 'audit_logs')).toBe(false);
+    expect(lockState.broadcasts.some((b) => b.payload.type === 'FINAL_RANK_REVOKED')).toBe(false);
   });
 
   it('commits a confirmed rank and its audit entry in one transaction', async () => {

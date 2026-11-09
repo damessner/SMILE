@@ -450,3 +450,32 @@ describe('dissentingVotes', () => {
   });
 });
 
+describe('ConferenceVotingModal unsaved rank edits', () => {
+  it('keeps a table-mode rank change when another pupil is accepted', async () => {
+    mockSummary([
+      pupil({ id: 10, fullName: 'Anna Muster' }),
+      pupil({ id: 11, fullName: 'Bert Beispiel', suggestedRank: 'Geselle' }),
+    ]);
+    vi.mocked(voteConference).mockResolvedValue({ success: true } as never);
+
+    renderModal({ initialViewMode: 'table' });
+    const bertSelect = await screen.findByLabelText('Rang für Bert Beispiel');
+    expect(bertSelect).toHaveValue('Geselle');
+
+    // The chair changes Bert's rank in table mode and has not confirmed the class yet.
+    fireEvent.change(bertSelect, { target: { value: 'Lehrling' } });
+    expect(screen.getByLabelText('Rang für Bert Beispiel')).toHaveValue('Lehrling');
+
+    // Accepting Anna reloads the whole summary (that is how participation and the
+    // confirmation badge arrive). The unsaved edit for Bert must survive that reload,
+    // otherwise the following "Klasse bestätigen" submits a rank nobody chose.
+    fireEvent.click(screen.getByRole('button', { name: 'Anna Muster' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Als Beschluss annehmen/i }));
+    await waitFor(() => expect(voteConference).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByTitle('Liste zum Bearbeiten: Vorschläge vorausgewählt'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Rang für Bert Beispiel')).toHaveValue('Lehrling'),
+    );
+  });
+});

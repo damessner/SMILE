@@ -158,6 +158,33 @@ interface ConferencePupil {
   };
 }
 
+type VoteRank = 'Lehrling' | 'Geselle' | 'Meister' | null;
+
+/**
+ * Rebuild the vote map from a fresh summary without discarding the chair's work.
+ *
+ * loadData() runs after every single accept/withdraw, and it used to rebuild
+ * pupilVotes from the server response alone. In table mode that silently replaced
+ * every rank the chair had changed for other pupils with the server's suggestion,
+ * so the subsequent "Klasse bestätigen" submitted ranks nobody had chosen. Keep a
+ * local rank when it differs from what the server currently proposes and the pupil
+ * is not confirmed yet; everything else follows the server so co-chairs' decisions
+ * still appear.
+ */
+function mergeVotes(
+  summary: ConferencePupil[],
+  previous: Record<number, { rank: VoteRank }>,
+): Record<number, { rank: VoteRank }> {
+  const next: Record<number, { rank: VoteRank }> = {};
+  for (const pupil of summary) {
+    const serverRank = pupil.finalRank ?? pupil.suggestedRank ?? null;
+    const localRank = previous[pupil.id]?.rank ?? null;
+    const keepLocal = !pupil.isConfirmed && localRank !== null && localRank !== serverRank;
+    next[pupil.id] = { rank: keepLocal ? localRank : serverRank };
+  }
+  return next;
+}
+
 interface ConferenceVotingModalProps {
   classes: SchoolClass[];
   initialClassId: number;
@@ -200,6 +227,8 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   >({});
   const loadGenerationRef = useRef(0);
   const currentPupilIdRef = useRef<number | null>(null);
+  // The class the modal is showing *now*; a response for any other class is stale.
+  const selectedClassIdRef = useRef(selectedClassId);
 
   const formatTimestamp = formatConfirmationTimestamp;
 
@@ -223,12 +252,17 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   );
 
   const loadData = async (cid: number, resetToFirstPupil = false) => {
+    // A vote for class 1A can finish after the chair has switched to 2B. Applying
+    // it would show 1A's pupils under 2B's header and make the old response the
+    // newest generation, discarding the load that actually belongs on screen.
+    if (cid !== selectedClassIdRef.current) return;
     const generation = ++loadGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
       const data = await getConferenceSummary(cid);
       if (generation !== loadGenerationRef.current) return;
+      if (cid !== selectedClassIdRef.current) return;
       const summary: ConferencePupil[] = data.summary || [];
       setTotalTeachers(data.totalClassTeachers || 1);
       setIsAuthorized(data.isAuthorized);
@@ -246,13 +280,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
       // An undecided pupil starts from the hours-weighted suggestion. Sending
       // null to /vote is rejected by the server and leaves the board stuck.
-      const initialMap: Record<number, { rank: 'Lehrling' | 'Geselle' | 'Meister' | null }> = {};
-      for (const p of summary) {
-        initialMap[p.id] = {
-          rank: p.finalRank ?? p.suggestedRank ?? null,
-        };
-      }
-      setPupilVotes(initialMap);
+      setPupilVotes((previous) => mergeVotes(summary, previous));
     } catch (e: any) {
       if (generation !== loadGenerationRef.current) return;
       setError(e.message || 'Fehler beim Laden der Konferenzdaten');
@@ -263,6 +291,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
   useEffect(() => {
     if (selectedClassId) {
+      selectedClassIdRef.current = selectedClassId;
       currentPupilIdRef.current = null;
       void loadData(selectedClassId, true);
     }

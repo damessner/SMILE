@@ -760,6 +760,21 @@ async function onUpdateRating(client: ClientConnection, payload: unknown): Promi
     }
   }
 
+  // A submitted ballot is final until it is explicitly reopened. The rank/next-step
+  // write path enforces that with a conditional update, but the raster items behind the
+  // ballot were still writable: a co-teacher's client disables the grid, a crafted frame
+  // did not. Changing the items changes the evidence the conference screen shows, so the
+  // write is refused here for the same reason /reopen exists.
+  if (evalRecord.isSubmitted) {
+    sendRatingError(
+      client,
+      clientMutationId,
+      'Diese Bewertung ist bereits eingereicht. Bitte zuerst wieder öffnen.',
+      'EVALUATION_SUBMITTED',
+    );
+    return;
+  }
+
   const [existingItem] = await db
     .select()
     .from(evaluationItems)

@@ -634,9 +634,26 @@ export function buildSessionGuard(
     user.sessionVersion = state.sessionVersion;
     user.mustChangePassword = state.mustChangePassword;
 
+    // A role mismatch means the token was minted for a capability the account no
+    // longer holds. Refreshing user.role below is not enough on its own: the
+    // admin-only gates (requireRole, requireAccountAdministrator) run in
+    // preValidation, before this preHandler, and they decide on the token's role.
+    // The handlers behind them do not re-check the durable role, so a demoted
+    // administrator would keep reaching admin routes - backup export, restore,
+    // credential minting - with the stale claim for the rest of the token lifetime
+    // (up to 8 h). A role change therefore ends the session and forces a fresh
+    // login; the durable role is never a downgrade applied after the decision.
+    //
+    // state.role is optional only for test doubles (see PersistedUserSessionState);
+    // the production query always selects it.
+    if (state.role !== undefined && state.role !== user.role) {
+      clearSessionCookie(reply);
+      return reply.status(401).send({ error: 'Nicht authentifiziert' });
+    }
+
     // Role and teacher linkage are durable account state, not claims to trust for
-    // the whole token lifetime. A demoted administrator or reassigned teacher must
-    // lose the old authority on the next request, not after an 8-hour expiry.
+    // the whole token lifetime. A reassigned teacher must lose the old assignment
+    // on the next request, not after an 8-hour expiry.
     if (
       state.role === 'admin' ||
       state.role === 'head_teacher' ||

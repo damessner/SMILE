@@ -291,6 +291,16 @@ Port 3000 remains reachable during the transition; `COOKIE_SECURE` stays false
 until it is retired. See [`docs/HTTPS.md`](HTTPS.md) for the client CA
 installation and cut-over steps.
 
+## 2026-11-09 review pass
+
+Full review: [`CRITICAL_REVIEW_2026-11-09.md`](CRITICAL_REVIEW_2026-11-09.md). Summary of the security-relevant changes:
+
+- **Unknown-username login timing (fixed).** The dummy bcrypt hash for a missing account was 66 characters long. bcrypt hashes are 60; bcryptjs rejected it without running the key derivation, so an unknown username answered in about 1 ms while a wrong password for an existing account took about 265 ms. The dummy is now a valid 60-character hash derived from `BCRYPT_ROUNDS`, pinned by a structural test.
+- **Stale role claim (fixed).** The admin/leadership gates run in `preValidation` and decide on the token's role; the durable role was only applied in the later `preHandler` guard, and the admin-only handlers do not re-check it. A demoted administrator could keep reaching backup export/restore, the audit log and credential minting with the stale claim. A durable-role mismatch now ends the session with 401.
+- **Raster writes after submission (fixed for `/batch-items` and WS `UPDATE_RATING`).** Both paths now refuse with `EVALUATION_SUBMITTED`; a submitted ballot's items can no longer be rewritten without `/reopen`. `/batch-default` is still an explicit force-overwrite (`forceOverwrite: true`) and remains unguarded - see the review document, remaining limits.
+- **Conference unconfirm (fixed).** A revocation that matches no `final_ranks` row now answers 404 instead of writing a `CONFERENCE_VOTE_REVOKED` audit row and broadcasting a withdrawal.
+- **Still open:** the WebSocket rating path checks the class conference lock once and writes outside any transaction, so it is not serialized with the chair's lock the way every HTTP rating route is. Fix recipe in the review document §2.1.
+
 ## Known limitations
 
 - **HTTP port 3000 during transition.** TLS is available through Caddy on port 443

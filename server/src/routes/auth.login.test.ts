@@ -346,3 +346,30 @@ describe('login source contract', () => {
     expect(expiryAt).toBeGreaterThan(compareAt);
   });
 });
+describe('unknown-username timing parity', () => {
+  it('uses a structurally valid bcrypt hash at the configured cost', async () => {
+    const { BCRYPT_ROUNDS, DUMMY_PASSWORD_HASH } = await import('./auth.js');
+
+    // bcrypt hashes are exactly 60 characters: "$2a$NN$" + 22-char salt + 31-char digest.
+    // A longer "hash" is rejected by bcryptjs without running the key derivation, so the
+    // unknown-username branch returns in about a millisecond instead of ~250 ms and the
+    // response time tells an attacker whether the account exists.
+    expect(DUMMY_PASSWORD_HASH).toHaveLength(60);
+    expect(() => bcrypt.getRounds(DUMMY_PASSWORD_HASH)).not.toThrow();
+    expect(bcrypt.getRounds(DUMMY_PASSWORD_HASH)).toBe(BCRYPT_ROUNDS);
+  });
+
+  it('compares an unknown username against the dummy hash, not a fast error path', async () => {
+    const { DUMMY_PASSWORD_HASH } = await import('./auth.js');
+    const compareSpy = vi.spyOn(bcrypt, 'compare');
+    try {
+      const res = await login('does-not-exist', WRONG);
+
+      expect(res.statusCode).toBe(401);
+      expect(compareSpy).toHaveBeenCalledTimes(1);
+      expect(compareSpy).toHaveBeenCalledWith(WRONG, DUMMY_PASSWORD_HASH);
+    } finally {
+      compareSpy.mockRestore();
+    }
+  });
+});

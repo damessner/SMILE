@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   Award,
@@ -245,12 +245,22 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     }
   };
 
+  // The live-sync listener below is registered once, but the class it must reload
+  // changes. Reading currentClass from the mount-time closure reloaded the previous
+  // class's cards and time-outs into the new class view after a switch: every row's
+  // green/yellow/red/time-out counters fell back to 0 until the next manual reload.
+  const currentClassIdRef = useRef<number | undefined>(currentClass?.id);
+  useEffect(() => {
+    currentClassIdRef.current = currentClass?.id;
+  }, [currentClass?.id]);
+
   useEffect(() => {
     loadTimeoutsData();
     const interval = setInterval(loadTimeoutsData, 15000); // Poll every 15s for live updates
     const handleTimeoutsUpdated = () => {
       void loadTimeoutsData();
-      if (currentClass?.id) void loadClassCards(currentClass.id);
+      const classId = currentClassIdRef.current;
+      if (classId) void loadClassCards(classId);
     };
     window.addEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
     return () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Schulalltag } from './Schulalltag';
@@ -526,3 +526,41 @@ describe('Schulalltag pupil sorting', () => {
   });
 });
 
+describe('live timeout refresh after a class switch', () => {
+  it('reloads the class that is open now, not the one open when the listener was registered', async () => {
+    const api = await import('../services/api');
+    const classA: SchoolClass = { id: 3, name: '3a', grade: 3, mySubjects: [GERMAN] };
+    const classB: SchoolClass = { id: 4, name: '4b', grade: 4, mySubjects: [GERMAN] };
+    const currentUser: User = { id: 'u1', username: 'teacher1', role: 'teacher', teacherId: 1 };
+    const tree = (cls: SchoolClass) => (
+      <ToastProvider>
+        <ConfirmProvider>
+          <Schulalltag
+            currentClass={cls}
+            classes={[classA, classB]}
+            pupils={[]}
+            currentUser={currentUser}
+            criteria={CRITERIA}
+            onSelectClass={vi.fn()}
+            onRefreshClassData={vi.fn()}
+          />
+        </ConfirmProvider>
+      </ToastProvider>
+    );
+
+    vi.mocked(api.getClassCards).mockClear();
+    const { rerender } = render(tree(classA));
+    await waitFor(() => expect(api.getClassCards).toHaveBeenCalledWith(3));
+
+    rerender(tree(classB));
+    await waitFor(() => expect(api.getClassCards).toHaveBeenCalledWith(4));
+
+    // A colleague sends a pupil to the Lernwerkstatt while 4b is open. The event is
+    // delivered through the one listener registered at mount; it must refresh 4b.
+    vi.mocked(api.getClassCards).mockClear();
+    fireEvent(window, new Event('smile:timeouts-updated'));
+
+    await waitFor(() => expect(api.getClassCards).toHaveBeenCalledWith(4));
+    expect(api.getClassCards).not.toHaveBeenCalledWith(3);
+  });
+});

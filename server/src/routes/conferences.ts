@@ -274,10 +274,19 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       // Revocation and its audit row commit together. Split apart, a committed deletion
       // with no CONFERENCE_VOTE_REVOKED row would remove a conference decision from the
       // official record without leaving a trace of who withdrew it.
-      await db.transaction(async (tx) => {
-        await tx
+      //
+      // The DELETE must actually match a row. A stale screen or a crafted request for a
+      // pupil who was never confirmed this round used to answer 200, broadcast a
+      // withdrawal and write a CONFERENCE_VOTE_REVOKED row: the audit trail then claimed
+      // a conference decision had been withdrawn although none had ever existed. The
+      // conditional return tells the caller the truth instead (same rule as /reopen).
+      const withdrawn = await db.transaction(async (tx) => {
+        const [deleted] = await tx
           .delete(finalRanks)
-          .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.pupilId, pupilId)));
+          .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.pupilId, pupilId)))
+          .returning({ pupilId: finalRanks.pupilId });
+
+        if (!deleted) return null;
 
         await tx.insert(auditLogs).values({
           actorId: safeTeacherId(user.teacherId),
@@ -286,7 +295,15 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
           entityId: String(pupilId),
           payload: { classId: cid, pupilId },
         });
+
+        return deleted;
       });
+
+      if (!withdrawn) {
+        return reply.status(404).send({
+          error: 'Für diesen Schüler ist in diesem Zeitraum kein Konferenzbeschluss erfasst.',
+        });
+      }
 
       broadcastToClass(cid, { type: 'FINAL_RANK_REVOKED', pupilId });
       return reply.send({ success: true, isConfirmed: false, pupilId });

@@ -55,6 +55,13 @@ class ClassRoundLockedDuringWrite extends Error {
   }
 }
 
+class EvaluationSubmittedDuringWrite extends Error {
+  constructor() {
+    super('The evaluation was submitted before the item write');
+    this.name = 'EvaluationSubmittedDuringWrite';
+  }
+}
+
 /**
  * Deterministically pick the open observation round.
  *
@@ -897,6 +904,11 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
           })
           .returning();
 
+        // A submitted ballot is final until it is explicitly reopened; /status enforces
+        // that for its own fields. Item writes must enforce it too, otherwise the raster
+        // evidence shown for a submitted ballot can still be rewritten without /reopen.
+        if (evaluation.isSubmitted) throw new EvaluationSubmittedDuringWrite();
+
         const out: Array<typeof evaluationItems.$inferSelect> = [];
 
         for (const it of validation.items) {
@@ -951,6 +963,12 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(423).send({
           error: 'Die Klassenkonferenz wurde während der Bewertung gesperrt.',
           code: 'CLASS_CONFERENCE_LOCKED',
+        });
+      }
+      if (error instanceof EvaluationSubmittedDuringWrite) {
+        return reply.status(409).send({
+          error: 'Diese Bewertung ist bereits eingereicht. Bitte zuerst wieder öffnen.',
+          code: 'EVALUATION_SUBMITTED',
         });
       }
       if (!(error instanceof BatchItemVersionConflict)) throw error;

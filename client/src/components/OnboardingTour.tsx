@@ -47,6 +47,27 @@ interface TourStep {
   }>;
 }
 
+/**
+ * Persist the "tour seen" flags.
+ *
+ * Web Storage can throw rather than merely be absent: Safari's private mode and
+ * browsers with site data disabled raise on `setItem`, and iOS in-app browsers do
+ * the same. The writes used to sit directly in `handleFinish`, so that exception
+ * escaped the click/Escape handler before `onClose()` ran and the tour could not
+ * be dismissed at all. Losing the flags only means the tour appears once more on
+ * the next visit; failing to close it traps the teacher behind the overlay.
+ */
+function rememberTourSeen(username: string | undefined): void {
+  try {
+    if (username) {
+      localStorage.setItem(`smile_tour_seen_${username.toLowerCase()}`, 'true');
+    }
+    localStorage.setItem('smile_onboarding_seen', 'true');
+  } catch {
+    // Storage unavailable: the in-session close below is what matters.
+  }
+}
+
 export const OnboardingTour: React.FC<OnboardingTourProps> = ({
   isOpen,
   onClose,
@@ -321,10 +342,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
   if (!isOpen) return null;
 
   const handleFinish = () => {
-    if (currentUser?.username) {
-      localStorage.setItem(`smile_tour_seen_${currentUser.username.toLowerCase()}`, 'true');
-    }
-    localStorage.setItem('smile_onboarding_seen', 'true');
+    rememberTourSeen(currentUser?.username);
     onClose();
   };
 

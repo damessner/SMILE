@@ -20,7 +20,26 @@ import {
 import { generateTemporaryPassword } from '../lib/temporary-credential.js';
 import { closeUserWebSockets } from '../ws/live-sync.js';
 
-const BCRYPT_ROUNDS = 12;
+export const BCRYPT_ROUNDS = 12;
+
+/**
+ * Password-hash stand-in compared against when the submitted username does not
+ * exist, so an unknown name costs the same bcrypt work as a wrong password for a
+ * real account. It exists to blunt username enumeration through response time.
+ *
+ * It MUST stay a syntactically valid 60-character bcrypt hash at the same cost
+ * factor as `BCRYPT_ROUNDS`. The previous constant was 66 characters long
+ * ("$2a$12$" + 59), so bcryptjs rejected the format and answered in about 1 ms
+ * while a real comparison at cost 12 takes about 265 ms on the deployment class
+ * of machine: unknown names were distinguishable by timing alone, which is the
+ * exact oracle this line is supposed to remove. A structural test pins the
+ * format and the cost (auth.login.test.ts).
+ *
+ * The value is a hash of an undisclosed string; a password that happened to match
+ * it still cannot log in because the account does not exist.
+ */
+export const DUMMY_PASSWORD_HASH =
+  `$2a$${String(BCRYPT_ROUNDS).padStart(2, '0')}$${'a'.repeat(22)}${'a'.repeat(31)}`;
 
 /** Read-only "Ansehen als": backup cookie holding the viewer's own session token. */
 const VIEW_AS_BACKUP_COOKIE = 'smile_view_as_backup';
@@ -183,7 +202,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Always run a bcrypt comparison so a missing account, a locked name and a wrong
       // password take a comparable amount of time.
-      const hash = user?.passwordHash ?? '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
+      const hash = user?.passwordHash ?? DUMMY_PASSWORD_HASH;
       const validPassword = await bcrypt.compare(password, hash);
 
       // The lock refuses only further *wrong* passwords; a correct credential always gets

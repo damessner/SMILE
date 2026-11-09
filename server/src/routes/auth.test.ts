@@ -131,6 +131,48 @@ describe('Auth session and password reset immediate revocation (Task 2.5)', () =
     expect((reply.clearCookie as any)).toHaveBeenCalled();
   });
 
+  it('rejects a valid token whose durable role no longer matches the claim', async () => {
+    // The admin gates run in preValidation on the token's role, before this guard.
+    // If the durable role changed (demotion), letting the request through here would
+    // mean the stale claim already authorised the handler - backup export and restore
+    // included - for the rest of the token lifetime. The session must end instead.
+    const fakePayload = {
+      id: userId,
+      username: 'testteacher',
+      role: 'admin',
+      teacherId: 42,
+      mustChangePassword: false,
+      sessionVersion: 3,
+    };
+    const buildSessionGuard = (guardModule as any).buildSessionGuard;
+    const guard = buildSessionGuard(async () => ({
+      sessionVersion: 3,
+      mustChangePassword: false,
+      teacherActive: true,
+      role: 'teacher',
+    }));
+    const req = {
+      authUser: fakePayload,
+      method: 'GET',
+      url: '/api/backup/export-json',
+      routeOptions: { url: '/api/backup/export-json' },
+    } as unknown as FastifyRequest;
+    let statusCode = 0;
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return reply;
+      },
+      send: () => reply,
+      clearCookie: vi.fn(),
+    } as unknown as FastifyReply;
+
+    await guard(req, reply);
+
+    expect(statusCode).toBe(401);
+    expect((reply.clearCookie as any)).toHaveBeenCalled();
+  });
+
   it('allows a revoked token only into forced-password-change state while the DB reset is pending', async () => {
     const fakePayload = {
       id: userId,

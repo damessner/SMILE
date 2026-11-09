@@ -491,4 +491,41 @@ describe('subject-scoped WebSocket cell locks', () => {
       clientMutationId: 'mut-lock-1',
     });
   });
+
+  it('rejects a raster write on a submitted evaluation without touching its items', async () => {
+    const socket = new TestSocket();
+    await subscribe(socket);
+
+    const rubric = await import('../lib/rubric.js');
+    vi.mocked(rubric.loadRubricIndex).mockResolvedValue({ keyToCriterion: new Map() } as never);
+    vi.mocked(rubric.resolveCriterionId).mockReturnValue(1 as never);
+    vi.mocked(rubric.isValidRating).mockReturnValue(true);
+
+    dbState.evaluations = [{ id: 'eval-submitted', subjectCode: 'D', isSubmitted: true }];
+    dbState.evaluationItems = [];
+
+    await socket.receive({
+      type: 'UPDATE_RATING',
+      payload: {
+        classId: 101,
+        pupilId: 501,
+        subjectCode: 'D',
+        itemKey: 'org_1',
+        rating: '+',
+        expectedVersion: 0,
+        clientMutationId: 'mut-submitted-1',
+      },
+    });
+
+    // /status refuses rank changes on a submitted ballot until /reopen; the items behind
+    // that ballot must follow the same rule or the conference evidence can be rewritten
+    // silently after the vote was cast.
+    expect(socket.messages).toContainEqual({
+      type: 'ERROR',
+      message: 'Diese Bewertung ist bereits eingereicht. Bitte zuerst wieder öffnen.',
+      code: 'EVALUATION_SUBMITTED',
+      clientMutationId: 'mut-submitted-1',
+    });
+    expect(dbState.evaluationItems).toEqual([]);
+  });
 });
