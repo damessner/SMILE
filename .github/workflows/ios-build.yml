@@ -1,4 +1,4 @@
-name: SMILE iOS App Build
+name: SMILE iOS App Build & TestFlight
 
 on:
   push:
@@ -6,15 +6,11 @@ on:
     paths:
       - 'ios/**'
       - '.github/workflows/ios-build.yml'
-  pull_request:
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios-build.yml'
   workflow_dispatch:
 
 jobs:
-  build-ios:
-    name: Build SMILE iOS (.ipa & Xcode Project)
+  build-and-deploy:
+    name: Build, Sign & Upload to TestFlight
     runs-on: macos-15
     defaults:
       run:
@@ -48,24 +44,102 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      - name: Build & Package Unsigned iOS Device Bundle (SMILE.ipa)
+      - name: Install Apple Certificate & Provisioning Profile
+        if: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' && secrets.BUILD_PROVISION_PROFILE_BASE64 != '' }}
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
         run: |
-          xcodebuild build \
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(uuidgen)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > $RUNNER_TEMP/profile.mobileprovision
+
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i $RUNNER_TEMP/profile.mobileprovision))
+          cp $RUNNER_TEMP/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
+          echo "Installed Provisioning Profile UUID: $PROFILE_UUID"
+
+      - name: Build & Archive App Store Release
+        if: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' && secrets.BUILD_PROVISION_PROFILE_BASE64 != '' }}
+        run: |
+          mkdir -p build
+          xcodebuild archive \
             -project SMILE.xcodeproj \
             -scheme SMILE \
-            -sdk iphoneos \
             -configuration Release \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            -archivePath build/SMILE.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=ZC5QZ8N67B
 
-          mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/SMILE.app Payload/
-          zip -qry SMILE-unsigned.ipa Payload
+      - name: Export App Store IPA
+        if: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' && secrets.BUILD_PROVISION_PROFILE_BASE64 != '' }}
+        run: |
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< $(security cms -D -i $RUNNER_TEMP/profile.mobileprovision))
+          echo "Profile Name: $PROFILE_NAME"
 
-      - name: Upload SMILE-unsigned.ipa Artifact
+          cat <<EOF > exportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>ZC5QZ8N67B</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>compileBitcode</key>
+              <false/>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>at.ac.ms-telfs.smile</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath build/SMILE.xcarchive \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath build/export
+
+      - name: Upload Signed IPA to TestFlight
+        if: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY != '' && secrets.APP_STORE_CONNECT_KEY_ID != '' && secrets.APP_STORE_CONNECT_ISSUER_ID != '' }}
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys ~/.private_keys
+          echo "$PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          cp ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8 ~/.private_keys/AuthKey_${KEY_ID}.p8
+
+          xcrun altool --upload-app \
+            -f build/export/SMILE.ipa \
+            -t ios \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: SMILE-iOS-App
-          path: ios/SMILE-unsigned.ipa
+          name: SMILE-ipa
+          path: ios/build/export/SMILE.ipa
+          if-no-files-found: ignore
