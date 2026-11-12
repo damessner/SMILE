@@ -5,6 +5,12 @@
 .github-token
 *.pem
 *.key
+*.p12
+*.cer
+*.mobileprovision
+*.certSigningRequest
+*.p8
+ios_signing/
 
 # Dependencies and build output
 node_modules/
