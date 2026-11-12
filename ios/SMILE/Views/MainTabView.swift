@@ -7,11 +7,14 @@ struct MainTabView: View {
     @State private var selectedTab: AppTab = .schulalltag
     @State private var activeTimeoutCount: Int = 0
     @State private var showAccountSheet = false
+    @State private var showWhatsNew = false
 
     enum AppTab: Hashable {
         case schulalltag
+        case bewertung
         case lernwerkstatt
         case statistik
+        case alleKlassen
     }
 
     var body: some View {
@@ -27,6 +30,15 @@ struct MainTabView: View {
                 Label("Schulalltag", systemImage: "person.3.sequence.fill")
             }
             .tag(AppTab.schulalltag)
+
+            NavigationStack {
+                BewertungView()
+                    .toolbar { accountToolbarItem }
+            }
+            .tabItem {
+                Label("Bewertung", systemImage: "checklist")
+            }
+            .tag(AppTab.bewertung)
 
             NavigationStack {
                 LernwerkstattView(
@@ -48,12 +60,30 @@ struct MainTabView: View {
                 Label("Schulstatistik", systemImage: "chart.bar.xaxis")
             }
             .tag(AppTab.statistik)
+
+            if user.schoolWideBehaviour == true {
+                NavigationStack {
+                    SchoolWideBehaviorView()
+                        .toolbar { accountToolbarItem }
+                }
+                .tabItem {
+                    Label("Alle Klassen", systemImage: "person.3.fill")
+                }
+                .tag(AppTab.alleKlassen)
+            }
         }
         .sheet(isPresented: $showAccountSheet) {
             AccountSheetView(user: user)
                 .environmentObject(api)
         }
+        .sheet(isPresented: $showWhatsNew) {
+            WhatsNewSheet()
+        }
         .task {
+            if !ReleaseNotesStore.hasSeen(username: user.username) {
+                ReleaseNotesStore.markSeen(username: user.username)
+                showWhatsNew = true
+            }
             await refreshActiveBadge()
         }
     }
@@ -106,6 +136,15 @@ struct AccountSheetView: View {
                     LabeledContent("Server", value: api.baseURL)
                 }
 
+                Section("Über SMILE") {
+                    LabeledContent("App-Version", value: AppReleases.bundleVersion)
+                    NavigationLink("Versionsverlauf") {
+                        ReleaseHistoryList()
+                            .navigationTitle("Versionsverlauf")
+                            .navigationBarTitleDisplayMode(.inline)
+                    }
+                }
+
                 Section("Sicherheit") {
                     if KeychainBiometricsService.hasSavedCredentials {
                         Button(role: .destructive) {
@@ -141,7 +180,7 @@ struct AccountSheetView: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     private func roleLabel(_ role: String) -> String {
