@@ -12,6 +12,8 @@ struct User: Codable, Identifiable, Equatable {
     var mustChangePassword: Bool?
     var viewAs: Bool?
     var actUsername: String?
+    /// True when the server allows the school-wide "Alle Klassen" behaviour view.
+    var schoolWideBehaviour: Bool?
 
     var displayName: String {
         teacher?.fullName ?? username
@@ -211,6 +213,75 @@ struct ClassPupilsResponse: Codable {
     let canRate: Bool?
     let isKv: Bool?
     let mySubjects: [SubjectAssignment]?
+    let submissionDeadline: String?
+    let isLockedByConference: Bool?
+}
+
+// MARK: - School-wide Behaviour Overview ("Alle Klassen")
+
+struct BehaviorOverviewCounts: Codable, Equatable {
+    let green: Int
+    let yellow: Int
+    let red: Int
+    let timeout: Int
+    let cooldown: Int
+}
+
+struct BehaviorOverviewStage: Codable, Equatable {
+    let level: Int
+    let title: String
+    let type: String
+    let behaviorGrade: String
+}
+
+struct BehaviorOverviewIncident: Codable, Identifiable, Equatable {
+    let id: String
+    let kind: String
+    let sentAt: String
+    let taskAssignment: String
+
+    var isCooldown: Bool {
+        kind == "cooldown"
+    }
+}
+
+struct BehaviorOverviewPupil: Codable, Identifiable, Equatable {
+    let id: Int
+    let fullName: String
+    let classId: Int
+    let className: String
+    let grade: Int
+    let rank: String?
+    let stage: BehaviorOverviewStage?
+    let counts: BehaviorOverviewCounts
+    let activeIncident: BehaviorOverviewIncident?
+    let canRecord: Bool
+}
+
+struct BehaviorOverview: Codable {
+    let schoolWide: Bool
+    let classes: [StatClassOption]
+    let pupils: [BehaviorOverviewPupil]
+}
+
+extension PupilWithData {
+    /// Minimal snapshot the shared action sheet needs when the pupil comes from the
+    /// school-wide behaviour overview instead of a class roster.
+    init(overviewPupil: BehaviorOverviewPupil) {
+        self.init(
+            id: overviewPupil.id,
+            classId: overviewPupil.classId,
+            fullName: overviewPupil.fullName,
+            isArchived: false,
+            evaluations: nil,
+            cards: nil,
+            greenCardCount: overviewPupil.counts.green,
+            yellowCardCount: overviewPupil.counts.yellow,
+            redCardCount: overviewPupil.counts.red,
+            rankDemotionSteps: nil,
+            finalRank: overviewPupil.rank
+        )
+    }
 }
 
 // MARK: - Class Cards & Timeouts (Schulalltag & Lernwerkstatt)

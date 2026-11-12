@@ -11,6 +11,7 @@ import { useClassData } from './app/hooks/useClassData';
 import { useAuthSession } from './app/hooks/useAuthSession';
 import { useAppLiveSync } from './app/hooks/useAppLiveSync';
 import { useAppModals } from './app/hooks/useAppModals';
+import { hasSeenLatestRelease, markLatestReleaseSeen } from './lib/releases';
 import { useTimeoutEscalations } from './app/hooks/useTimeoutEscalations';
 import { canWriteSubjectInClass, isSchoolLeadershipUser } from './app/helpers';
 import { createRatingWriteHandlers, downloadBackup } from './app/actions';
@@ -83,6 +84,19 @@ export function App() {
   useEffect(() => {
     resetModals();
   }, [currentUser?.id, resetModals]);
+
+  /*
+    The "Was ist neu?" notice is a one-shot: it appears once per teacher and
+    release, then it is gone for good. The seen flag is written as soon as it
+    opens, so a reload while it is on screen cannot bring it back. A read-only
+    "view as" session must not consume the shown teacher's notice.
+  */
+  useEffect(() => {
+    if (!currentUser || currentUser.viewAs) return;
+    if (hasSeenLatestRelease(currentUser.username)) return;
+    markLatestReleaseSeen(currentUser.username);
+    modals.setWhatsNewOpen(true);
+  }, [currentUser?.username, currentUser?.viewAs]);
 
   const live = useAppLiveSync({
     selectedClassId,

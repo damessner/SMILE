@@ -101,11 +101,11 @@ final class APIClient: ObservableObject {
         return url
     }
 
-    private func request<T: Decodable>(
+    private func perform(
         _ path: String,
         method: String = "GET",
         body: [String: Any]? = nil
-    ) async throws -> T {
+    ) async throws -> Data {
         let url = try makeURL(path)
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -129,7 +129,7 @@ final class APIClient: ObservableObject {
         }
 
         if (200...299).contains(http.statusCode) {
-            return try JSONDecoder().decode(T.self, from: data)
+            return data
         }
 
         let errPayload = try? JSONDecoder().decode(APIErrorPayload.self, from: data)
@@ -147,6 +147,24 @@ final class APIClient: ObservableObject {
         }
 
         throw APIError.serverError(status: http.statusCode, message: message, code: code)
+    }
+
+    private func request<T: Decodable>(
+        _ path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil
+    ) async throws -> T {
+        let data = try await perform(path, method: method, body: body)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// For write endpoints whose response body the app does not need.
+    private func requestWithoutResponse(
+        _ path: String,
+        method: String = "POST",
+        body: [String: Any]? = nil
+    ) async throws {
+        _ = try await perform(path, method: method, body: body)
     }
 
     // MARK: - Auth
@@ -306,5 +324,61 @@ final class APIClient: ObservableObject {
 
     func getStatistics(classId: String = "all") async throws -> StatisticsResponse {
         return try await request("/statistics/overview?classId=\(classId)")
+    }
+
+    // MARK: - School-wide Behaviour ("Alle Klassen")
+
+    func getBehaviorOverview() async throws -> BehaviorOverview {
+        return try await request("/behavior/overview")
+    }
+
+    // MARK: - Bewertung / Einstufung
+
+    /// Saves the teacher's proposed rank for one pupil and subject (no submission).
+    func saveProposedRank(
+        pupilId: Int,
+        classId: Int,
+        subjectCode: String,
+        rank: String
+    ) async throws {
+        try await requestWithoutResponse(
+            "/evaluations/status",
+            body: [
+                "pupilId": pupilId,
+                "classId": classId,
+                "subjectCode": subjectCode,
+                "proposedStatus": rank
+            ]
+        )
+    }
+
+    /// Submits the ballot for one pupil and subject; the server treats it as final.
+    func submitEvaluation(
+        pupilId: Int,
+        classId: Int,
+        subjectCode: String,
+        rank: String
+    ) async throws {
+        try await requestWithoutResponse(
+            "/evaluations/submit",
+            body: [
+                "pupilId": pupilId,
+                "classId": classId,
+                "subjectCode": subjectCode,
+                "proposedStatus": rank
+            ]
+        )
+    }
+
+    /// Withdraws a submitted ballot before the deadline so it can be edited again.
+    func reopenEvaluation(pupilId: Int, classId: Int, subjectCode: String) async throws {
+        try await requestWithoutResponse(
+            "/evaluations/reopen",
+            body: [
+                "pupilId": pupilId,
+                "classId": classId,
+                "subjectCode": subjectCode
+            ]
+        )
     }
 }

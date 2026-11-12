@@ -14,6 +14,8 @@ export function useAppModals() {
   const [adminRestoreOpen, setAdminRestoreOpen] = useState(false);
   const [timeoutEscalationOpen, setTimeoutEscalationOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [releaseHistoryOpen, setReleaseHistoryOpen] = useState(false);
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
 
   /**
@@ -32,6 +34,8 @@ export function useAppModals() {
     setAdminRestoreOpen(false);
     setTimeoutEscalationOpen(false);
     setOnboardingOpen(false);
+    setWhatsNewOpen(false);
+    setReleaseHistoryOpen(false);
     setNotificationSettingsOpen(false);
   }, []);
 
@@ -57,6 +61,10 @@ export function useAppModals() {
     setTimeoutEscalationOpen,
     onboardingOpen,
     setOnboardingOpen,
+    whatsNewOpen,
+    setWhatsNewOpen,
+    releaseHistoryOpen,
+    setReleaseHistoryOpen,
     notificationSettingsOpen,
     setNotificationSettingsOpen,
   };

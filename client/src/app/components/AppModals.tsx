@@ -9,6 +9,7 @@ import { TeacherClassReportModal } from '../../components/TeacherClassReportModa
 import { AllClassesConferenceExportModal } from '../../components/AllClassesConferenceExportModal';
 import { TimeoutEscalationModal } from '../../components/TimeoutEscalationModal';
 import { OnboardingTour } from '../../components/OnboardingTour';
+import { ReleaseHistoryModal, WhatsNewDialog } from '../../components/ReleaseNotes';
 import { NotificationSettingsModal } from '../../components/NotificationSettingsModal';
 import type { AppModals } from '../hooks/useAppModals';
 import type { AppTab } from '../types';
@@ -68,6 +69,10 @@ export function AppModals({
     setTimeoutEscalationOpen,
     onboardingOpen,
     setOnboardingOpen,
+    whatsNewOpen,
+    setWhatsNewOpen,
+    releaseHistoryOpen,
+    setReleaseHistoryOpen,
     notificationSettingsOpen,
     setNotificationSettingsOpen,
   } = modals;
@@ -153,6 +158,29 @@ export function AppModals({
 
       {notificationSettingsOpen && (
         <NotificationSettingsModal onClose={() => setNotificationSettingsOpen(false)} />
+      )}
+
+      {/* One-time "Was ist neu?" notice for the current release */}
+      {whatsNewOpen && (
+        <WhatsNewDialog
+          currentUser={currentUser}
+          onClose={() => setWhatsNewOpen(false)}
+          onOpenHistory={() => {
+            setWhatsNewOpen(false);
+            setReleaseHistoryOpen(true);
+          }}
+        />
+      )}
+
+      {/* Help menu content: full release history plus tour entry point */}
+      {releaseHistoryOpen && (
+        <ReleaseHistoryModal
+          onClose={() => setReleaseHistoryOpen(false)}
+          onStartTour={() => {
+            setReleaseHistoryOpen(false);
+            setOnboardingOpen(true);
+          }}
+        />
       )}
 
       {/* Interactive Spotlight Onboarding Tour */}

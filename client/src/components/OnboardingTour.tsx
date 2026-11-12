@@ -268,14 +268,14 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       title: 'Sie sind startklar!',
       subtitle: 'Hilfe ist jederzeit griffbereit',
-      pointerText: '👆 Hier jederzeit Hilfe & Tour öffnen',
+      pointerText: '👆 Hier Hilfe, Änderungen & Tour öffnen',
       description:
         'Alle Funktionen sind so gestaltet, dass sie Sie im Schulalltag entlasten und maximale Transparenz für Schüler und Eltern schaffen:',
       highlights: [
         {
           icon: '❓',
-          title: 'Hilfe jederzeit aufrufen (?)',
-          text: 'Sie können diese Einführung jederzeit über das Fragezeichen-Symbol (?) oben rechts in der Menüleiste erneut aufrufen.',
+          title: 'Hilfe & Versionsverlauf (?)',
+          text: 'Über das Fragezeichen (?) oben rechts öffnen Sie jederzeit den Versionsverlauf mit allen Änderungen der letzten Releases und starten von dort diese Einführung erneut.',
           border: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
         },
         {

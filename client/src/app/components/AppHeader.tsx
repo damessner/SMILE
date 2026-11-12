@@ -66,7 +66,7 @@ export function AppHeader({
     setAdminAccountsOpen,
     setAdminRestoreOpen,
     setTimeoutEscalationOpen,
-    setOnboardingOpen,
+    setReleaseHistoryOpen,
     setNotificationSettingsOpen,
   } = modals;
   const isHeadmaster = isSchoolLeadership;
@@ -221,13 +221,13 @@ export function AppHeader({
           {/* Light / dark theme */}
           <ThemeToggle />
 
-          {/* Help & Onboarding Tour Button */}
+          {/* Help, changes & version history */}
           <button
             data-tour="help-button"
-            onClick={() => setOnboardingOpen(true)}
+            onClick={() => setReleaseHistoryOpen(true)}
             className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-amber-400 hover:bg-slate-700 transition border border-slate-700/60"
-            title="Einführung & Hilfe (Tour) öffnen"
-            aria-label="Einführung und Tour"
+            title="Hilfe, Änderungen & Versionsverlauf öffnen"
+            aria-label="Hilfe, Änderungen und Versionsverlauf"
           >
             <HelpCircle className="w-4 h-4" />
           </button>

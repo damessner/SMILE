@@ -59,6 +59,13 @@ vi.mock('./components/OnboardingTour', () => ({
   OnboardingTour: () => null,
 }));
 
+// The release notice and version history are covered by ReleaseNotes.test.tsx.
+// Keeping them out of this suite keeps its dialog assertions unambiguous.
+vi.mock('./components/ReleaseNotes', () => ({
+  WhatsNewDialog: () => null,
+  ReleaseHistoryModal: () => null,
+}));
+
 const user = {
   id: 'user-1',
   username: 'teacher',

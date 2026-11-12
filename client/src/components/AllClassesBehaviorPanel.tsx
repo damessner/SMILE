@@ -122,8 +122,11 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
     if (data) setUpdatedAt(new Date());
   }, [data]);
 
+  // Totals follow the selected class; the search box only narrows the visible rows.
   const summary = useMemo<SummaryTile[]>(() => {
-    const pupils = data?.pupils ?? [];
+    const pupils = (data?.pupils ?? []).filter(
+      (pupil) => classFilter === 'all' || pupil.classId === classFilter,
+    );
     const totals = { green: 0, yellow: 0, red: 0, timeout: 0, cooldown: 0 };
     let activeTimeouts = 0;
     let activeCooldowns = 0;
@@ -139,13 +142,22 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
     const classCount = new Set(pupils.map((pupil) => pupil.classId)).size;
 
     return [
-      { key: 'pupils', label: 'Schüler*innen', value: pupils.length, hint: `${classCount} Klassen`, tone: 'neutral' },
+      { key: 'pupils', label: 'Schüler*innen', value: pupils.length, hint: classCount === 1 ? '1 Klasse' : `${classCount} Klassen`, tone: 'neutral' },
       { key: 'green', label: 'Grüne Karten', value: totals.green, tone: 'green' },
       { key: 'yellow', label: 'Gelbe Karten', value: totals.yellow, tone: 'amber' },
       { key: 'red', label: 'Rote Karten', value: totals.red, tone: 'rose' },
       { key: 'timeout', label: 'Time-Outs', value: totals.timeout, hint: activeTimeouts > 0 ? `${activeTimeouts} aktiv` : undefined, tone: 'orange' },
       { key: 'cooldown', label: 'Cool-Downs', value: totals.cooldown, hint: activeCooldowns > 0 ? `${activeCooldowns} aktiv` : undefined, tone: 'sky' },
     ];
+  }, [data, classFilter]);
+
+  // Pupils per class for the selection buttons; independent of the current search.
+  const classCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const pupil of data?.pupils ?? []) {
+      counts.set(pupil.classId, (counts.get(pupil.classId) ?? 0) + 1);
+    }
+    return counts;
   }, [data]);
 
   const grouped = useMemo(() => {
@@ -173,68 +185,122 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
     );
   }, [data, query, classFilter]);
 
-  const total = data?.pupils.length ?? 0;
+  const scopedPupils =
+    classFilter === 'all'
+      ? data?.pupils ?? []
+      : (data?.pupils ?? []).filter((pupil) => pupil.classId === classFilter);
+  const selectedClass =
+    classFilter === 'all'
+      ? null
+      : (data?.classes ?? []).find((cls) => cls.id === classFilter) ?? null;
+  const total = scopedPupils.length;
   const visible = grouped.reduce((sum, group) => sum + group.pupils.length, 0);
+  const statusText =
+    loading && !data
+      ? 'Lade Schülerstatus…'
+      : classFilter === 'all'
+        ? `${visible} von ${total} Schüler*innen · ${classCounts.size} ${classCounts.size === 1 ? 'Klasse' : 'Klassen'}`
+        : `Klasse ${selectedClass?.name ?? classFilter} · ${visible} von ${total} Schüler*innen`;
 
   return (
     <div className="space-y-3">
-      {/* Status board: totals first, then search/filter. */}
+      {/* Status board: class buttons first, then search/filter. */}
       <section className="surface-1 rounded-2xl overflow-hidden shadow-lg">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-4 border-b border-hairline">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 shrink-0 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-sky-300 flex items-center justify-center">
-              <Users className="w-5 h-5" aria-hidden="true" />
-            </div>
+        <div className="flex flex-col gap-3 p-4 border-b border-hairline">
+          <h2 className="sr-only">Schülerstatus der Klassen</h2>
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-base font-extrabold text-slate-50 leading-tight">Schulweiter Überblick</h2>
-              <p className="text-[11px] text-slate-400 truncate">
-                {loading && !data
-                  ? 'Lade Schülerstatus…'
-                  : `${visible} von ${total} Schüler*innen`}
+              <div className="flex items-center gap-2 mb-2 text-slate-400">
+                <Users className="w-4 h-4" aria-hidden="true" />
+                <span className="text-[11px] font-bold uppercase tracking-wider">Klasse auswählen</span>
+              </div>
+              <div
+                role="group"
+                aria-label="Klasse auswählen"
+                className="flex flex-wrap items-center gap-1.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => setClassFilter('all')}
+                  aria-pressed={classFilter === 'all'}
+                  className={`pressable focus-ring min-h-[40px] px-3 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                    classFilter === 'all'
+                      ? 'bg-sky-500 text-slate-950 shadow-md'
+                      : 'bg-slate-800/80 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-slate-50'
+                  }`}
+                >
+                  <span>Alle</span>
+                  <span
+                    className={`text-[11px] tabular ${classFilter === 'all' ? 'text-slate-900/70' : 'text-slate-500'}`}
+                  >
+                    {data?.pupils.length ?? 0}
+                  </span>
+                </button>
+                {(data?.classes ?? []).map((cls) => {
+                  const active = classFilter === cls.id;
+                  return (
+                    <button
+                      key={cls.id}
+                      type="button"
+                      onClick={() => setClassFilter(cls.id)}
+                      aria-pressed={active}
+                      aria-label={`Klasse ${cls.name} auswählen`}
+                      title={`Klasse ${cls.name}: ${classCounts.get(cls.id) ?? 0} Schüler*innen`}
+                      className={`pressable focus-ring min-h-[40px] px-3 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                        active
+                          ? 'bg-sky-500 text-slate-950 shadow-md'
+                          : 'bg-slate-800/80 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-slate-50'
+                      }`}
+                    >
+                      <span>{cls.name}</span>
+                      <span
+                        className={`text-[11px] tabular ${active ? 'text-slate-900/70' : 'text-slate-500'}`}
+                      >
+                        {classCounts.get(cls.id) ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400 truncate">
+                {statusText}
                 {updatedAt && !loading && (
-                  <span className="text-slate-500"> · Stand {updatedAt.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })} Uhr</span>
+                  <span className="text-slate-500">
+                    {' '}
+                    · Stand{' '}
+                    {updatedAt.toLocaleTimeString('de-AT', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}{' '}
+                    Uhr
+                  </span>
                 )}
               </p>
             </div>
-          </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
-            <div className="relative w-full sm:w-60">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Schüler suchen…"
-                aria-label="Schüler suchen"
-                className="w-full min-h-[44px] pl-9 pr-3 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-sky-400"
-              />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
+              <div className="relative w-full sm:w-60">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Schüler suchen…"
+                  aria-label="Schüler suchen"
+                  className="w-full min-h-[44px] pl-9 pr-3 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                />
+              </div>
+              <Button
+                variant="secondary"
+                onClick={onRefresh}
+                disabled={loading}
+                title="Status neu laden"
+                className="shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+                <span>Aktualisieren</span>
+              </Button>
             </div>
-            <select
-              value={classFilter}
-              onChange={(event) =>
-                setClassFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))
-              }
-              aria-label="Klasse filtern"
-              className="min-h-[44px] rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-bold text-slate-100 focus:border-sky-400 focus:outline-none"
-            >
-              <option value="all">Alle Klassen</option>
-              {(data?.classes ?? []).map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  Klasse {cls.name}
-                </option>
-              ))}
-            </select>
-            <Button
-              variant="secondary"
-              onClick={onRefresh}
-              disabled={loading}
-              title="Status neu laden"
-              className="shrink-0"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-              <span>Aktualisieren</span>
-            </Button>
           </div>
         </div>
 
@@ -302,7 +368,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
         <EmptyState
           icon={<Users className="h-6 w-6" aria-hidden="true" />}
           title="Keine Schüler*innen gefunden."
-          description="Suche oder Klassenfilter anpassen."
+          description="Klassenauswahl oder Suche anpassen."
         />
       )}
 
