@@ -99,6 +99,13 @@ struct LernwerkstattView: View {
         .task {
             await loadData()
         }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { break }
+                await loadData()
+            }
+        }
     }
 
     private func incidentRow(_ item: TimeoutIncident) -> some View {

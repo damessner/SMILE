@@ -180,6 +180,15 @@ struct SchulalltagView: View {
         .task {
             await loadInitialData()
         }
+        .task {
+            // Lightweight live refresh: another teacher's cards/time-outs appear
+            // without leaving the class. Pull-to-refresh remains available.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { break }
+                await refreshFromServer()
+            }
+        }
         .onChange(of: selectedClassId) { _, newId in
             if let cid = newId {
                 Task { await loadClassDetails(classId: cid) }
@@ -521,6 +530,21 @@ struct SchulalltagView: View {
             }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Refresh the timetable, the Lernwerkstatt badge and the open class without
+    /// showing the full-screen loading state.
+    private func refreshFromServer() async {
+        async let timetableReq = try? api.getCurrentTimetable()
+        async let activeReq = try? api.getActiveTimeouts()
+
+        self.timetable = await timetableReq
+        if let active = await activeReq {
+            onActiveCountChanged(active.count)
+        }
+        if let cid = selectedClassId {
+            await loadClassDetails(classId: cid)
         }
     }
 }
