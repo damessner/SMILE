@@ -539,8 +539,11 @@ struct SchulalltagView: View {
         async let timetableReq = try? api.getCurrentTimetable()
         async let activeReq = try? api.getActiveTimeouts()
 
-        self.timetable = await timetableReq
-        if let active = await activeReq {
+        let loadedTimetable = await timetableReq
+        let activeTimeouts = await activeReq
+
+        self.timetable = loadedTimetable
+        if let active = activeTimeouts {
             onActiveCountChanged(active.count)
         }
         if let cid = selectedClassId {

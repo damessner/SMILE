@@ -16,7 +16,7 @@ struct BewertungView: View {
     @State private var canRate = false
     @State private var isLockedByConference = false
     @State private var submissionDeadline: Date?
-    @State private var isLoading = false
+    @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var statusMessage: String?
     @State private var busyPupilId: Int?
@@ -26,8 +26,8 @@ struct BewertungView: View {
     }
 
     private var deadlinePassed: Bool {
-        guard let submissionDeadline else { return false }
-        return submissionDeadline < Date()
+        guard let deadline = submissionDeadline else { return false }
+        return deadline < Date()
     }
 
     private var writable: Bool {
@@ -39,11 +39,11 @@ struct BewertungView: View {
     }
 
     private var deadlineText: String? {
-        guard let submissionDeadline else { return nil }
+        guard let deadline = submissionDeadline else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "de_AT")
         formatter.dateStyle = .short
-        return "Frist \(formatter.string(from: submissionDeadline))"
+        return "Frist \(formatter.string(from: deadline))"
     }
 
     var body: some View {
@@ -140,8 +140,8 @@ struct BewertungView: View {
                     Label("Frist abgelaufen", systemImage: "clock.badge.xmark")
                         .foregroundStyle(.red)
                 }
-                if let statusMessage {
-                    Text(statusMessage)
+                if let status = statusMessage {
+                    Text(status)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -185,12 +185,6 @@ struct BewertungView: View {
                 systemImage: "person.3",
                 description: Text("Für dieses Konto sind keine Klassen sichtbar.")
             )
-        } else if pupils.isEmpty {
-            ContentUnavailableView(
-                "Keine Schüler*innen",
-                systemImage: "person.slash",
-                description: Text("Die Klasse hat keine aktiven Schüler*innen.")
-            )
         } else if !canRate {
             ContentUnavailableView(
                 "Keine Bewertungsrechte",
@@ -202,6 +196,12 @@ struct BewertungView: View {
                 "Kein Fach zugewiesen",
                 systemImage: "book.closed",
                 description: Text("Für diese Klasse ist kein bewertbares Fach hinterlegt.")
+            )
+        } else if pupils.isEmpty {
+            ContentUnavailableView(
+                "Keine Schüler*innen",
+                systemImage: "person.slash",
+                description: Text("Die Klasse hat keine aktiven Schüler*innen.")
             )
         } else {
             List {
@@ -216,8 +216,8 @@ struct BewertungView: View {
                         Text("\(submittedCount)/\(pupils.count) abgegeben")
                             .font(.caption.weight(.bold))
                         Spacer()
-                        if let deadlineText {
-                            Text(deadlineText)
+                        if let deadline = deadlineText {
+                            Text(deadline)
                                 .font(.caption2)
                                 .foregroundStyle(deadlinePassed ? .red : .secondary)
                         }
@@ -260,7 +260,7 @@ struct BewertungView: View {
             HStack(spacing: 6) {
                 ForEach(
                     [AssessmentRank.lehrling, AssessmentRank.geselle, AssessmentRank.meister],
-                    id: \.self
+                    id: \.rawValue
                 ) { option in
                     rankButton(
                         option,
@@ -344,7 +344,8 @@ struct BewertungView: View {
 
     private func currentRank(for pupil: PupilWithData) -> AssessmentRank? {
         guard let status = subjectEvaluation(for: pupil)?.proposedStatus,
-              let rank = AssessmentRank(rawValue: status) else {
+              let rank = AssessmentRank(rawValue: status),
+              rank != .ausstehend else {
             return nil
         }
         return rank
@@ -423,9 +424,18 @@ struct BewertungView: View {
         do {
             let loaded = try await api.getClasses()
             classes = loaded.filter { $0.id != 999 }
+
             if selectedClassId == nil {
-                selectedClassId = classes.first?.id
+                // Prefer the class of the running lesson, like the Schulalltag tab does.
+                let timetable = try? await api.getCurrentTimetable()
+                if let lessonClassId = timetable?.currentLesson?.classId,
+                   classes.contains(where: { $0.id == lessonClassId }) {
+                    selectedClassId = lessonClassId
+                } else {
+                    selectedClassId = classes.first?.id
+                }
             }
+
             if let cid = selectedClassId {
                 await loadClass(classId: cid)
             }
@@ -468,7 +478,7 @@ struct BewertungView: View {
     }
 
     private func parseISO(_ value: String?) -> Date? {
-        guard let value else { return nil }
+        guard let value = value else { return nil }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)

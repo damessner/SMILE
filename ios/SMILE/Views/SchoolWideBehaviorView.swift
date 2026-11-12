@@ -12,7 +12,7 @@ struct SchoolWideBehaviorView: View {
     @State private var overview: BehaviorOverview?
     @State private var selectedClassId: Int?
     @State private var searchQuery = ""
-    @State private var isLoading = false
+    @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var lastUpdated: Date?
     @State private var pendingAction: SchulalltagView.PendingPupilAction?
@@ -61,8 +61,8 @@ struct SchoolWideBehaviorView: View {
     }
 
     private var lastUpdateText: String {
-        guard let lastUpdated else { return "–" }
-        return lastUpdated.formatted(date: .omitted, time: .shortened)
+        guard let updated = lastUpdated else { return "–" }
+        return updated.formatted(date: .omitted, time: .shortened)
     }
 
     var body: some View {
@@ -112,7 +112,7 @@ struct SchoolWideBehaviorView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    stat("Schüler*innen", scopedPupils.count, color: .secondary)
+                    stat("Schüler*innen", scopedPupils.count, color: .gray)
                     stat("Grün", summary.green, color: .green)
                     stat("Gelb", summary.yellow, color: .yellow)
                     stat("Rot", summary.red, color: .red)
@@ -267,7 +267,8 @@ struct SchoolWideBehaviorView: View {
     }
 
     private func stageText(_ stage: BehaviorOverviewStage) -> String {
-        "Stufe \(stage.level > 0 ? "+\(stage.level)" : "\(stage.level)")"
+        let levelText = stage.level > 0 ? "+\(stage.level)" : "\(stage.level)"
+        return "Stufe \(levelText)"
     }
 
     private func counters(for pupil: BehaviorOverviewPupil) -> some View {
@@ -282,17 +283,18 @@ struct SchoolWideBehaviorView: View {
 
     private func counterPill(_ count: Int, color: Color, icon: String?) -> some View {
         HStack(spacing: 3) {
-            if let icon {
+            if let icon = icon {
                 Image(systemName: icon)
                     .font(.system(size: 9, weight: .bold))
             } else {
                 Circle()
+                    .fill(count > 0 ? color : Color.gray.opacity(0.35))
                     .frame(width: 6, height: 6)
             }
             Text("\(count)")
                 .font(.caption2.weight(.bold))
         }
-        .foregroundStyle(count > 0 ? color : Color.secondary.opacity(0.6))
+        .foregroundStyle(count > 0 ? color : Color.gray.opacity(0.6))
         .frame(minWidth: 26, minHeight: 24)
         .padding(.horizontal, 4)
         .background(

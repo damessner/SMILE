@@ -80,7 +80,7 @@ struct MainTabView: View {
             WhatsNewSheet()
         }
         .task {
-            if !ReleaseNotesStore.hasSeen(username: user.username) {
+            if user.viewAs != true, !ReleaseNotesStore.hasSeen(username: user.username) {
                 ReleaseNotesStore.markSeen(username: user.username)
                 showWhatsNew = true
             }

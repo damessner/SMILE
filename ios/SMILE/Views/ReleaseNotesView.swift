@@ -222,7 +222,6 @@ struct ReleaseHistoryList: View {
                         Text(release.title)
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.primary)
-                            .textCase(nil)
                     }
                 }
             }
@@ -237,7 +236,6 @@ private func noteRow(_ note: AppReleaseNote) -> some View {
     VStack(alignment: .leading, spacing: 3) {
         Text(note.kind.label)
             .font(.system(size: 9, weight: .bold))
-            .textCase(.uppercase)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(note.kind.color.opacity(0.16), in: RoundedRectangle(cornerRadius: 5))
