@@ -6,6 +6,8 @@
 	<string>de</string>
 	<key>CFBundleDisplayName</key>
 	<string>SMILE</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

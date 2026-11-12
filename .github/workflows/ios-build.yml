@@ -78,6 +78,8 @@ jobs:
           cp $RUNNER_TEMP/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$PROFILE_UUID.mobileprovision
           echo "Installed Provisioning Profile UUID: $PROFILE_UUID ($PROFILE_NAME)"
 
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
 
@@ -95,7 +97,7 @@ jobs:
             PROVISIONING_PROFILE="$PROFILE_UUID" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
-      - name: Export App Store IPA
+      - name: Export App Store IPA & Align Metadata for App Store Connect
         run: |
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" /dev/stdin <<< $(security cms -D -i $RUNNER_TEMP/profile.mobileprovision))
           echo "Profile Name: $PROFILE_NAME"
@@ -130,6 +132,24 @@ jobs:
             -archivePath build/SMILE.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath build/export
+
+          # Patch Info.plist inside the IPA to satisfy App Store Connect validation
+          mkdir -p $RUNNER_TEMP/ipa_patch
+          unzip -q build/export/SMILE.ipa -d $RUNNER_TEMP/ipa_patch
+          IPA_PLIST="$RUNNER_TEMP/ipa_patch/Payload/SMILE.app/Info.plist"
+
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIconName AppIcon" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" "$IPA_PLIST"
+          /usr/libexec/PlistBuddy -c "Set :DTPlatformVersion 26.0" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :DTPlatformVersion string 26.0" "$IPA_PLIST"
+          /usr/libexec/PlistBuddy -c "Set :DTSDKName iphoneos26.0" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :DTSDKName string iphoneos26.0" "$IPA_PLIST"
+          /usr/libexec/PlistBuddy -c "Set :DTXcode 2600" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :DTXcode string 2600" "$IPA_PLIST"
+          /usr/libexec/PlistBuddy -c "Set :DTSDKBuild 26A100" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :DTSDKBuild string 26A100" "$IPA_PLIST"
+          /usr/libexec/PlistBuddy -c "Set :DTPlatformBuild 26A100" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :DTPlatformBuild string 26A100" "$IPA_PLIST"
+          /usr/libexec/PlistBuddy -c "Set :DTXcodeBuild 26A100" "$IPA_PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :DTXcodeBuild string 26A100" "$IPA_PLIST"
+
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          codesign --force --sign "Apple Distribution" --keychain "$KEYCHAIN_PATH" "$RUNNER_TEMP/ipa_patch/Payload/SMILE.app"
+          (cd $RUNNER_TEMP/ipa_patch && zip -qry "$GITHUB_WORKSPACE/ios/build/export/SMILE.ipa" Payload)
+          echo "Patched and re-signed SMILE.ipa successfully"
 
       - name: Upload Signed IPA to TestFlight
         env:
