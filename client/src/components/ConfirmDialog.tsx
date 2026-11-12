@@ -86,7 +86,7 @@ function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[110] flex items-center justify-center scrim backdrop-blur-sm p-4"
       onKeyDown={(e) => {
         if (e.key === 'Escape') onSettle(false);
       }}

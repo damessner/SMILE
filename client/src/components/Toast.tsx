@@ -108,17 +108,23 @@ export function useToast(): ToastApi {
   return ctx;
 }
 
+/*
+  The toast surface follows the theme (slate-900 is the raised card colour in both
+  themes); only the border and icon carry the semantic colour. The previous
+  `bg-emerald-950/95` stayed dark green in light mode while the app around it turned
+  white — a black-looking card with near-white text.
+*/
 const VARIANT_STYLE: Record<ToastVariant, { wrap: string; icon: React.ReactNode }> = {
   success: {
-    wrap: 'bg-emerald-950/95 border-emerald-500/40 text-emerald-100',
+    wrap: 'bg-slate-900/95 border-emerald-500/50 text-slate-100',
     icon: <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" aria-hidden="true" />,
   },
   error: {
-    wrap: 'bg-rose-950/95 border-rose-500/40 text-rose-100',
+    wrap: 'bg-slate-900/95 border-rose-500/50 text-slate-100',
     icon: <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" aria-hidden="true" />,
   },
   info: {
-    wrap: 'bg-slate-900/95 border-slate-600/50 text-slate-100',
+    wrap: 'bg-slate-900/95 border-slate-600/60 text-slate-100',
     icon: <Info className="w-5 h-5 text-slate-400 shrink-0" aria-hidden="true" />,
   },
 };
@@ -201,8 +207,8 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
       {toast.action && (
         <button
           onClick={handleAction}
-          className="shrink-0 inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl
-                     bg-white/10 hover:bg-white/20 text-sm font-bold transition"
+          className="pressable focus-ring shrink-0 inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl
+                     bg-slate-800/10 hover:bg-slate-800/20 text-sm font-bold transition"
         >
           <Undo2 className="w-4 h-4" aria-hidden="true" />
           {toast.action.label}
@@ -218,8 +224,8 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
       <button
         onClick={() => onDismiss(toast.id)}
         aria-label="Meldung schließen"
-        className="shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg
-                   hover:bg-white/10 transition"
+        className="pressable focus-ring shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg
+                   hover:bg-slate-800/10 transition"
       >
         <X className="w-4 h-4 opacity-70" aria-hidden="true" />
       </button>

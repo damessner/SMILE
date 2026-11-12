@@ -40,7 +40,14 @@ import {
   getActiveTimeouts,
   resolveTimeout,
   getTimeoutHistory,
+  getBehaviorOverview,
+  type BehaviorOverview,
+  type BehaviorOverviewPupil,
 } from '../services/api';
+import {
+  AllClassesBehaviorPanel,
+  type AllClassesAction,
+} from './AllClassesBehaviorPanel';
 
 interface BehaviorCardItem {
   id: string;
@@ -132,6 +139,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const [expandedPupilId, setExpandedPupilId] = useState<number | null>(null);
   const [activeProfilePupilId, setActiveProfilePupilId] = useState<number | null>(null);
 
+  // School-wide "Alle Klassen" behaviour view (BEHAVIOUR_SCHOOL_WIDE).
+  const [isAllClassesView, setIsAllClassesView] = useState(false);
+  const [allClassesData, setAllClassesData] = useState<BehaviorOverview | null>(null);
+  const [allClassesLoading, setAllClassesLoading] = useState(false);
+  const [allClassesError, setAllClassesError] = useState<string | null>(null);
+
   // Lernwerkstatt (LW) View Toggle
   const [isLwView, setIsLwView] = useState(false);
   const [activeTimeouts, setActiveTimeouts] = useState<TimeoutItem[]>([]);
@@ -143,6 +156,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     pupilId: number;
     pupilName: string;
     cardType: 'green' | 'yellow';
+    classId: number;
+    className: string;
   } | null>(null);
   const [cardNote, setCardNote] = useState('');
   const [submittingCard, setSubmittingCard] = useState(false);
@@ -151,6 +166,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const [redCardTarget, setRedCardTarget] = useState<{
     pupilId: number;
     pupilName: string;
+    classId: number;
+    className: string;
     deductions: Array<{
       label: string;
       currentRank: 'Lehrling' | 'Geselle' | 'Meister';
@@ -167,6 +184,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     pupilId: number;
     pupilName: string;
     kind: 'timeout' | 'cooldown';
+    classId: number;
+    className: string;
   } | null>(null);
   const [timeoutTask, setTimeoutTask] = useState('');
   const [timeoutRetroactive, setTimeoutRetroactive] = useState(false);
@@ -245,6 +264,40 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     }
   };
 
+  /** Load the school-wide "Alle Klassen" status model. */
+  const loadAllClasses = async () => {
+    setAllClassesLoading(true);
+    setAllClassesError(null);
+    try {
+      setAllClassesData(await getBehaviorOverview());
+    } catch (e: any) {
+      setAllClassesError(e.message || 'Klassenübersicht konnte nicht geladen werden.');
+    } finally {
+      setAllClassesLoading(false);
+    }
+  };
+
+  // The timeout listener is registered once; this ref lets it refresh the school-wide
+  // panel when that view happens to be open, without re-registering the interval.
+  const allClassesViewRef = useRef(false);
+  useEffect(() => {
+    allClassesViewRef.current = isAllClassesView;
+    if (isAllClassesView) void loadAllClasses();
+  }, [isAllClassesView]);
+
+  /**
+   * Refresh after a card / Time-Out action. The class view reloads its own class;
+   * the school-wide view always refetches its overview so counts are authoritative.
+   */
+  const refreshAfterBehaviourAction = async (classId: number) => {
+    if (classId === currentClass.id) {
+      await loadClassCards(classId);
+      onRefreshClassData();
+    }
+    await loadTimeoutsData();
+    if (isAllClassesView) await loadAllClasses();
+  };
+
   // The live-sync listener below is registered once, but the class it must reload
   // changes. Reading currentClass from the mount-time closure reloaded the previous
   // class's cards and time-outs into the new class view after a switch: every row's
@@ -261,6 +314,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       void loadTimeoutsData();
       const classId = currentClassIdRef.current;
       if (classId) void loadClassCards(classId);
+      if (allClassesViewRef.current) void loadAllClasses();
     };
     window.addEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
     return () => {
@@ -391,14 +445,13 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
   // Submit standard card (green or yellow)
   const handleConfirmCard = async () => {
-    if (!activeCardModal || !currentClass) return;
+    if (!activeCardModal) return;
     setSubmittingCard(true);
     const target = activeCardModal;
     const note = cardNote.trim() || undefined;
     try {
-      const res = await issueCard(target.pupilId, currentClass.id, target.cardType, note);
-      await loadClassCards(currentClass.id);
-      onRefreshClassData();
+      const res = await issueCard(target.pupilId, target.classId, target.cardType, note);
+      await refreshAfterBehaviourAction(target.classId);
       setActiveCardModal(null);
       setCardNote('');
 
@@ -410,8 +463,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           onClick: async () => {
             try {
               await revokeCard(res.card.id);
-              await loadClassCards(currentClass.id);
-              onRefreshClassData();
+              await refreshAfterBehaviourAction(target.classId);
               toast.success('Karte zurückgezogen.');
             } catch (e: any) {
               toast.error(e.message || 'Rückgängig fehlgeschlagen.');
@@ -427,6 +479,24 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   };
 
   // Open 2-step Red Card Modal
+  const openRedCardModal = (target: {
+    pupilId: number;
+    pupilName: string;
+    classId: number;
+    className: string;
+    deductions: Array<{
+      label: string;
+      currentRank: 'Lehrling' | 'Geselle' | 'Meister';
+      demotedRank: 'Lehrling' | 'Geselle';
+    }>;
+    pendingNote: string | null;
+  }) => {
+    setRedCardTarget(target);
+    setRedCardStep(1);
+    setRedCardNote('');
+  };
+
+  /** Class view: compute the per-subject demotion preview from the loaded pupil. */
   const handleOpenRedCardModal = (pupil: PupilWithData) => {
     const { subjectResults } = getPupilRank(pupil);
 
@@ -448,22 +518,22 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     );
     const pendingSubjects = subjectResults.filter((r) => !r.baseRank).map((r) => r.subjectCode);
 
-    setRedCardTarget({
+    openRedCardModal({
       pupilId: pupil.id,
       pupilName: pupil.fullName,
+      classId: currentClass.id,
+      className: currentClass.name,
       deductions,
       pendingNote:
         pendingSubjects.length > 0
           ? `In ${pendingSubjects.join(', ')} liegt noch keine Bewertung vor – kein Rangverlust.`
           : null,
     });
-    setRedCardStep(1);
-    setRedCardNote('');
   };
 
   // Confirm Red Card (Step 2 submit)
   const handleConfirmRedCard = async () => {
-    if (!redCardTarget || !currentClass) return;
+    if (!redCardTarget) return;
     if (!redCardNote.trim()) {
       toast.error('Bitte geben Sie eine Beschreibung des Vorfalls an.');
       return;
@@ -473,9 +543,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     const target = redCardTarget;
     const note = redCardNote.trim();
     try {
-      const res = await issueCard(target.pupilId, currentClass.id, 'red', note);
-      await loadClassCards(currentClass.id);
-      onRefreshClassData();
+      const res = await issueCard(target.pupilId, target.classId, 'red', note);
+      await refreshAfterBehaviourAction(target.classId);
       setRedCardTarget(null);
       setRedCardNote('');
 
@@ -490,8 +559,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             onClick: async () => {
               try {
                 await revokeCard(res.card.id);
-                await loadClassCards(currentClass.id);
-                onRefreshClassData();
+                await refreshAfterBehaviourAction(target.classId);
                 toast.success('Rangverlust aufgehoben.');
               } catch (e: any) {
                 toast.error(e.message || 'Rückgängig fehlgeschlagen.');
@@ -508,11 +576,20 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   };
 
   // Open Time-Out / Cool-Down Modal
-  const handleOpenTimeoutModal = (pupil: PupilWithData, kind: 'timeout' | 'cooldown' = 'timeout') => {
+  const handleOpenTimeoutModal = (
+    pupil: { id: number; fullName: string },
+    kind: 'timeout' | 'cooldown' = 'timeout',
+    classInfo: { classId: number; className: string } = {
+      classId: currentClass.id,
+      className: currentClass.name,
+    },
+  ) => {
     setTimeoutTarget({
       pupilId: pupil.id,
       pupilName: pupil.fullName,
       kind,
+      classId: classInfo.classId,
+      className: classInfo.className,
     });
     setTimeoutTask('');
     setTimeoutRetroactive(false);
@@ -536,18 +613,16 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     const isRetroactive = !isCooldown && timeoutRetroactive;
     try {
       const res = isCooldown
-        ? await sendToCooldown(target.pupilId, currentClass.id, task || undefined)
+        ? await sendToCooldown(target.pupilId, target.classId, task || undefined)
         : await sendToTimeout(
             target.pupilId,
-            currentClass.id,
+            target.classId,
             task,
             isRetroactive
               ? { date: timeoutRetroDate, period: timeoutRetroPeriod }
               : undefined,
           );
-      await loadClassCards(currentClass.id);
-      await loadTimeoutsData();
-      onRefreshClassData();
+      await refreshAfterBehaviourAction(target.classId);
       setTimeoutTarget(null);
       setTimeoutTask('');
 
@@ -572,9 +647,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 await resolveTimeout(res.incident.id, 'Rückgängig: Lernwerkstatt-Eintrag aufgehoben');
                 if (res.redCard?.id) await revokeCard(res.redCard.id);
                 if (res.cooldownCard?.id) await revokeCard(res.cooldownCard.id);
-                await loadClassCards(currentClass.id);
-                await loadTimeoutsData();
-                onRefreshClassData();
+                await refreshAfterBehaviourAction(target.classId);
                 toast.success(
                   isCooldown
                     ? 'Cool-Down aufgehoben.'
@@ -594,6 +667,37 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     } finally {
       setSubmittingTimeout(false);
     }
+  };
+
+  /** Dispatch an action from the school-wide panel through the same modals. */
+  const handleAllClassesAction = (
+    pupil: BehaviorOverviewPupil,
+    action: AllClassesAction,
+  ) => {
+    const classInfo = { classId: pupil.classId, className: pupil.className };
+    if (action === 'green' || action === 'yellow') {
+      setCardNote('');
+      setActiveCardModal({
+        pupilId: pupil.id,
+        pupilName: pupil.fullName,
+        cardType: action,
+        ...classInfo,
+      });
+      return;
+    }
+    if (action === 'red') {
+      // The overview does not carry the per-subject raster, so the school-wide
+      // dialog states the consequence without a subject-by-subject preview.
+      openRedCardModal({
+        pupilId: pupil.id,
+        pupilName: pupil.fullName,
+        deductions: [],
+        pendingNote: null,
+        ...classInfo,
+      });
+      return;
+    }
+    handleOpenTimeoutModal({ id: pupil.id, fullName: pupil.fullName }, action, classInfo);
   };
 
   // Resolve Time-Out / Cool-Down in LW
@@ -685,7 +789,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       }
       // A modal is open: the dialog owns the keyboard.
       if (activeCardModal || redCardTarget || timeoutTarget) return;
-      if (isLwView) return;
+      if (isLwView || isAllClassesView) return;
       // Do not hijack browser/app shortcuts such as Ctrl+R, Cmd+R or Alt+Left.
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -698,14 +802,26 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         case 'G':
           e.preventDefault();
           setExpandedPupilId(pupil.id);
-          setActiveCardModal({ pupilId: pupil.id, pupilName: pupil.fullName, cardType: 'green' });
+          setActiveCardModal({
+            pupilId: pupil.id,
+            pupilName: pupil.fullName,
+            cardType: 'green',
+            classId: currentClass.id,
+            className: currentClass.name,
+          });
           break;
         case '2':
         case 'y':
         case 'Y':
           e.preventDefault();
           setExpandedPupilId(pupil.id);
-          setActiveCardModal({ pupilId: pupil.id, pupilName: pupil.fullName, cardType: 'yellow' });
+          setActiveCardModal({
+            pupilId: pupil.id,
+            pupilName: pupil.fullName,
+            cardType: 'yellow',
+            classId: currentClass.id,
+            className: currentClass.name,
+          });
           break;
         case '3':
         case 'r':
@@ -741,6 +857,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     redCardTarget,
     timeoutTarget,
     isLwView,
+    isAllClassesView,
+    currentClass.id,
+    currentClass.name,
   ]);
 
   // The tile shows the pupil-level vote rank. This subject is only the fallback
@@ -852,12 +971,20 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           <div className="flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
             <h1 className="text-lg font-bold text-slate-50">
-              {isLwView ? 'Lernwerkstatt (LW)' : currentClass ? `Klasse ${currentClass.name}` : 'Klasse'}
+              {isLwView
+                ? 'Lernwerkstatt (LW)'
+                : isAllClassesView
+                  ? 'Alle Klassen'
+                  : currentClass
+                    ? `Klasse ${currentClass.name}`
+                    : 'Klasse'}
             </h1>
             <span className="text-xs text-slate-400">
               {isLwView
                 ? `(${activeTimeouts.length} in der Lernwerkstatt)`
-                : `(${pupils.length} Schüler*innen)`}
+                : isAllClassesView
+                  ? `(${allClassesData?.pupils.length ?? 0} Schüler*innen)`
+                  : `(${pupils.length} Schüler*innen)`}
             </span>
           </div>
 
@@ -896,7 +1023,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
             {/* Special LW Button */}
             <button
-              onClick={() => setIsLwView(true)}
+              onClick={() => {
+                setIsAllClassesView(false);
+                setIsLwView(true);
+              }}
               className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
                 isLwView
                   ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
@@ -906,7 +1036,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <Clock className="w-3.5 h-3.5" />
               <span>Lernwerkstatt (LW)</span>
               {activeTimeouts.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-[10px] animate-pulse">
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-[11px] animate-pulse">
                   {activeTimeouts.length}
                 </span>
               )}
@@ -914,10 +1044,30 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
             <span className="text-slate-700">|</span>
 
+            {currentUser.schoolWideBehaviour && (
+              <button
+                onClick={() => {
+                  setIsLwView(false);
+                  setIsAllClassesView(true);
+                }}
+                aria-current={isAllClassesView ? 'true' : undefined}
+                title="Alle Klassen: Schülerstatus sehen und Karten / Time-Outs / Cool-Downs vergeben"
+                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
+                  isAllClassesView
+                    ? 'bg-sky-500 text-slate-950 font-bold shadow-md'
+                    : 'bg-slate-800/80 text-sky-300 hover:text-slate-50 hover:bg-slate-700 border border-sky-500/30'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Alle Klassen</span>
+              </button>
+            )}
+
             {classes.filter((c) => c.name !== 'LW').map((cls) => (
               <button
                 key={cls.id}
                 onClick={() => {
+                  setIsAllClassesView(false);
                   setIsLwView(false);
                   onSelectClass(cls.id);
                 }}
@@ -950,8 +1100,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     key={i}
                     onClick={() => {
                       if (isThisLW) {
+                        setIsAllClassesView(false);
                         setIsLwView(true);
                       } else if (targetCls) {
+                        setIsAllClassesView(false);
                         setIsLwView(false);
                         onSelectClass(targetCls.id);
                       }
@@ -1105,11 +1257,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     <div>
                       <div className="font-bold text-slate-50">
                         {h.pupil_name} ({h.class_name})
-                        <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
+                        <span className={`ml-2 rounded px-1.5 py-0.5 text-[11px] font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
                           {h.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out'}
                         </span>
                         {h.retroactive && (
-                          <span className="ml-1 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-200">
+                          <span className="ml-1 rounded bg-slate-700 px-1.5 py-0.5 text-[11px] font-bold text-slate-200">
                             Nachtrag
                           </span>
                         )}
@@ -1131,6 +1283,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             </div>
           )}
         </div>
+      ) : isAllClassesView ? (
+        <AllClassesBehaviorPanel
+          data={allClassesData}
+          loading={allClassesLoading}
+          error={allClassesError}
+          onRefresh={() => void loadAllClasses()}
+          onAction={handleAllClassesAction}
+        />
       ) : (
         /* ===================================================================== */
         /* STANDARD CLASSROOM VIEW (SCHÜLER-KARTEN MIT TIMEOUT BUTTON)           */
@@ -1214,7 +1374,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {/* Simple class overview header */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <span>Klasse {currentClass.name} · {filteredPupils.length} Schüler*innen</span>
-              <div className="flex items-center gap-3 sm:gap-4 text-[10px] normal-case font-medium tracking-normal text-slate-400">
+              <div className="flex items-center gap-3 sm:gap-4 text-[11px] normal-case font-medium tracking-normal text-slate-400">
                 <span className="hidden md:flex items-center gap-2 text-slate-400">
                   <span className="font-semibold text-slate-300">Karten:</span>
                   <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Grün</span>
@@ -1293,13 +1453,13 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
                         >
                           <span data-testid="pupil-name" className="truncate text-base font-extrabold">{pupil.fullName}</span>
-                          <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                          <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide">
                             {rankLabel}
                           </span>
                         </button>
                         {activeTimeoutIncident && (
                           <span
-                            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-bold text-amber-300"
                             title={activeTimeoutIncident.kind === 'cooldown' ? 'Im Cool-Down (Lernwerkstatt)' : 'Im Time-Out (Lernwerkstatt)'}
                           >
                             {activeTimeoutIncident.kind === 'cooldown' ? (
@@ -1312,7 +1472,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         )}
                         {isYellowAlert && (
                           <span
-                            className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold text-rose-300"
+                            className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-[11px] font-bold text-rose-300"
                             title="Mahnstufe (>= 2 gelbe Karten)"
                           >
                             <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
@@ -1415,10 +1575,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                               pupilId: pupil.id,
                               pupilName: pupil.fullName,
                               cardType: 'green',
+                              classId: currentClass.id,
+                              className: currentClass.name,
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Grüne Karte vergeben  (Tastatur: 1)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1432,10 +1594,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                               pupilId: pupil.id,
                               pupilName: pupil.fullName,
                               cardType: 'yellow',
+                              classId: currentClass.id,
+                              className: currentClass.name,
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Gelbe Karte vergeben  (Tastatur: 2)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1447,7 +1611,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenRedCardModal(pupil);
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
                         >
                           <ShieldAlertIcon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1459,7 +1623,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'timeout');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -1471,7 +1635,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'cooldown');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[64px] bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-[9px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 whitespace-nowrap active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich)  (Tastatur: 5)"
                         >
                           <Snowflake className="w-3.5 h-3.5 text-sky-300" />
@@ -1485,7 +1649,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             setExpandedPupilId(isExpanded ? null : pupil.id);
                           }}
-                          className="hidden min-h-[56px] w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800/80 text-[9px] font-bold leading-none text-slate-400 transition hover:bg-slate-700 hover:text-slate-50 sm:inline-flex"
+                          className="hidden min-h-[56px] w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800/80 text-[11px] font-bold leading-none text-slate-400 transition hover:bg-slate-700 hover:text-slate-50 sm:inline-flex"
                           aria-expanded={isExpanded}
                           title={isExpanded ? 'Details ausblenden' : 'Details einblenden'}
                         >
@@ -1661,7 +1825,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
       {/* Modal: Standard Card Issue with Note (Green or Yellow) */}
       {activeCardModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-lg">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
               <h3 className="font-bold text-slate-50 text-base flex items-center gap-2">
@@ -1678,11 +1842,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             </div>
 
             <p className="text-xs text-slate-300 mb-3">
-              Für Schüler*in: <strong className="text-slate-50">{activeCardModal.pupilName}</strong> (Klasse {currentClass.name})
+              Für Schüler*in: <strong className="text-slate-50">{activeCardModal.pupilName}</strong> (Klasse {activeCardModal.className})
             </p>
 
             <div className="mb-4">
-              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+              <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
                 Begründung / Notiz (optional)
               </label>
               <textarea
@@ -1723,7 +1887,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
       {/* Two-Step Security Modal: ROTE KARTE (Instant Rank Loss) */}
       {redCardTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-md">
           <div className="bg-slate-900 border-2 border-rose-500/60 rounded-3xl w-full max-w-lg p-6 shadow-lg shadow-sm">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-rose-500/20 mb-4">
@@ -1767,6 +1931,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       </span>
                     ))}
                   </div>
+                  {redCardTarget.deductions.length === 0 && !redCardTarget.pendingNote && (
+                    <p className="text-slate-400 text-xs">
+                      Die Rote Karte zählt als Rangverlust. Die betroffenen Fächer
+                      werden beim Laden der Klasse berechnet.
+                    </p>
+                  )}
                   {redCardTarget.pendingNote && (
                     <p className="text-slate-400 text-xs pt-1">{redCardTarget.pendingNote}</p>
                   )}
@@ -1798,15 +1968,19 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             {redCardStep === 2 && (
               <div className="space-y-4">
                 <div className="text-xs text-slate-300 space-y-1.5">
-                  Schüler*in: <strong className="text-slate-50">{redCardTarget.pupilName}</strong> (Klasse {currentClass.name})
-                  <span className="block text-rose-400 font-bold">Degradierung:</span>
-                  <span className="flex flex-col gap-1.5 font-bold">
-                    {redCardTarget.deductions.map((d) => (
-                      <span key={d.label} className="text-slate-200">
-                        {d.label}: {d.currentRank} ➔ {d.demotedRank}
+                  Schüler*in: <strong className="text-slate-50">{redCardTarget.pupilName}</strong> (Klasse {redCardTarget.className})
+                  {redCardTarget.deductions.length > 0 && (
+                    <>
+                      <span className="block text-rose-400 font-bold">Degradierung:</span>
+                      <span className="flex flex-col gap-1.5 font-bold">
+                        {redCardTarget.deductions.map((d) => (
+                          <span key={d.label} className="text-slate-200">
+                            {d.label}: {d.currentRank} ➔ {d.demotedRank}
+                          </span>
+                        ))}
                       </span>
-                    ))}
-                  </span>
+                    </>
+                  )}
                   {redCardTarget.pendingNote && (
                     <span className="block text-slate-400 font-normal">{redCardTarget.pendingNote}</span>
                   )}
@@ -1860,7 +2034,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       {timeoutTarget && (() => {
         const isCooldown = timeoutTarget.kind === 'cooldown';
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-md">
             <div className={`bg-slate-900 border-2 ${isCooldown ? 'border-sky-500/60' : 'border-amber-500/60'} rounded-3xl w-full max-w-lg p-6 shadow-lg shadow-sm`}>
               <div className={`flex items-center justify-between pb-3 border-b ${isCooldown ? 'border-sky-500/20' : 'border-amber-500/20'} mb-4`}>
                 <div className={`flex items-center gap-2 ${isCooldown ? 'text-sky-300' : 'text-amber-400'}`}>
@@ -1891,7 +2065,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     ) : (
                       <ShieldAlertIcon className="w-5 h-5 inline align-text-bottom" aria-hidden="true" />
                     )}{' '}
-                    {isCooldown ? 'Cool-Down für' : 'Disziplinäres Time-Out für'} {timeoutTarget.pupilName} (Klasse {currentClass.name})
+                    {isCooldown ? 'Cool-Down für' : 'Disziplinäres Time-Out für'} {timeoutTarget.pupilName} (Klasse {timeoutTarget.className})
                   </p>
                   <p className="text-slate-300 leading-relaxed">
                     {isCooldown
@@ -1917,7 +2091,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       <>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">
+                            <label className="mb-1 block text-[11px] font-bold uppercase text-slate-400">
                               Datum
                             </label>
                             <input
@@ -1931,7 +2105,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">
+                            <label className="mb-1 block text-[11px] font-bold uppercase text-slate-400">
                               Schulstunde
                             </label>
                             <select
@@ -1948,7 +2122,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             </select>
                           </div>
                         </div>
-                        <p className="text-[10px] leading-relaxed text-slate-400">
+                        <p className="text-[11px] leading-relaxed text-slate-400">
                           Nur die letzten {RETROACTIVE_TIMEOUT_DAYS} Tage. Der Eintrag wird als
                           bereits beendet gespeichert und erscheint nicht als aktiver
                           Lernwerkstatt-Aufenthalt.
@@ -1976,7 +2150,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     className={`w-full p-3.5 rounded-2xl bg-slate-950 border ${isCooldown ? 'border-sky-500/40 focus:border-sky-400 focus:ring-sky-400' : 'border-amber-500/40 focus:border-amber-400 focus:ring-amber-400'} text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-1`}
                   />
                   {!isCooldown && timeoutTask.trim().length === 0 && (
-                    <span className="text-[10px] text-amber-400 mt-1 block">
+                    <span className="text-[11px] text-amber-400 mt-1 block">
                       * Ein konkreter Arbeitsauftrag ist zwingend erforderlich.
                     </span>
                   )}

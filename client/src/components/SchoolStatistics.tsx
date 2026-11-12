@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { getStatistics } from '../services/api';
 import { PupilProfileModal } from './PupilProfileModal';
+import { Skeleton } from './ui';
 import type { User } from '../types';
 
 export interface CardsSummaryTotals {
@@ -199,16 +200,53 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
   }
 
   if (loading && !data) {
+    // Shape-matched skeleton: header, KPI strip, then the pupil table. The old spinner
+    // pushed the whole dashboard down when the data arrived.
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400">
-        <RefreshCw className="w-7 h-7 animate-spin text-amber-400 mb-2" />
-        <span className="text-xs">Lade Schulstatistik &amp; Vorfälle...</span>
+      <div className="space-y-4" aria-busy="true" aria-label="Schulstatistik wird geladen">
+        <div className="surface-1 rounded-2xl p-4 flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-2xl" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-44" />
+            <Skeleton className="h-3 w-72 max-w-full" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+          {Array.from({ length: 6 }).map((_, tile) => (
+            <Skeleton key={tile} className="h-20 rounded-2xl" />
+          ))}
+        </div>
+        <div className="surface-1 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-hairline">
+            <Skeleton className="h-4 w-56" />
+          </div>
+          {Array.from({ length: 8 }).map((_, row) => (
+            <div key={row} className="flex items-center gap-3 px-4 py-3 border-b border-hairline last:border-b-0">
+              <Skeleton className="h-8 w-8 rounded-xl" />
+              <Skeleton className="h-3.5 w-1/4" />
+              <div className="ml-auto hidden sm:flex gap-1.5">
+                <Skeleton className="h-7 w-10 rounded-lg" />
+                <Skeleton className="h-7 w-10 rounded-lg" />
+                <Skeleton className="h-7 w-10 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 print:m-0 print:p-0">
+    <div className="space-y-4 print:m-0 print:p-0" aria-busy={loading}>
+      {loading && data && (
+        <div
+          role="status"
+          aria-label="Statistik wird aktualisiert"
+          className="h-1 overflow-hidden rounded-full bg-slate-800 print:hidden"
+        >
+          <div className="h-full w-1/3 animate-loading-bar rounded-full bg-amber-400" />
+        </div>
+      )}
       {loadError && (
         <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 flex items-center justify-between gap-3">
           <span>{loadError}</span>
@@ -289,55 +327,55 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-3 shadow-md">
           <div className="flex items-center justify-between text-emerald-400 text-xs font-bold mb-1">
             <span>🟢 Grün</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">Anerkennung</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">Anerkennung</span>
           </div>
           <div className="text-2xl font-black text-emerald-300">{totals.green}</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Grüne Karten</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Grüne Karten</p>
         </div>
 
         <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-3 shadow-md">
           <div className="flex items-center justify-between text-amber-400 text-xs font-bold mb-1">
             <span>🟡 Gelb</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">Verwarnung</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">Verwarnung</span>
           </div>
           <div className="text-2xl font-black text-amber-300">{totals.yellow}</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Gelbe Karten</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Gelbe Karten</p>
         </div>
 
         <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-3 shadow-md">
           <div className="flex items-center justify-between text-rose-400 text-xs font-bold mb-1">
             <span>🔴 Rot</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-rose-500/10 border border-rose-500/20">Disziplinar</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-rose-500/10 border border-rose-500/20">Disziplinar</span>
           </div>
           <div className="text-2xl font-black text-rose-300">{totals.red}</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Rote Karten</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Rote Karten</p>
         </div>
 
         <div className="bg-slate-900 border border-orange-500/30 rounded-2xl p-3 shadow-md">
           <div className="flex items-center justify-between text-orange-400 text-xs font-bold mb-1">
             <span>⏱️ Time-Out</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-orange-500/10 border border-orange-500/20">Lernwerkstatt</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-orange-500/10 border border-orange-500/20">Lernwerkstatt</span>
           </div>
           <div className="text-2xl font-black text-orange-300">{totals.timeout}</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Time-Out Vorfälle</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Time-Out Vorfälle</p>
         </div>
 
         <div className="bg-slate-900 border border-sky-500/30 rounded-2xl p-3 shadow-md">
           <div className="flex items-center justify-between text-sky-400 text-xs font-bold mb-1">
             <span>❄️ Cool-Down</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-sky-500/10 border border-sky-500/20">Auszeit</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-sky-500/10 border border-sky-500/20">Auszeit</span>
           </div>
           <div className="text-2xl font-black text-sky-300">{totals.cooldown}</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Beruhigungsphasen</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Beruhigungsphasen</p>
         </div>
 
         <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-3 shadow-md">
           <div className="flex items-center justify-between text-slate-300 text-xs font-bold mb-1">
             <span>📊 Gesamt</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700">Total</span>
+            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700">Total</span>
           </div>
           <div className="text-2xl font-black text-slate-100">{totals.total}</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Einträge gesamt</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Einträge gesamt</p>
         </div>
       </div>
 
@@ -380,7 +418,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
               <div
                 key={seg.key}
                 style={{ width: `${seg.pct}%` }}
-                className={`${seg.colorClass} rounded-lg flex items-center justify-center text-slate-950 text-[10px] font-black transition-all duration-300 hover:brightness-110 cursor-pointer`}
+                className={`${seg.colorClass} rounded-lg flex items-center justify-center text-slate-950 text-[11px] font-black transition-all duration-300 hover:brightness-110 cursor-pointer`}
                 title={`${seg.label}: ${seg.count} (${seg.pct}%)`}
               >
                 {seg.pct >= 8 && `${seg.pct}%`}
@@ -445,7 +483,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                       className="hover:bg-slate-800/40 cursor-pointer transition"
                     >
                       <td className="py-2 px-3 font-bold text-slate-100 flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] text-amber-400">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[11px] text-amber-400">
                           {cb.className}
                         </span>
                         <span className="text-slate-400 text-[11px]">{cb.grade}. Schulstufe</span>
@@ -473,7 +511,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                               />
                             ))
                           ) : (
-                            <div className="w-full text-center text-[9px] text-slate-600">—</div>
+                            <div className="w-full text-center text-[11px] text-slate-600">—</div>
                           )}
                         </div>
                       </td>
@@ -503,7 +541,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                 Vorfälle nach Wochentag
               </h3>
             </div>
-            <span className="text-[10px] text-slate-500">Montag – Freitag</span>
+            <span className="text-[11px] text-slate-500">Montag – Freitag</span>
           </div>
 
           <div className="grid grid-cols-5 gap-2 pt-2">
@@ -519,7 +557,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                   <div className="w-full h-24 bg-slate-950/60 rounded-xl p-1 flex items-end justify-center border border-slate-800">
                     <div
                       style={{ height: `${Math.max(8, barHeightPct)}%` }}
-                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-[10px] font-bold ${
+                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-[11px] font-bold ${
                         d.count > 0 ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-slate-800 text-slate-500'
                       }`}
                     >
@@ -542,7 +580,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                 Vorfälle nach Unterrichtsstunde
               </h3>
             </div>
-            <span className="text-[10px] text-slate-500">1. bis 6. Stunde</span>
+            <span className="text-[11px] text-slate-500">1. bis 6. Stunde</span>
           </div>
 
           <div className="grid grid-cols-6 gap-2 pt-2">
@@ -558,7 +596,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                   <div className="w-full h-24 bg-slate-950/60 rounded-xl p-1 flex items-end justify-center border border-slate-800">
                     <div
                       style={{ height: `${Math.max(8, barHeightPct)}%` }}
-                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-[10px] font-bold ${
+                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-[11px] font-bold ${
                         p.count > 0 ? 'bg-orange-500 text-slate-950 shadow-sm' : 'bg-slate-800 text-slate-500'
                       }`}
                     >
@@ -566,7 +604,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                     </div>
                   </div>
                   <span className="text-xs font-bold text-slate-300 mt-2">{p.period}. Std</span>
-                  <span className="text-[9px] text-slate-500 truncate max-w-full">{p.time.split(' - ')[0]}</span>
+                  <span className="text-[11px] text-slate-500 truncate max-w-full">{p.time.split(' - ')[0]}</span>
                 </div>
               );
             })}
@@ -686,7 +724,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                   return (
                     <tr key={p.id} className="hover:bg-slate-800/30 transition">
                       <td className="py-2 px-3">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] text-amber-400 font-bold">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[11px] text-amber-400 font-bold">
                           {p.className}
                         </span>
                       </td>
@@ -711,7 +749,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                               />
                             ))
                           ) : (
-                            <div className="w-full text-center text-[9px] text-slate-600">—</div>
+                            <div className="w-full text-center text-[11px] text-slate-600">—</div>
                           )}
                         </div>
                       </td>

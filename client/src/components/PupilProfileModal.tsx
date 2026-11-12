@@ -114,7 +114,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
   if (loading && !profile) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center scrim backdrop-blur-sm">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-400">
           <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm font-semibold">Lade Schüler-Verhaltensprofil...</p>
@@ -129,7 +129,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
   const grade = calculation.behaviorGrade;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-950/80 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:static">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 scrim backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:static">
       <div className="relative w-full max-w-5xl bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:border-none print:shadow-none print:text-black">
         {/* Top Header Bar */}
         <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 print:border-b-2 print:border-black">
@@ -275,7 +275,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
                     <div className="space-y-3 text-xs">
                       <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px] block">
                           Pädagogische Beschreibung:
                         </span>
                         <p className="text-slate-300 mt-0.5 leading-relaxed">
@@ -536,11 +536,11 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                         className={`p-4 rounded-2xl border text-xs space-y-2 ${ti.kind === 'cooldown' ? 'bg-sky-950/20 border-sky-500/30' : 'bg-rose-950/20 border-rose-500/30'}`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold ${ti.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'}`}>
+                          <span className={`px-2 py-0.5 rounded-md border text-[11px] font-bold ${ti.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'}`}>
                             {ti.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out Einsatz'}
                           </span>
                           {ti.retroactive && (
-                            <span className="rounded-md bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-200">
+                            <span className="rounded-md bg-slate-700 px-2 py-0.5 text-[11px] font-bold text-slate-200">
                               Nachtrag
                             </span>
                           )}

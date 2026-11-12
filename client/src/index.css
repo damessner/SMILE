@@ -288,6 +288,16 @@
     box-shadow: var(--shadow-xl);
   }
 
+  /*
+    Modal scrim. Deliberately dark in both themes: a white overlay in light mode
+    washes the dialog out and hides the focus state. The previous markup used
+    bg-slate-950/*, which the light theme remaps to near-white (#f4f7fb) — the
+    backdrop became lighter than the app and the dialog lost its separation.
+  */
+  .scrim {
+    background-color: rgb(2 6 23 / 0.8);
+  }
+
   /* Translucent bar behind scrolling content. */
   .material-bar {
     background-color: color-mix(in srgb, var(--color-surface-0) 82%, transparent);
@@ -325,6 +335,13 @@
   from { opacity: 0; transform: translateY(0.75rem) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* Indeterminate refresh bar above a grid that is being re-fetched in place. */
+@keyframes loading-bar {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(400%); }
+}
+.animate-loading-bar { animation: loading-bar 1100ms var(--ease-out-quint) infinite; }
 
 /* Soft-lock pulse: another teacher is editing this cell. */
 @keyframes softlock-pulse {
@@ -382,9 +399,27 @@
 
 @media print {
   @page { size: A4; margin: 12mm; }
-  html, body { background: #fff !important; color: #000 !important; }
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    /* Rank chips and card colours must survive the print pipeline. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   header, nav, .no-print { display: none !important; }
-  .print-class-page { break-after: page; }
-  .print-class-page:last-child { break-after: auto; }
+  /* A dialog printed on demand (class report, KEL) needs its content, not its scrim. */
+  .scrim {
+    background: transparent !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .print-class-page { break-after: page; page-break-after: always; }
+  .print-class-page:last-child { break-after: auto; page-break-after: auto; }
+  /* Long reports: repeat the header row and never split a pupil across pages. */
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  .print-avoid-break { break-inside: avoid; page-break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }

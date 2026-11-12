@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Award, AlertTriangle, RotateCcw, Check, X } from 'lucide-react';
 import { issueCard, revokeCard } from '../services/api';
+import { Dialog } from './ui';
 import { useToast } from './Toast';
 
 interface CardDrawerProps {
@@ -80,11 +81,15 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg relative">
+    <Dialog
+      onClose={onClose}
+      align="sheet"
+      labelledBy="card-drawer-title"
+      panelClassName="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg relative animate-modal-in"
+    >
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-slate-50">Karte vergeben</h3>
+            <h3 id="card-drawer-title" className="text-lg font-bold text-slate-50">Karte vergeben</h3>
             <p className="text-sm text-amber-400 font-medium">{pupilName}</p>
           </div>
           <button
@@ -141,7 +146,6 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
             <span className="text-xs">Gelbe Karte (Mahnung)</span>
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

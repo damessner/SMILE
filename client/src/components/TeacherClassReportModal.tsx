@@ -93,7 +93,7 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 scrim backdrop-blur-md overflow-y-auto">
       {/* Container */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[96vh] flex flex-col shadow-lg overflow-hidden print:m-0 print:p-0 print:border-none print:shadow-none print:bg-white print:max-h-none print:w-full print:max-w-none">
         {/* Modal Controls (Hidden in Print) */}
@@ -167,30 +167,30 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
                   <span className="text-slate-800">
                     Statistik {sr.subject.name} ({totalPupils} Schüler*innen · {sr.submittedCount} eingereicht, {sr.openCount} offen)
                   </span>
-                  <span className="text-slate-600 text-[10px]">
+                  <span className="text-slate-600 text-[11px]">
                     Stichtag Einreichung: 30.10.2026 23:59
                   </span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 text-center text-xs mb-2">
                   <div className="bg-white border border-rose-200 rounded-lg p-1.5 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-rose-600 block">
+                    <span className="text-[11px] uppercase font-bold text-rose-600 block">
                       <span className="inline-block w-2 h-2 rounded-full bg-rose-500 align-middle" /> Lehrling
                     </span>
                     <strong className="text-sm font-bold text-slate-900">{sr.lehrlingCount}</strong>
-                    <span className="text-[10px] text-slate-500 ml-1">({sr.percentLehrling}%)</span>
+                    <span className="text-[11px] text-slate-500 ml-1">({sr.percentLehrling}%)</span>
                   </div>
                   <div className="bg-white border border-blue-200 rounded-lg p-1.5 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-blue-600 block">🔵 Geselle</span>
+                    <span className="text-[11px] uppercase font-bold text-blue-600 block">🔵 Geselle</span>
                     <strong className="text-sm font-bold text-slate-900">{sr.geselleCount}</strong>
-                    <span className="text-[10px] text-slate-500 ml-1">({sr.percentGeselle}%)</span>
+                    <span className="text-[11px] text-slate-500 ml-1">({sr.percentGeselle}%)</span>
                   </div>
                   <div className="bg-white border border-amber-200 rounded-lg p-1.5 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-amber-600 block">
+                    <span className="text-[11px] uppercase font-bold text-amber-600 block">
                       <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle" /> Meister
                     </span>
                     <strong className="text-sm font-bold text-slate-900">{sr.meisterCount}</strong>
-                    <span className="text-[10px] text-slate-500 ml-1">({sr.percentMeister}%)</span>
+                    <span className="text-[11px] text-slate-500 ml-1">({sr.percentMeister}%)</span>
                   </div>
                 </div>
 
@@ -211,7 +211,7 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
               {/* Table of Pupils */}
               <table className="w-full text-left text-xs border-collapse border border-slate-300">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-700 text-[10px] uppercase border-b border-slate-300">
+                  <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase border-b border-slate-300">
                     <th className="py-1 px-2 border-r border-slate-300 w-8 text-center">Nr.</th>
                     <th className="py-1 px-2 border-r border-slate-300 font-bold">Schüler*in</th>
                     <th className="py-1 px-2 border-r border-slate-300 w-24 text-center font-bold">Smileys</th>
@@ -239,18 +239,18 @@ export const TeacherClassReportModal: React.FC<TeacherClassReportModalProps> = (
                           {p.positiveCount} / {rubricItemKeys.length}
                         </td>
                         <td className="py-1 px-2 border-r border-slate-200 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${badgeClass}`}>
+                          <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border uppercase ${badgeClass}`}>
                             {p.displayRank}
                           </span>
                         </td>
-                        <td className="py-1 px-2 border-r border-slate-200 text-center text-[10px]">
+                        <td className="py-1 px-2 border-r border-slate-200 text-center text-[11px]">
                           {p.isSubmitted ? (
                             <span className="text-emerald-700 font-bold">✓ Eingereicht</span>
                           ) : (
                             <span className="text-amber-700 font-bold">○ Offen</span>
                           )}
                         </td>
-                        <td className="py-1 px-2 text-[10px] text-slate-600 truncate max-w-xs">
+                        <td className="py-1 px-2 text-[11px] text-slate-600 truncate max-w-xs">
                           {p.comment || '—'}
                         </td>
                       </tr>

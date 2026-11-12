@@ -763,7 +763,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <span>Eigenes WebUntis-Konto noch nicht verknüpft</span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   Empfohlen
                 </span>
               </h3>
@@ -797,7 +797,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <span>Stundenplan & Lehrstoff</span>
             {filteredLessons.length > 0 && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                className={`px-1.5 py-0.2 rounded-full text-[11px] ${
                   activeSubTab === 'timetable' ? 'bg-slate-950 text-sky-400' : 'bg-slate-800 text-slate-400'
                 }`}
               >
@@ -818,7 +818,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <span>Abwesenheiten</span>
             {absences.length > 0 && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                className={`px-1.5 py-0.2 rounded-full text-[11px] ${
                   activeSubTab === 'absences' ? 'bg-slate-950 text-sky-400' : 'bg-slate-800 text-slate-400'
                 }`}
               >
@@ -839,7 +839,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <span>Klassenbuch & Disziplinar</span>
             {events.length > 0 && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                className={`px-1.5 py-0.2 rounded-full text-[11px] ${
                   activeSubTab === 'events' ? 'bg-slate-950 text-sky-400' : 'bg-slate-800 text-slate-400'
                 }`}
               >
@@ -974,7 +974,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                         <div className="flex items-center gap-1.5">
                           <span className="font-extrabold text-xs">{day.dayName}</span>
                           {day.isToday && (
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-500 text-slate-950">
+                            <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-sky-500 text-slate-950">
                               Heute
                             </span>
                           )}
@@ -982,7 +982,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                         <span className="text-[11px] text-slate-400 font-mono">{day.formattedDate}</span>
                       </div>
 
-                      <div className="flex items-center gap-1 text-[10px] font-bold">
+                      <div className="flex items-center gap-1 text-[11px] font-bold">
                         <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                           {dayLessons.length}
                         </span>
@@ -1052,7 +1052,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                     </span>
                                   )}
                                   {room && (
-                                    <span className="text-[10px] text-slate-400 bg-slate-800/40 px-1 py-0.5 rounded">
+                                    <span className="text-[11px] text-slate-400 bg-slate-800/40 px-1 py-0.5 rounded">
                                       {room}
                                     </span>
                                   )}
@@ -1064,25 +1064,25 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                   <Clock className="w-3 h-3 text-slate-500" />
                                   {timeLabel}
                                 </span>
-                                {teacher && <span className="text-[10px] text-slate-500">{teacher}</span>}
+                                {teacher && <span className="text-[11px] text-slate-500">{teacher}</span>}
                               </div>
 
                               {/* Status Badges */}
                               {dutyBadge ? (
                                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
                                     Dienst / Betreuung • kein Lehrstoff
                                   </span>
                                 </div>
                               ) : (
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                                   {lesson.missingTeachingContent ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                                       <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
                                       Lehrstoff fehlt
                                     </span>
                                   ) : lesson.hasTeachingContent ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                                       <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
                                       Lehrstoff erfasst
                                     </span>
@@ -1091,14 +1091,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                   {lesson.missingAttendance ? (
                                     <button
                                       onClick={() => handleInspectAbsences(day.dateStr)}
-                                      className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
+                                      className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
                                       title="Anwesenheitsliste für diese Stunde prüfen"
                                     >
                                       <UserX className="w-3 h-3 text-rose-400 shrink-0" />
                                       Anwesenheit fehlt
                                     </button>
                                   ) : lesson.attendanceChecked ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                                       <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
                                       Anwesenheit erfasst
                                     </span>
@@ -1109,7 +1109,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                               {/* Lehrstoff Inline Editor (only for teaching lessons, not duty slots) */}
                               {!dutyBadge && (
                                 <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
-                                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
+                                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
                                     <span>Lehrstoff:</span>
                                     {isSaved && (
                                       <span className="text-emerald-400 flex items-center gap-1 font-bold">
@@ -1207,7 +1207,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                           <Clock className="w-3 h-3 text-slate-500" />
                           {timeLabel}
                         </span>
-                        <span className="text-[10px] text-slate-500">{teacher}</span>
+                        <span className="text-[11px] text-slate-500">{teacher}</span>
                       </div>
                     </div>
 
@@ -1256,7 +1256,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                         <label className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
                           <span>Lehrstoff (Was wurde gemacht?):</span>
                           {isSaved && (
-                            <span className="text-emerald-400 flex items-center gap-1 font-bold text-[10px]">
+                            <span className="text-emerald-400 flex items-center gap-1 font-bold text-[11px]">
                               <CheckCircle2 className="w-3 h-3" /> In WebUntis gespeichert
                             </span>
                           )}
@@ -1382,7 +1382,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                       </td>
                       <td className="py-2.5 px-4 text-right">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
                             absence.excused
                               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -1511,7 +1511,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     <div className="text-left sm:text-right shrink-0">
                       <span className="text-xs font-mono text-slate-400 block">{formattedDate}</span>
                       {event.teacherName && (
-                        <span className="text-[10px] text-slate-500">{event.teacherName}</span>
+                        <span className="text-[11px] text-slate-500">{event.teacherName}</span>
                       )}
                     </div>
                   </div>
@@ -1539,7 +1539,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
       {/* MODAL: Neuer Klassenbucheintrag */}
       {isNewEventModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-slate-100 font-bold">

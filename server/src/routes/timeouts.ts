@@ -15,6 +15,7 @@ getTeacher,
 hasPersistedTeacherActor,
 isHeadmasterUser,
 isSchoolLeader,
+mayRecordBehaviourSchoolWide,
 LW_CLASS_ID,
 MAX_POSTGRES_INTEGER,
 parseIdParam,
@@ -119,7 +120,12 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
 
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
-    if (!access.canRecord) {
+
+    // Same school-wide behaviour policy as the card route: supervision and break
+    // duty must be able to send a pupil from any class to the Lernwerkstatt. The
+    // audit row below records that this was a cross-class action.
+    const crossClass = !access.canRecord;
+    if (crossClass && !mayRecordBehaviourSchoolWide(user, config.behaviourSchoolWide)) {
       return reply.status(403).send({
         error: 'Sie unterrichten diese Klasse nicht und dürfen dort kein Time-Out auslösen.',
       });
@@ -239,6 +245,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
           totalTimeouts,
           isEscalationTriggered,
           retroactive: isRetroactive,
+          crossClass,
           ...(occurrence
             ? {
                 period: occurrence.period,
@@ -421,7 +428,13 @@ return reply.send(rows.rows);
     if (!existing) return reply.status(404).send({ error: 'Time-Out Eintrag nicht gefunden' });
     if (existing.status !== 'active') return badRequest(reply, 'Dieser Time-Out ist bereits abgeschlossen.');
 
-if (!(await canActOnTimeout(user, existing.classId))) {
+// The issuing teacher may always release the pupil they sent. Without this, a
+// teacher using the school-wide "Alle Klassen" view could send a pupil to the
+// Lernwerkstatt from a class they do not teach and then be unable to undo it: the
+// duty/leadership rule below does not include them, so the undo toast would fail.
+const isIssuer =
+  hasPersistedTeacherActor(user.teacherId) && existing.sentByTeacherId === user.teacherId;
+if (!isIssuer && !(await canActOnTimeout(user, existing.classId))) {
 return reply.status(403).send({
 error:
 'Sie sind für diese Klasse nicht zuständig und haben heute keine Lernwerkstatt-Aufsicht.',
@@ -450,7 +463,7 @@ error:
         action: 'TIMEOUT_RESOLVED',
         entity: 'timeout_incident',
         entityId: id,
-        payload: { pupilId: existing.pupilId, classId: existing.classId },
+        payload: { pupilId: existing.pupilId, classId: existing.classId, releasedByIssuer: isIssuer },
       });
 
       return updated;

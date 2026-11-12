@@ -800,6 +800,27 @@ export function parseIdParam(value: string, _fieldName?: string): number | null 
 }
 
 /**
+ * May this account record behaviour consequences in classes it is not assigned to?
+ *
+ * `getClassAccess().canRecord` answers "is this teacher responsible for this class".
+ * Supervision and break duty need a second question: "may this member of staff act
+ * on behaviour anywhere in the school?". That is deliberately a narrow capability:
+ * it is used only by the card and Time-Out write paths, never to widen reads,
+ * ratings, conference rights or roster management. Pupils are excluded, and an
+ * account without a persisted teacher actor is refused later by the actor check.
+ *
+ * Kept pure (the config value is passed in) so the policy is unit-testable without a
+ * server or database.
+ */
+export function mayRecordBehaviourSchoolWide(
+  user: Pick<AuthUser, 'role'> | Identity,
+  enabled: boolean,
+): boolean {
+  if (!enabled) return false;
+  return user.role === 'teacher' || user.role === 'head_teacher' || user.role === 'admin';
+}
+
+/**
  * Is this a usable `teacher_id` foreign key?
  *
  * `teacherId` reaches the write paths from the session, and older code substituted

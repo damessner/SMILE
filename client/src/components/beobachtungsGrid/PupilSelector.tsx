@@ -57,7 +57,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           <Folder className="w-3.5 h-3.5" />
           <span>Offen</span>
           <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+            className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
               folderTab === 'offen' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
             }`}
           >
@@ -76,7 +76,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           <FolderCheck className="w-3.5 h-3.5" />
           <span>Bewertet</span>
           <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+            className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
               folderTab === 'bewertet' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
             }`}
           >
@@ -100,7 +100,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
             <Users className="w-3.5 h-3.5" />
             <span>Meine Schüler</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
                 groupFilterMode === 'my_pupils' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -118,7 +118,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           >
             <span>Ganze Klasse</span>
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+              className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
                 groupFilterMode === 'all' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -171,17 +171,17 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
                   </div>
                   <div className="flex items-center flex-wrap gap-1.5 mt-1">
                     {activeSubjectCode && p.assignedGroups?.[activeSubjectCode] && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-300 font-mono">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-300 font-mono">
                         {p.assignedGroups[activeSubjectCode]}
                       </span>
                     )}
                     {p.greenCardCount > 0 && (
-                      <span className="text-[10px] text-emerald-400 font-bold">
+                      <span className="text-[11px] text-emerald-400 font-bold">
                         ★ {p.greenCardCount}
                       </span>
                     )}
                     {p.yellowCardCount > 0 && (
-                      <span className="text-[10px] text-amber-400 font-bold">
+                      <span className="text-[11px] text-amber-400 font-bold">
                         ▲ {p.yellowCardCount}
                       </span>
                     )}
@@ -190,7 +190,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
 
                 {!isAllSubjectsMode && (
                   <span
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
+                    className={`px-2 py-0.5 rounded-lg text-[11px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
                   >
                     {pRank.rank ?? 'Ausstehend'}
                   </span>

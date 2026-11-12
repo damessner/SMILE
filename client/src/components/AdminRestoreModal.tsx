@@ -114,7 +114,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-sm animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="restore-modal-title"
@@ -296,7 +296,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                 <div className="p-4 bg-gradient-to-r from-rose-950/40 to-slate-900 border border-rose-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-400 font-bold text-[10px] uppercase tracking-wider">
+                      <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-400 font-bold text-[11px] uppercase tracking-wider">
                         Empfohlen bei Ausfall
                       </span>
                       <span className="text-xs text-slate-400">
@@ -354,12 +354,12 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                                 {b.filename}
                               </span>
                               {b.isSafetySnapshot && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                   Sicherheitskopie
                                 </span>
                               )}
                               {b.isEncrypted && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                                   Verschlüsselt
                                 </span>
                               )}

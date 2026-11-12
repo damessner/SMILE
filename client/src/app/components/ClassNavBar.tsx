@@ -41,7 +41,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
                         <span
                           key={s.code}
                           title={s.name}
-                          className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
+                          className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
                             isSelected
                               ? 'bg-slate-950/20 text-slate-950'
                               : s.isCoreSmile
@@ -55,7 +55,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
                     </div>
                   ) : cls.isKv ? (
                     <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
+                      className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold ${
                         isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-purple-500/20 text-purple-300'
                       }`}
                     >

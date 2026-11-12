@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRateSubject, getGlobalAccess, hasPersistedTeacherActor, kvFieldMatches, parseIdParam, parsePositiveInt, safeTeacherId, type ClassAccess } from './guards.js';
+import { canRateSubject, getGlobalAccess, hasPersistedTeacherActor, kvFieldMatches, mayRecordBehaviourSchoolWide, parseIdParam, parsePositiveInt, safeTeacherId, type ClassAccess } from './guards.js';
 
 /**
  * Homeroom matching is a security boundary: it decides who may edit a class roster and
@@ -227,5 +227,22 @@ describe('getGlobalAccess fail-closed policy (Task 2.1)', () => {
     expect(access.isAdmin).toBe(false);
     expect(access.isHeadmaster).toBe(false);
     expect(access.classIds).toEqual([]);
+  });
+});
+describe('mayRecordBehaviourSchoolWide', () => {
+  it('allows all staff roles when the school enables the policy', () => {
+    for (const role of ['teacher', 'head_teacher', 'admin'] as const) {
+      expect(mayRecordBehaviourSchoolWide({ role }, true)).toBe(true);
+    }
+  });
+
+  it('never grants cross-class behaviour to pupils', () => {
+    expect(mayRecordBehaviourSchoolWide({ role: 'pupil' }, true)).toBe(false);
+  });
+
+  it('is inert when the policy is disabled, role regardless', () => {
+    for (const role of ['teacher', 'head_teacher', 'admin'] as const) {
+      expect(mayRecordBehaviourSchoolWide({ role }, false)).toBe(false);
+    }
   });
 });

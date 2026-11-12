@@ -436,6 +436,51 @@ export async function getStatistics(classId?: string | number) {
   return unwrap(res);
 }
 
+// --- School-wide behaviour overview ("Alle Klassen") ----------------------
+
+export interface BehaviorOverviewCounts {
+  green: number;
+  yellow: number;
+  red: number;
+  timeout: number;
+  cooldown: number;
+}
+
+export interface BehaviorOverviewPupil {
+  id: number;
+  fullName: string;
+  classId: number;
+  className: string;
+  grade: number;
+  rank: 'Lehrling' | 'Geselle' | 'Meister' | null;
+  stage: {
+    level: number;
+    title: string;
+    type: 'green' | 'neutral' | 'red';
+    behaviorGrade: string;
+  } | null;
+  counts: BehaviorOverviewCounts;
+  activeIncident: {
+    id: string;
+    kind: 'timeout' | 'cooldown';
+    sentAt: string;
+    taskAssignment: string;
+  } | null;
+  canRecord: boolean;
+}
+
+export interface BehaviorOverview {
+  schoolWide: boolean;
+  classes: Array<{ id: number; name: string; grade: number }>;
+  pupils: BehaviorOverviewPupil[];
+}
+
+/** Every class's pupils with the status needed to give a behaviour consequence. */
+export async function getBehaviorOverview(): Promise<BehaviorOverview> {
+  const res = await apiFetch('/behavior/overview');
+  return unwrap(res);
+}
+
 export async function getCurrentTimetable(day?: number, period?: number) {
   const params = new URLSearchParams();
   if (day !== undefined) params.append('day', String(day));

@@ -19,6 +19,7 @@ import { runMigrations, closePool } from './db/index.js';
 
 import { authRoutes } from './routes/auth.js';
 import { classRoutes } from './routes/classes.js';
+import { behaviorRoutes } from './routes/behavior.js';
 import { pupilRoutes } from './routes/pupils.js';
 import { cardRoutes } from './routes/cards.js';
 import { evaluationRoutes } from './routes/evaluations.js';
@@ -248,6 +249,7 @@ export async function buildServer(
   // --- API routes ---------------------------------------------------------
   await fastify.register(authRoutes, { prefix: '/api/auth' });
   await fastify.register(classRoutes, { prefix: '/api/classes' });
+  await fastify.register(behaviorRoutes, { prefix: '/api/behavior' });
   await fastify.register(pupilRoutes, { prefix: '/api/pupils' });
   await fastify.register(cardRoutes, { prefix: '/api/cards' });
   await fastify.register(evaluationRoutes, { prefix: '/api/evaluations' });

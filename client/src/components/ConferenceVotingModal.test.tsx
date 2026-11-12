@@ -479,3 +479,20 @@ describe('ConferenceVotingModal unsaved rank edits', () => {
     );
   });
 });
+describe('conference mode dialog semantics', () => {
+  it('is a modal dialog that owns focus and closes on Escape', async () => {
+    const { onClose } = renderModal();
+
+    await waitFor(() => expect(screen.getByText('Anna Muster')).toBeInTheDocument());
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveAttribute('aria-labelledby', 'conference-mode-title');
+
+    // Initial focus lands inside the overlay, not on the page behind it.
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

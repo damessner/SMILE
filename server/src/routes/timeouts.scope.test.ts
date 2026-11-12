@@ -244,6 +244,32 @@ describe('POST /api/timeouts/:id/resolve — the duty supervisor is not refused'
     expect(dbInsertValuesMock.mock.calls.some(([row]) => (row as any)?.action === 'TIMEOUT_RESOLVED')).toBe(true);
   });
 
+  it('lets the issuing teacher release their own cross-class Time-Out', async () => {
+    // School-wide behaviour: a teacher may send a pupil from a class they do not
+    // teach, so the undo must also work. Otherwise the pupil is released only by
+    // the duty supervisor or the class teacher.
+    dbSelectMock.mockReturnValue([{ ...sampleIncident, sentByTeacherId: 42 }]);
+    canActOnTimeout.mockResolvedValue(false);
+    dbUpdateReturningMock.mockReturnValue([{ ...sampleIncident, status: 'resolved', resolvedBy: 42 }]);
+
+    const res = await post(VALID_ID);
+    expect(res.statusCode).toBe(200);
+    expect(canActOnTimeout).not.toHaveBeenCalled();
+    expect(
+      dbInsertValuesMock.mock.calls.some(
+        ([row]) => (row as any)?.action === 'TIMEOUT_RESOLVED' && (row as any)?.payload?.releasedByIssuer === true,
+      ),
+    ).toBe(true);
+  });
+
+  it('still refuses a teacher who neither issued the entry nor is on duty', async () => {
+    dbSelectMock.mockReturnValue([{ ...sampleIncident, sentByTeacherId: 77 }]);
+    canActOnTimeout.mockResolvedValue(false);
+
+    const res = await post(VALID_ID);
+    expect(res.statusCode).toBe(403);
+  });
+
   it('rejects a malformed id before touching the database', async () => {
     const res = await post('not-a-uuid');
     expect(res.statusCode).toBe(400);

@@ -44,7 +44,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
 
             {/* Category Quick Fill Buttons */}
             <div className="flex items-center gap-1 bg-slate-900 border border-slate-800/90 p-0.5 rounded-lg">
-              <span className="text-[9px] text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
+              <span className="text-[11px] text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
               <button
                 type="button"
                 disabled={writeBlocked}

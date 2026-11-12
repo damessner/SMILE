@@ -114,7 +114,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center scrim p-4 backdrop-blur-sm">
       <div className="flex max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-slate-900 text-slate-200 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
           <div className="flex items-center gap-2">
@@ -192,7 +192,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                     <p className="flex items-center gap-2 font-bold">
                       <span className="truncate">{account.username}</span>
                       {account.mustChangePassword && (
-                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-300">
                           Passwort offen
                         </span>
                       )}

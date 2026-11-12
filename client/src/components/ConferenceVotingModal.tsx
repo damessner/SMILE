@@ -23,6 +23,7 @@ import { SchoolClass, User } from '../types';
 import { getConferenceSummary, voteConference, voteAllConference } from '../services/api';
 import { describeParticipation } from '../lib/conferenceParticipation';
 import { useConfirm } from './ConfirmDialog';
+import { useDialogA11y } from './ui';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
 import {
   getRankVisuals,
@@ -306,6 +307,17 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (viewMode !== 'walkthrough') return;
+      // Never move the pupil selection while the chair is typing a comment.
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === 'ArrowLeft') {
         goToPrevPupil();
       } else if (e.key === 'ArrowRight') {
@@ -424,6 +436,13 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
     }
   };
 
+  // Full-screen modal: shared focus trap, initial focus, Escape and focus restore.
+  const {
+    dialogRef,
+    handleKeyDown: handleDialogKeyDown,
+    initialFocusRef: closeButtonRef,
+  } = useDialogA11y({ onClose, labelledBy: 'conference-mode-title' });
+
   const confirmedCount = pupils.filter((p) => p.isConfirmed).length;
   const rankForPupil = (p: ConferencePupil) =>
     pupilVotes[p.id]?.rank ?? p.finalRank ?? p.suggestedRank ?? null;
@@ -431,13 +450,21 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
   const currentPupil = pupils[currentPupilIndex];
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col w-screen h-screen overflow-hidden text-slate-100">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="conference-mode-title"
+      tabIndex={-1}
+      onKeyDown={handleDialogKeyDown}
+      className="fixed inset-0 z-50 bg-slate-950 flex flex-col w-screen h-screen overflow-hidden text-slate-100"
+    >
       {/* Top Vollbild Header Bar */}
       <div className="p-3.5 px-6 border-b border-slate-800 bg-slate-900/90 flex flex-col md:flex-row md:items-center justify-between gap-3 flex-shrink-0">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
-            <h1 className="text-xl font-bold text-slate-50 tracking-tight flex items-center gap-2">
+            <h1 id="conference-mode-title" className="text-xl font-bold text-slate-50 tracking-tight flex items-center gap-2">
               <span>Konferenz-Modus</span>
               <span className="text-xs px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase font-bold tracking-wider">
                 {isHeadmaster ? 'Schulleitung (MED & SLC)' : isClassKv ? 'Klassenvorstand' : 'Konferenz'}
@@ -563,9 +590,11 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
           )}
 
           <button
+            ref={closeButtonRef}
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 hover:bg-slate-700 transition"
+            className="pressable focus-ring p-2 text-slate-400 hover:text-slate-50 rounded-xl bg-slate-800 hover:bg-slate-700 transition"
             title="Vollbild schließen"
+            aria-label="Konferenz-Modus schließen"
           >
             <X className="w-5 h-5" />
           </button>
@@ -671,7 +700,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                             <span>Vorschlag nach Stunden:</span>
                             <strong className="text-amber-300 font-bold">{p.suggestedRank ?? 'keine Mehrheit'}</strong>
                             {p.hasRedCardDemotion && (
-                              <span className="text-[10px] text-rose-400 font-semibold" title={`Ohne Karten wäre die Einordnung ${p.suggestedRank ?? 'offen'}`}>
+                              <span className="text-[11px] text-rose-400 font-semibold" title={`Ohne Karten wäre die Einordnung ${p.suggestedRank ?? 'offen'}`}>
                                 
                               </span>
                             )}
@@ -749,7 +778,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                                 {tv.subjectCode} · {tv.teacherShort}
                               </span>
                               <span
-                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold uppercase border ${
                                   !tv.isSubmitted
                                     ? 'bg-slate-800 text-slate-400 border-slate-700'
                                     : tv.proposedStatus === 'Meister'
@@ -763,7 +792,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                               </span>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400 mb-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 mb-1.5">
                               <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 font-bold text-amber-300">
                                 ⏱️ {tv.hours ?? 2}h / Woche
                               </span>
@@ -793,7 +822,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                           </div>
 
                           {tv.isSubmitted && tv.nextStep && (
-                            <div className="text-[10px] text-slate-400 mt-2 pt-1.5 border-t border-slate-800/60 truncate">
+                            <div className="text-[11px] text-slate-400 mt-2 pt-1.5 border-t border-slate-800/60 truncate">
                               Nächster Schritt: <span className="text-slate-200">{tv.nextStep}</span>
                             </div>
                           )}
@@ -826,7 +855,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                           {greenCards.map((c) => (
                             <div key={c.id} className="p-2 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs">
-                              <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                              <div className="text-[11px] text-slate-400 font-bold mb-0.5">
                                 von {c.teacherShort} · {new Date(c.createdAt).toLocaleDateString('de-AT')}
                               </div>
                               <div className="text-slate-200">{c.note || 'Kein Text hinterlegt'}</div>
@@ -862,7 +891,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                           {yellowCards.map((c) => (
                             <div key={c.id} className="p-2 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs">
-                              <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                              <div className="text-[11px] text-slate-400 font-bold mb-0.5">
                                 von {c.teacherShort} · {new Date(c.createdAt).toLocaleDateString('de-AT')}
                               </div>
                               <div className="text-slate-200">{c.note || 'Kein Text hinterlegt'}</div>
@@ -900,7 +929,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                           {redCards.map((c) => (
                             <div key={c.id} className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs">
-                              <div className="text-[10px] text-rose-300 font-bold mb-0.5 flex items-center gap-1">
+                              <div className="text-[11px] text-rose-300 font-bold mb-0.5 flex items-center gap-1">
                                 <ShieldAlert className="w-3 h-3 text-rose-400" />
                                 <span>von {c.teacherShort} · {new Date(c.createdAt).toLocaleDateString('de-AT')}</span>
                               </div>
@@ -922,13 +951,13 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   <div className="flex flex-wrap items-center gap-6">
                     {/* Rank Selection */}
                     <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-1.5 flex flex-wrap items-center gap-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300 mb-1.5 flex flex-wrap items-center gap-2">
                         <span>Festgelegter Rang</span>
                         {p.suggestedRank && p.suggestedRank !== cur.rank && isAuthorized && (
                           <button
                             type="button"
                             onClick={() => handleRankChange(p.id, p.suggestedRank!)}
-                            className="text-[9px] px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer"
+                            className="text-[11px] px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer"
                             title="Vorschlag nach Unterrichtsstunden übernehmen"
                           >
                             <span>⚖️ Stunden-Vorschlag ({p.suggestedRank}) übernehmen</span>
@@ -983,7 +1012,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
                     {/* Participation and hours-weighted split */}
                     <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                         Beteiligung
                       </div>
                       <div className="text-sm font-bold text-slate-50">
@@ -1001,7 +1030,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                     {/* Who disagreed with the decision on screen (Decision 0.3). */}
                     {dissentSummary && (
                       <div>
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                           Gegenstimmen
                         </div>
                         <div className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
@@ -1030,7 +1059,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
 
                     {/* Hours-weighted split, never a roster-derived headcount. */}
                     <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                         Verteilung nach Unterrichtsstunden
                       </div>
                       {participation.hasNoVotes ? (
@@ -1184,7 +1213,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   <div className="mt-2 pl-8 space-y-1.5">
                     {pupil.voteStats?.totalVotedHours ? (
                       <div className="pt-1">
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-0.5">
                           <span>⚖️ Stunden ({pupil.voteStats.totalVotedHours}h):</span>
                           <span className="font-semibold text-amber-300">
                             {pupil.suggestedRank ?? 'keine Mehrheit'}
@@ -1203,7 +1232,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                 {/* Middle: Rank, participation & weighted split */}
                 <div className="flex flex-wrap items-center gap-5">
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Vorschlag
                     </div>
                     <span className={`inline-flex min-w-[110px] items-center rounded-xl border px-2.5 py-1.5 text-[11px] font-bold ${
@@ -1216,7 +1245,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   </div>
 
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Rang
                     </div>
                     {isAuthorized ? (
@@ -1248,7 +1277,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   </div>
 
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Beteiligung
                     </div>
                     <div className="text-xs font-bold text-slate-50">
@@ -1256,7 +1285,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         {participation.headline}
                       </span>
                       {participation.missing && (
-                        <span className="text-slate-400 block text-[10px] font-normal">
+                        <span className="text-slate-400 block text-[11px] font-normal">
                           {participation.missing}
                         </span>
                       )}
@@ -1264,7 +1293,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                   </div>
 
                   <div className="min-w-[150px]">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Verteilung (nach Stunden)
                     </div>
                     {participation.hasNoVotes ? (
@@ -1276,7 +1305,7 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                         <span className="text-blue-300">G {participation.share.Geselle}%</span>
                         <span className="text-slate-500">{" · "}</span>
                         <span className="text-amber-300">M {participation.share.Meister}%</span>
-                        <span className="text-slate-400 block text-[10px] font-normal">
+                        <span className="text-slate-400 block text-[11px] font-normal">
                           {participation.totalVotedHours} gewichtete Stunden
                         </span>
                       </div>
@@ -1292,11 +1321,11 @@ export const ConferenceVotingModal: React.FC<ConferenceVotingModalProps> = ({
                           <Check className="w-3.5 h-3.5" />
                           <span>Beschluss erfasst</span>
                         </span>
-                        <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                        <span className="block text-[11px] text-slate-400 font-mono mt-0.5">
                           {formatTimestamp(pupil.confirmedAt)}
                         </span>
                         {cur.rank && cur.rank !== pupil.finalRank && (
-                          <span className="mt-1 block text-[10px] font-bold text-amber-300">
+                          <span className="mt-1 block text-[11px] font-bold text-amber-300">
                             geändert — noch nicht gespeichert
                           </span>
                         )}

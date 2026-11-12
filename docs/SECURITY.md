@@ -301,6 +301,17 @@ Full review: [`CRITICAL_REVIEW_2026-11-09.md`](CRITICAL_REVIEW_2026-11-09.md). S
 - **Conference unconfirm (fixed).** A revocation that matches no `final_ranks` row now answers 404 instead of writing a `CONFERENCE_VOTE_REVOKED` audit row and broadcasting a withdrawal.
 - **Still open:** the WebSocket rating path checks the class conference lock once and writes outside any transaction, so it is not serialized with the chair's lock the way every HTTP rating route is. Fix recipe in the review document §2.1.
 
+## 2026-11-12 school-wide behaviour access ("Alle Klassen")
+
+**School decision, enabled by default:** every staff account (teacher, head_teacher, admin; never pupils) may open the "Alle Klassen" view, see every active pupil's behaviour status, and record behaviour consequences (green/yellow/red card, Time-Out, Cool-Down) in any class - not only the classes the account teaches. The capability exists for supervision and break duty; the requirements were stated by the school owner.
+
+Safeguards that remain in force:
+
+- `BEHAVIOUR_SCHOOL_WIDE=false` disables the capability (the overview falls back to the caller's own classes and the cross-class writes answer 403).
+- Every cross-class write is attributable (`teacher_id` on the card/incident) and audited: `CROSS_CLASS_BEHAVIOUR_CARD`, and `crossClass: true` in the `TIMEOUT_ISSUED`/`COOLDOWN_ISSUED` audit payload.
+- The pupil-in-class check still runs on every write; a forged `pupilId`/`classId` pair is rejected.
+"Alle Klassen" does **not** widen ratings, conference rights, roster/pupil management or WebUntis scope; those remain class-scoped through `getClassAccess`/`getGlobalAccess`.
+
 ## Known limitations
 
 - **HTTP port 3000 during transition.** TLS is available through Caddy on port 443

@@ -286,7 +286,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
   return (
     <div
       id="all-classes-export-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block"
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 scrim backdrop-blur-md overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block"
     >
       {/* Print Page Styles to enforce exactly 1 page per class */}
       <style>{`
@@ -554,37 +554,37 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                       <span>
                         Klassenstatistik ({totalPupils} Schüler*innen · {confirmedCount} Beschlüsse bestätigt, {openDecisionCount} offen)
                       </span>
-                      <span className="text-slate-600 font-normal text-[10px]">
+                      <span className="text-slate-600 font-normal text-[11px]">
                         Stand: {currentDateStr}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-center mb-1.5">
                       <div className="bg-white border border-rose-200 rounded-lg p-1 shadow-2xs">
-                        <span className="text-[10px] uppercase font-bold text-rose-700 block">
+                        <span className="text-[11px] uppercase font-bold text-rose-700 block">
                           <span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1 align-middle" />
                           Lehrling
                         </span>
                         <strong className="text-sm font-extrabold text-slate-900">{lehrlingCount}</strong>
-                        <span className="text-[10px] text-slate-500 ml-1">({pctLehrling}%)</span>
+                        <span className="text-[11px] text-slate-500 ml-1">({pctLehrling}%)</span>
                       </div>
 
                       <div className="bg-white border border-blue-200 rounded-lg p-1 shadow-2xs">
-                        <span className="text-[10px] uppercase font-bold text-blue-700 block">
+                        <span className="text-[11px] uppercase font-bold text-blue-700 block">
                           <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1 align-middle" />
                           Geselle
                         </span>
                         <strong className="text-sm font-extrabold text-slate-900">{geselleCount}</strong>
-                        <span className="text-[10px] text-slate-500 ml-1">({pctGeselle}%)</span>
+                        <span className="text-[11px] text-slate-500 ml-1">({pctGeselle}%)</span>
                       </div>
 
                       <div className="bg-white border border-amber-200 rounded-lg p-1 shadow-2xs">
-                        <span className="text-[10px] uppercase font-bold text-amber-700 block">
+                        <span className="text-[11px] uppercase font-bold text-amber-700 block">
                           <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1 align-middle" />
                           Meister
                         </span>
                         <strong className="text-sm font-extrabold text-slate-900">{meisterCount}</strong>
-                        <span className="text-[10px] text-slate-500 ml-1">({pctMeister}%)</span>
+                        <span className="text-[11px] text-slate-500 ml-1">({pctMeister}%)</span>
                       </div>
                     </div>
 
@@ -644,13 +644,13 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                                 pIdx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
                               }`}
                             >
-                              <td className="py-1 px-1.5 border-r border-slate-200 text-center text-slate-500 text-[10px]">
+                              <td className="py-1 px-1.5 border-r border-slate-200 text-center text-slate-500 text-[11px]">
                                 {pIdx + 1}
                               </td>
                               <td className="py-1 px-1.5 border-r border-slate-200 font-bold text-slate-900 truncate max-w-[130px]">
                                 {p.fullName}
                               </td>
-                              <td className="py-1 px-1.5 border-r border-slate-200 text-center font-semibold text-[10px]">
+                              <td className="py-1 px-1.5 border-r border-slate-200 text-center font-semibold text-[11px]">
                                 {participationLabel(p, totalClassTeachers)}
                               </td>
                               {/* Visualized Votes per Category per Pupil */}
@@ -684,7 +684,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                               </td>
                               {/* Suggested Rank */}
                               <td className="py-1 px-1.5 border-r border-slate-200 text-center">
-                                <span className="text-[10px] font-semibold text-slate-700">
+                                <span className="text-[11px] font-semibold text-slate-700">
                                   {suggested}
                                 </span>
                                 {p.hasRedCardDemotion && (

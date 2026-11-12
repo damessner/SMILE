@@ -7,7 +7,7 @@ const RATING_BUTTONS = [
     val: 'crown',
     label: (
       <div className="flex flex-col items-center justify-center leading-none gap-0.5">
-        <span className="text-[8px] sm:text-[9px] leading-none">👑</span>
+        <span className="text-[8px] sm:text-[11px] leading-none">👑</span>
         <span className="text-xs sm:text-sm leading-none">😊</span>
       </div>
     ),
@@ -82,11 +82,11 @@ export const CriterionItemCell: React.FC<CriterionItemCellProps> = ({
     >
       <div>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
             {itemKey}
           </span>
           {softLock && (
-            <span className="text-[10px] text-amber-400 animate-pulse font-bold flex items-center gap-1">
+            <span className="text-[11px] text-amber-400 animate-pulse font-bold flex items-center gap-1">
               <span>✏️</span>
               <span>{softLock.teacherShort || softLock.teacherName} tippt...</span>
             </span>
@@ -136,7 +136,7 @@ export const CriterionItemCell: React.FC<CriterionItemCellProps> = ({
             disabled={isLocked}
             title="Bewertung löschen (Leer)" aria-label="Bewertung löschen"
             onClick={() => onSelectRating('')}
-            className="w-6 h-6 pointer-coarse:w-9 pointer-coarse:h-9 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[10px] font-bold transition ml-0.5"
+            className="w-6 h-6 pointer-coarse:w-9 pointer-coarse:h-9 rounded-md bg-slate-800/40 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 border border-slate-700/40 flex items-center justify-center text-[11px] font-bold transition ml-0.5"
           >
             ✕
           </button>

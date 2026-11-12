@@ -82,21 +82,21 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
 
           {isSubmitted && (
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                 <span>Eingereicht</span>
               </span>
               {showReopen && (
                 <button
                   onClick={onReopen}
-                  className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[10px] font-bold transition flex items-center gap-1"
+                  className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1"
                   title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
                 >
                   <RotateCcw className="w-3 h-3 text-amber-400" />
                   <span>Wieder öffnen</span>
                 </button>
               )}
-              <span className="text-[10px] text-slate-400">Erst zurücknehmen, um zu ändern.</span>
+              <span className="text-[11px] text-slate-400">Erst zurücknehmen, um zu ändern.</span>
             </div>
           )}
         </div>
@@ -140,7 +140,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
           >
             {isAllSubjectsMode ? <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <BookOpen className="w-3.5 h-3.5 opacity-80 shrink-0" />}
             <span>{isAllSubjectsMode ? '🌟 Gesamtbewertung' : mySubject.name}</span>
-            <span className="font-mono text-[10px] opacity-75">
+            <span className="font-mono text-[11px] opacity-75">
               [{isAllSubjectsMode ? mySubjects.map((s) => s.code).join(' + ') : mySubject.code}]
             </span>
           </div>
@@ -188,7 +188,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
               <span className="text-slate-600">·</span>
               <span className="text-amber-300 font-bold">Gewicht: {currentHoursInfo.weight}</span>
               {currentHoursInfo.isTeamTeaching && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+                <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
                   Team-Teaching (x2)
                 </span>
               )}

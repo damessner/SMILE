@@ -18,6 +18,7 @@ vi.mock('../services/api', () => ({
   revokeCard: vi.fn().mockResolvedValue({ success: true }),
   sendToTimeout: vi.fn().mockResolvedValue({ success: true }),
   resolveTimeout: vi.fn().mockResolvedValue({ success: true }),
+  getBehaviorOverview: vi.fn().mockResolvedValue({ schoolWide: true, classes: [], pupils: [] }),
 }));
 
 const CLASS_ID = 3;
@@ -69,9 +70,10 @@ function renderSchulalltag(
   pupils: PupilWithData[],
   mySubjects: Array<{ code: string; name: string; isCoreSmile: boolean }> = [GERMAN, MATHS],
   criteria: RubricCriterion[] = CRITERIA,
+  userOverrides: Partial<User> = {},
 ) {
   const currentClass: SchoolClass = { id: CLASS_ID, name: '3a', grade: 3, mySubjects };
-  const currentUser: User = { id: 'u1', username: 'teacher1', role: 'teacher', teacherId: 1 };
+  const currentUser: User = { id: 'u1', username: 'teacher1', role: 'teacher', teacherId: 1, ...userOverrides };
 
   return render(
     <ToastProvider>
@@ -562,5 +564,62 @@ describe('live timeout refresh after a class switch', () => {
 
     await waitFor(() => expect(api.getClassCards).toHaveBeenCalledWith(4));
     expect(api.getClassCards).not.toHaveBeenCalledWith(3);
+  });
+});
+describe('school-wide Alle Klassen view', () => {
+  function overviewPupil(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 11,
+      fullName: 'Anna Muster',
+      classId: CLASS_ID,
+      className: '3a',
+      grade: 3,
+      rank: null,
+      stage: { level: 0, title: 'Regulärer Schulalltag (Neutrale Basis)', type: 'neutral', behaviorGrade: 'Gut' },
+      counts: { green: 0, yellow: 0, red: 0, timeout: 0, cooldown: 0 },
+      activeIncident: null,
+      canRecord: true,
+      ...overrides,
+    };
+  }
+
+  it('shows every class and records a card in the pupil\'s own class', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getBehaviorOverview).mockResolvedValue({
+      schoolWide: true,
+      classes: [
+        { id: CLASS_ID, name: '3a', grade: 3 },
+        { id: 4, name: '4b', grade: 4 },
+      ],
+      pupils: [
+        overviewPupil({ id: 11, fullName: 'Anna Muster' }),
+        overviewPupil({ id: 22, fullName: 'Bert Beispiel', classId: 4, className: '4b', grade: 4 }),
+      ],
+    } as never);
+    vi.mocked(api.issueCard).mockResolvedValue({ card: { id: 'card-1' } } as never);
+
+    renderSchulalltag([], [GERMAN], CRITERIA, { schoolWideBehaviour: true });
+    await userEvent.click(screen.getByRole('button', { name: /Alle Klassen/ }));
+
+    expect(await screen.findByText('Bert Beispiel')).toBeInTheDocument();
+    expect(screen.getAllByText(/Klasse 4b/).length).toBeGreaterThan(0);
+
+    // The second row's green-card button belongs to Bert in class 4b. The card must
+    // be written to *his* class, not to the class the teacher happened to have open.
+    const greenButtons = screen.getAllByTitle('Grüne Karte vergeben (Lob)');
+    expect(greenButtons).toHaveLength(2);
+    await userEvent.click(greenButtons[1]!);
+
+    expect(await screen.findByText(/Klasse 4b\)/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Karte jetzt vergeben' }));
+
+    await waitFor(() =>
+      expect(api.issueCard).toHaveBeenCalledWith(22, 4, 'green', undefined),
+    );
+  });
+
+  it('does not offer the Alle Klassen entry without the capability', async () => {
+    renderSchulalltag([]);
+    expect(screen.queryByRole('button', { name: /Alle Klassen/ })).toBeNull();
   });
 });

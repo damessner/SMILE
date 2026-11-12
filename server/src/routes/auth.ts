@@ -146,6 +146,10 @@ async function publicUser(user: typeof users.$inferSelect) {
     teacherId: user.teacherId,
     teacher,
     mustChangePassword: user.mustChangePassword,
+    // Capability behind the school-wide "Alle Klassen" behaviour view. Included in
+    // the login and password-change responses as well, so the entry point appears
+    // immediately instead of only after the next /auth/me bootstrap.
+    schoolWideBehaviour: user.role !== 'pupil' && config.behaviourSchoolWide,
   };
 }
 

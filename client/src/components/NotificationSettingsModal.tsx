@@ -101,7 +101,7 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-md sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center scrim p-3 backdrop-blur-md sm:p-6">
       <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900 shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-5 py-4">
           <div className="flex items-start gap-3">
@@ -156,7 +156,7 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
           ) : (
             <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-800">
               <table className="w-full min-w-[720px] border-collapse text-left text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-950/95 text-[10px] uppercase tracking-wider text-slate-400">
+                <thead className="sticky top-0 z-10 bg-slate-950/95 text-[11px] uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="px-3 py-2.5 font-bold">Klasse</th>
                     {FLAGS.map((flag) => (
@@ -168,7 +168,7 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
                           title={`${flag.label}: alle Klassen ein-/ausschalten`}
                         >
                           <span>{flag.short}</span>
-                          <span className="text-[9px] font-normal normal-case text-slate-600">
+                          <span className="text-[11px] font-normal normal-case text-slate-600">
                             alle
                           </span>
                         </button>

@@ -12,6 +12,7 @@ import {
   getPupil,
   hasPersistedTeacherActor,
   MAX_POSTGRES_INTEGER,
+  mayRecordBehaviourSchoolWide,
   parseIdParam,
   requireAuth,
   safeTeacherId,
@@ -84,7 +85,13 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
 
     const access = await getClassAccess(user, classId);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
-    if (!access.canRecord) {
+
+    // A teacher outside the class may still act here when the school runs the
+    // school-wide behaviour policy (supervision, break duty, "Alle Klassen"). The
+    // write stays attributable and is audited below; it does not widen any other
+    // class-scoped permission.
+    const crossClass = !access.canRecord;
+    if (crossClass && !mayRecordBehaviourSchoolWide(user, config.behaviourSchoolWide)) {
       return reply.status(403).send({
         error: 'Sie unterrichten diese Klasse nicht und dürfen dort keine Karten vergeben.',
       });
@@ -130,6 +137,19 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
           entity: 'pupil',
           entityId: String(pupilId),
           payload: { classId, note: cleanNote, reason: 'Instant rank loss' },
+        });
+      }
+
+      // Cross-class behaviour is a school-wide capability, so it gets its own audit
+      // row even for green/yellow cards that are not otherwise audited. This is how
+      // leadership can answer "who gave this card in a class they do not teach?".
+      if (crossClass) {
+        await tx.insert(auditLogs).values({
+          actorId: safeTeacherId(user.teacherId),
+          action: 'CROSS_CLASS_BEHAVIOUR_CARD',
+          entity: 'pupil',
+          entityId: String(pupilId),
+          payload: { classId, cardType: typedCard, note: cleanNote ?? null },
         });
       }
 

@@ -423,7 +423,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
         </>
       ) : (
         /* Full Backdrop when no element is highlighted */
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md" />
+        <div className="fixed inset-0 scrim backdrop-blur-md" />
       )}
 
       {/* 2. Floating Step Card */}
@@ -495,7 +495,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
                   {step.badge}
                 </span>
                 {cutout && (
-                  <span className="px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold flex items-center gap-1 animate-pulse">
+                  <span className="px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold flex items-center gap-1 animate-pulse">
                     <MousePointerClick className="w-3 h-3" />
                     <span>Hervorgehobener Bereich</span>
                   </span>

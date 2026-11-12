@@ -62,21 +62,21 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
   if (loading || !data) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 text-slate-50">
+      <div data-force-dark className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 text-slate-50">
         <RefreshCw className="w-8 h-8 animate-spin text-amber-400" />
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-50 p-6 overflow-hidden select-none">
+    <div data-force-dark className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-50 p-6 overflow-hidden select-none">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
         <div>
           <span className="text-xs uppercase tracking-widest text-amber-400 font-bold">
             Beamer & Konferenz-Modus
           </span>
-          <h1 className="text-3xl font-bold tracking-tight">Klasse {className}</h1>
+          <h1 className="text-4xl font-black tracking-tight">Klasse {className}</h1>
           <p className="text-xs text-slate-400">
             {data.summary.length} Schüler/innen · {data.round?.name || 'Aktiver Zeitraum'}
           </p>
@@ -115,11 +115,11 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
             return (
               <div
                 key={p.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-lg"
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between gap-4 shadow-lg"
               >
-                <div>
-                  <h3 className="font-bold text-lg text-slate-50 mb-1">{p.fullName}</h3>
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-xl text-slate-50 mb-1 truncate">{p.fullName}</h3>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
                     <span>
                       Raster: <strong className="text-amber-400">{formatSubjectEvidence(p.subjectEvidence)}</strong>
                     </span>
@@ -133,7 +133,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
                 <div className="flex items-center gap-2">
                   <span
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
+                    className={`px-3.5 py-2 rounded-xl text-sm font-black uppercase tracking-wider ${
                       isMeister
                         ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
                         : isGeselle
@@ -166,7 +166,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
       {/* Override Modal */}
       {overrideModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center scrim backdrop-blur-md p-4">
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg">
             <h3 className="text-lg font-bold text-slate-50 mb-1">Konferenzbeschluss</h3>
             <p className="text-sm text-amber-400 mb-4">{overrideModal.name}</p>

@@ -90,7 +90,7 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center scrim backdrop-blur-md p-4">
       <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">

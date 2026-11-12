@@ -14,6 +14,8 @@ export interface User {
   viewAs?: boolean;
   /** Username of the leadership account that opened the view (display only). */
   actUsername?: string;
+  /** True when the server allows the school-wide "Alle Klassen" behaviour view. */
+  schoolWideBehaviour?: boolean;
 }
 
 export interface SchoolClass {

@@ -578,7 +578,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
                 <span>Anmerkung / Begründung für die Konferenz (optional):</span>
               </label>
               {isAllSubjectsMode && (
-                <span className="text-[10px] text-amber-400/80 font-medium">
+                <span className="text-[11px] text-amber-400/80 font-medium">
                   Gilt für alle deine Fächer ({mySubjects.map((s) => s.code).join(', ')})
                 </span>
               )}

@@ -50,10 +50,10 @@ export const SubjectSwitcher: React.FC<SubjectSwitcherProps> = ({
             }`}
           >
             <span>{s.code}</span>
-            <span className="text-[10px] opacity-80 font-normal">({s.name})</span>
+            <span className="text-[11px] opacity-80 font-normal">({s.name})</span>
             {typeof s.hours === 'number' && s.hours > 0 && (
               <span
-                className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                className={`text-[11px] px-1.5 py-0.5 rounded font-mono font-bold ${
                   isActive ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
                 }`}
               >

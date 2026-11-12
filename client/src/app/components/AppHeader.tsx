@@ -211,7 +211,7 @@ export function AppHeader({
               <Clock className="w-3.5 h-3.5" />
               <span className="hidden 2xl:inline">Time-Out</span>
               {pendingTimeoutCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-white text-rose-600 text-[10px] font-bold flex items-center justify-center animate-pulse">
+                <span className="w-4 h-4 rounded-full bg-white text-rose-600 text-[11px] font-bold flex items-center justify-center animate-pulse">
                   {pendingTimeoutCount}
                 </span>
               )}
@@ -270,7 +270,7 @@ export function AppHeader({
               <span className="text-xs font-bold text-slate-50 block leading-tight">
                 {currentUser.teacher?.fullName || currentUser.username}
               </span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+              <span className="text-[11px] text-slate-400 uppercase tracking-wider">
                 {currentUser.teacher?.shortName ? `${currentUser.teacher.shortName} · ` : ''}{isHeadmaster ? 'Schulleitung' : currentUser.role}
               </span>
             </div>

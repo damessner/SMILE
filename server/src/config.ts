@@ -386,6 +386,18 @@ export const config = {
    */
   statisticsShowForeignComments: readBool('STATISTICS_SHOW_FOREIGN_COMMENTS', true),
 
+  /**
+   * School-wide behaviour access: may staff see every class's pupils and record
+   * behaviour consequences (cards, Time-Out, Cool-Down) in classes they are not
+   * assigned to? Supervision and break duty make this the useful default for a
+   * whole-school behaviour system; the write paths audit every cross-class action.
+   *
+   * This never widens class access: ratings, conference rights, roster edits and
+   * WebUntis scope still come from `getClassAccess`/`getGlobalAccess`.
+   * Set to false to restrict behaviour work to a teacher's own classes again.
+   */
+  behaviourSchoolWide: readBool('BEHAVIOUR_SCHOOL_WIDE', true),
+
   // --- Microsoft Teams staff-channel notifications --------------------------
   /**
    * Incoming-webhook URL from a Teams Workflow ("Send webhook alerts to a
