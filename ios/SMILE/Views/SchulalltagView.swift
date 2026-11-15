@@ -176,6 +176,7 @@ struct SchulalltagView: View {
                     }
                 }
             )
+            .environmentObject(api)
         }
         .task {
             await loadInitialData()
@@ -689,14 +690,65 @@ struct ActionConfirmSheet: View {
 
 struct PupilHistorySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var api: APIClient
     let pupil: PupilWithData
     let cards: [ClassCardItem]
     let timeouts: [TimeoutIncident]
     let onRevokeCard: (String) -> Void
 
+    @State private var behaviorProfile: PupilBehaviorProfile?
+
     var body: some View {
         NavigationStack {
             List {
+                if let profile = behaviorProfile {
+                    Section("Verhaltensstufe & Maßnahmen") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Stufe \(profile.calculation.currentStage): \(profile.calculation.stageInfo.title)")
+                                    .font(.subheadline.weight(.bold))
+                                Spacer()
+                                Text(profile.pupil.currentRank)
+                                    .font(.caption.weight(.bold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.blue.opacity(0.2), in: Capsule())
+                            }
+                            Text("Verhaltensnote: \(profile.calculation.behaviorGrade)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let actions = profile.actions, !actions.isEmpty {
+                            ForEach(actions) { action in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text("Stufe \(action.stage_level): \(action.stage_title)")
+                                            .font(.caption.weight(.bold))
+                                        Spacer()
+                                        Text(action.teacher_short ?? "")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if let notes = action.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if let dateStr = action.action_date ?? action.created_at {
+                                        Text(formatISO(dateStr))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                            }
+                        } else {
+                            Text("Noch keine pädagogischen Maßnahmen dokumentiert.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Section("Karten (\(cards.count))") {
                     if cards.isEmpty {
                         Text("Noch keine Karten vergeben.")
@@ -780,6 +832,9 @@ struct PupilHistorySheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fertig") { dismiss() }
                 }
+            }
+            .task(id: pupil.id) {
+                behaviorProfile = try? await api.getPupilBehaviorProfile(pupilId: pupil.id)
             }
         }
     }

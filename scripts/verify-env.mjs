@@ -148,4 +148,13 @@ if (process.argv[1] && process.argv[1].endsWith('verify-env.mjs')) {
   }
 
   console.log('[verify-env] OK — no leaked secrets or stray backups detected.');
+
+  // Advisory check for local-only signing / PAT artifacts (non-blocking).
+  for (const name of ['.github-token', 'ios_signing']) {
+    if (existsSync(join(root, name))) {
+      console.warn(
+        `[verify-env] Notice: local sensitive path '${name}' exists on disk; keep it untracked and remove it when no longer needed.`,
+      );
+    }
+  }
 }

@@ -836,3 +836,40 @@ export async function disconnectWebUntisAccount(): Promise<{ success: boolean }>
   });
   return unwrap(res);
 }
+
+export interface WebUntisOutboxItem {
+  id: string;
+  kind: string;
+  status: 'pending' | 'processing' | 'failed';
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  nextAttemptAt: string;
+  createdAt: string;
+  date: string | null;
+  time: string | null;
+  eventKind: string | null;
+  text: string | null;
+}
+
+export interface WebUntisOutboxResponse {
+  items: WebUntisOutboxItem[];
+  pendingCount: number;
+  failedCount: number;
+}
+
+export async function getWebUntisOutbox(): Promise<WebUntisOutboxResponse> {
+  const res = await apiFetch('/webuntis/outbox');
+  return unwrap(res);
+}
+
+export async function retryWebUntisOutbox(): Promise<{
+  success: boolean;
+  requeued: number;
+  result: { processed: number; succeeded: number; retried: number; failed: number };
+}> {
+  const res = await apiFetch('/webuntis/outbox/retry', {
+    method: 'POST',
+  });
+  return unwrap(res);
+}

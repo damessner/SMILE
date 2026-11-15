@@ -22,6 +22,7 @@ import { BehaviorPyramid } from './BehaviorPyramid';
 import { getPupilBehaviorProfile, savePupilBehaviorAction, deletePupilBehaviorAction } from '../services/api';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmDialog';
+import { Dialog } from './ui/Dialog';
 
 interface PupilProfileModalProps {
   pupilId: number;
@@ -114,12 +115,16 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
   if (loading && !profile) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center scrim backdrop-blur-sm">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-400">
-          <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm font-semibold">Lade Schüler-Verhaltensprofil...</p>
-        </div>
-      </div>
+      <Dialog
+        onClose={onClose}
+        labelledBy="pupil-profile-loading-title"
+        panelClassName="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-400"
+      >
+        <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p id="pupil-profile-loading-title" className="text-sm font-semibold">
+          Lade Schüler-Verhaltensprofil...
+        </p>
+      </Dialog>
     );
   }
 
@@ -129,8 +134,11 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
   const grade = calculation.behaviorGrade;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 scrim backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="relative w-full max-w-5xl bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:border-none print:shadow-none print:text-black">
+    <Dialog
+      onClose={onClose}
+      labelledBy="pupil-profile-modal-title"
+      panelClassName="relative w-full max-w-5xl bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:border-none print:shadow-none print:text-black"
+    >
         {/* Top Header Bar */}
         <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 print:border-b-2 print:border-black">
           <div className="flex items-center gap-3">
@@ -139,7 +147,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-slate-50 print:text-black">
+                <h2 id="pupil-profile-modal-title" className="text-xl font-bold text-slate-50 print:text-black">
                   {pupil.fullName}
                 </h2>
                 <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-xs font-semibold">
@@ -581,7 +589,6 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

@@ -17,9 +17,12 @@ enum KeychainBiometricsService {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: accountKey,
-            kSecReturnData as String: false
+            kSecReturnData as String: false,
+            // Probe existence without triggering a biometric prompt on launch.
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
-        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 
     static var biometricTypeLabel: String {
@@ -51,12 +54,22 @@ enum KeychainBiometricsService {
         ]
         SecItemDelete(deleteQuery as CFDictionary)
 
+        var accessError: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .biometryCurrentSet,
+            &accessError
+        ) else {
+            return
+        }
+
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: accountKey,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrAccessControl as String: accessControl
         ]
         SecItemAdd(addQuery as CFDictionary, nil)
     }
@@ -94,7 +107,8 @@ enum KeychainBiometricsService {
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: accountKey,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: context
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)

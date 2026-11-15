@@ -10,6 +10,7 @@ Usage:
 import os
 import sys
 import base64
+import getpass
 from pathlib import Path
 
 try:
@@ -75,7 +76,10 @@ def generate_csr():
     print("   uv run --with cryptography python scripts/prepare_ios_signing.py bundle-p12")
 
 
-def bundle_p12(password: str = "Smile2026!"):
+def bundle_p12(password: str):
+    if not password:
+        print("Error: P12 export password must not be empty.")
+        sys.exit(1)
     if not KEY_PATH.exists():
         print(f"Error: {KEY_PATH} not found. Run generate-csr first!")
         sys.exit(1)
@@ -162,7 +166,7 @@ if __name__ == "__main__":
     if cmd == "generate-csr":
         generate_csr()
     elif cmd == "bundle-p12":
-        pw = sys.argv[2] if len(sys.argv) > 2 else "Smile2026!"
+        pw = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("SMILE_P12_PASSWORD") or getpass.getpass("Enter P12 export password: ")
         bundle_p12(pw)
     else:
         print(f"Unknown command: {cmd}")

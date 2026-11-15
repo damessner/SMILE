@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyPluginAsync } from 'fastify';
+import { asc, gt } from 'drizzle-orm';
 import { db, getPool, runMigrations } from '../db/index.js';
 import { backupDirectory, backupEncryptionPassphrase, databaseUrl } from '../config.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
@@ -11,11 +12,16 @@ import {
   assessmentRubrics,
   auditLogs,
   behaviorCards,
+  classRoundLocks,
   evaluationItems,
   evaluations,
   finalRanks,
+  notificationPreferences,
+  notificationSubscriptions,
   observationRounds,
   passwordResets,
+  pupilBehaviorActions,
+  pupilSubjectTeachers,
   pupils,
   rubricCriteria,
   schoolClasses,
@@ -25,6 +31,7 @@ import {
   timeoutIncidents,
   timetableLessons,
   users,
+  webuntisSyncOutbox,
 } from '../db/schema.js';
 import { assertPasswordCurrent, invalidateTeacherCache, requireAuth, safeTeacherId } from '../lib/guards.js';
 import { invalidateSessionStateCache } from '../lib/session.js';
@@ -165,6 +172,58 @@ async function recordRestoreFailureAudit(
   }
 }
 
+type AuditLogRow = typeof auditLogs.$inferSelect;
+
+interface AuditLogSelectChain {
+  where?: (cond: unknown) => AuditLogSelectChain;
+  orderBy?: (ord: unknown) => AuditLogSelectChain;
+  limit?: (n: number) => Promise<AuditLogRow[]>;
+}
+
+/**
+ * Fetch the full audit trail in id-cursor batches so exports avoid loading an
+ * unbounded single result set while still preserving every historical row.
+ */
+async function fetchAllAuditLogs(batchSize = 2000): Promise<AuditLogRow[]> {
+  const rows: AuditLogRow[] = [];
+  let lastId: number | null = null;
+
+  for (;;) {
+    const base = db.select().from(auditLogs) as unknown as AuditLogSelectChain;
+
+    // Unit-test DB mocks only implement `.from().limit()` / `.from().then()`.
+    if (
+      typeof base.orderBy !== 'function' ||
+      (lastId !== null && typeof base.where !== 'function')
+    ) {
+      const batch: AuditLogRow[] =
+        typeof base.limit === 'function'
+          ? await base.limit(batchSize)
+          : await (base as unknown as Promise<AuditLogRow[]>);
+      rows.push(...batch);
+      break;
+    }
+
+    const scoped: AuditLogSelectChain =
+      lastId !== null && typeof base.where === 'function'
+        ? base.where(gt(auditLogs.id, lastId))
+        : base;
+    const ordered: AuditLogSelectChain = scoped.orderBy!(asc(auditLogs.id));
+    const batch: AuditLogRow[] =
+      typeof ordered.limit === 'function'
+        ? await ordered.limit(batchSize)
+        : await (ordered as unknown as Promise<AuditLogRow[]>);
+
+    rows.push(...batch);
+    if (batch.length < batchSize) break;
+    const tail: AuditLogRow | undefined = batch[batch.length - 1];
+    if (!tail || typeof tail.id !== 'number') break;
+    lastId = tail.id;
+  }
+
+  return rows;
+}
+
 export const backupRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * GET /api/backup/export-json — complete data export.
@@ -196,36 +255,48 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
         allTeachers,
         allClasses,
         allPupils,
+        allPupilSubjectTeachers,
         allEvals,
         allItems,
         allCards,
+        allBehaviorActions,
         allRanks,
         allRounds,
+        allClassRoundLocks,
         allRubrics,
         allCriteria,
         allAssignments,
         allLessons,
         allTimeouts,
         allEscalations,
+        allNotificationPreferences,
+        allNotificationSubscriptions,
+        allWebuntisSyncOutbox,
         allAudits,
         allResets,
       ] = await Promise.all([
         db.select().from(teachers),
         db.select().from(schoolClasses),
         db.select().from(pupils),
+        db.select().from(pupilSubjectTeachers),
         db.select().from(evaluations),
         db.select().from(evaluationItems),
         db.select().from(behaviorCards),
+        db.select().from(pupilBehaviorActions),
         db.select().from(finalRanks),
         db.select().from(observationRounds),
+        db.select().from(classRoundLocks),
         db.select().from(assessmentRubrics),
         db.select().from(rubricCriteria),
         db.select().from(teachingAssignments),
         db.select().from(timetableLessons),
         db.select().from(timeoutIncidents),
         db.select().from(timeoutEscalations),
-        // Full audit trail, not just the most recent slice.
-        db.select().from(auditLogs),
+        db.select().from(notificationPreferences),
+        db.select().from(notificationSubscriptions),
+        db.select().from(webuntisSyncOutbox),
+        // Full audit trail in cursor batches, not a single unbounded read.
+        fetchAllAuditLogs(),
         db.select().from(passwordResets),
       ]);
 
@@ -239,17 +310,23 @@ export const backupRoutes: FastifyPluginAsync = async (fastify) => {
           teachers: allTeachers,
           classes: allClasses,
           pupils: allPupils,
+          pupilSubjectTeachers: allPupilSubjectTeachers,
           teachingAssignments: allAssignments,
           timetableLessons: allLessons,
           observationRounds: allRounds,
+          classRoundLocks: allClassRoundLocks,
           rubrics: allRubrics,
           rubricCriteria: allCriteria,
           evaluations: allEvals,
           evaluationItems: allItems,
           behaviorCards: allCards,
+          pupilBehaviorActions: allBehaviorActions,
           finalRanks: allRanks,
           timeoutIncidents: allTimeouts,
           timeoutEscalations: allEscalations,
+          notificationPreferences: allNotificationPreferences,
+          notificationSubscriptions: allNotificationSubscriptions,
+          webuntisSyncOutbox: allWebuntisSyncOutbox,
           auditLogs: allAudits,
           passwordResetRequests: allResets,
         },

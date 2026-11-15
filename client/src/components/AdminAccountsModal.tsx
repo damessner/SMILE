@@ -8,6 +8,7 @@ import {
   type AdminUserAccount,
 } from '../services/api';
 import { useToast } from './Toast';
+import { Dialog } from './ui/Dialog';
 
 interface Props {
   onClose: () => void;
@@ -114,12 +115,15 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center scrim p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-slate-900 text-slate-200 shadow-2xl">
+    <Dialog
+      onClose={onClose}
+      labelledBy="admin-accounts-modal-title"
+      panelClassName="w-full max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-lg flex flex-col overflow-hidden text-slate-200"
+    >
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-accent" />
-            <h2 className="text-lg font-bold">Konten &amp; Zugangsdaten</h2>
+            <h2 id="admin-accounts-modal-title" className="text-lg font-bold">Konten &amp; Zugangsdaten</h2>
           </div>
           <button
             type="button"
@@ -244,7 +248,6 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
             </ul>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

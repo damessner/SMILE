@@ -3,6 +3,7 @@ import { UserPlus, Edit2, Archive, X, Check, AlertCircle } from 'lucide-react';
 import { addPupil, updatePupil, archivePupil } from '../services/api';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmDialog';
+import { Dialog } from './ui/Dialog';
 import { PupilWithData, SchoolClass } from '../types';
 
 interface PupilManagerModalProps {
@@ -90,12 +91,15 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center scrim backdrop-blur-md p-4">
-      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg flex flex-col max-h-[90vh]">
+    <Dialog
+      onClose={onClose}
+      labelledBy="pupil-manager-modal-title"
+      panelClassName="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-lg flex flex-col max-h-[85vh]"
+    >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
           <div>
-            <h3 className="text-xl font-bold text-slate-50">Schülerverwaltung</h3>
+            <h3 id="pupil-manager-modal-title" className="text-xl font-bold text-slate-50">Schülerverwaltung</h3>
             <p className="text-xs text-slate-400">Klasse {currentClass.name} · Schüler hinzufügen, bearbeiten oder archivieren</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-50 transition">
@@ -190,7 +194,6 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
             );
           })}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

@@ -13,6 +13,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { getTimeoutEscalations, acknowledgeTimeoutEscalation } from '../services/api';
+import { Dialog } from './ui/Dialog';
 
 interface PendingEscalation {
   pupilId: number;
@@ -95,8 +96,11 @@ export const TimeoutEscalationModal: React.FC<TimeoutEscalationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-md">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-lg overflow-hidden">
+    <Dialog
+      onClose={onClose}
+      labelledBy="timeout-escalation-modal-title"
+      panelClassName="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-lg overflow-hidden"
+    >
         {/* Top Header */}
         <div className="p-5 px-6 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between gap-4 flex-shrink-0">
           <div>
@@ -106,7 +110,7 @@ export const TimeoutEscalationModal: React.FC<TimeoutEscalationModalProps> = ({
                 Schulleitung (SLC)
               </span>
             </div>
-            <h2 className="text-xl font-bold text-slate-50 mt-0.5 flex items-center gap-2">
+            <h2 id="timeout-escalation-modal-title" className="text-xl font-bold text-slate-50 mt-0.5 flex items-center gap-2">
               <span>Time-Out Eskalations-Zentrum</span>
               <span className="text-xs px-2.5 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
                 Mahnstufen 3, 6, 9...
@@ -342,7 +346,6 @@ export const TimeoutEscalationModal: React.FC<TimeoutEscalationModalProps> = ({
             Schließen
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

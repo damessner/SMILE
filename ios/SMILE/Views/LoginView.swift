@@ -201,7 +201,15 @@ struct LoginView: View {
                                             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
 
                                         Button("Speichern") {
-                                            api.baseURL = customURL
+                                            let trimmed = customURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                                                .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+                                            guard APIClient.isAllowedServerURL(trimmed) else {
+                                                errorMessage = "Ungültige Server-URL. Bitte eine https://-Adresse eingeben."
+                                                return
+                                            }
+                                            errorMessage = nil
+                                            api.baseURL = trimmed
+                                            customURL = trimmed
                                             showServerSettings = false
                                         }
                                         .buttonStyle(.borderedProminent)

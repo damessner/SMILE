@@ -4,6 +4,43 @@ import { db, getPool } from '../db/index.js';
 import { auditLogs, pupils, pupilBehaviorActions, schoolClasses } from '../db/schema.js';
 import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parseIdParam, requireAuth, safeTeacherId } from '../lib/guards.js';
 import { BEHAVIOR_STAGES, computePupilBehaviorStage } from '../lib/behavior-stages.js';
+import { totalCardDemotionSteps } from '../lib/rank-demotion.js';
+import { demoteBy, isRank, RANKS, type Rank } from '../lib/ranking.js';
+import { getLatestRound } from '../lib/rounds.js';
+import { broadcastToClass } from '../ws/live-sync.js';
+
+function isCardInRound(
+  createdAt: Date | string | null | undefined,
+  round: { startsOn?: Date | string | null; endsOn?: Date | string | null } | null,
+): boolean {
+  if (!round?.startsOn && !round?.endsOn) return true;
+  if (!createdAt) return false;
+  const ts = new Date(createdAt).getTime();
+  if (Number.isNaN(ts)) return false;
+  if (round.startsOn) {
+    const startTs = new Date(round.startsOn).getTime();
+    if (!Number.isNaN(startTs) && ts < startTs) return false;
+  }
+  if (round.endsOn) {
+    const endTs = new Date(round.endsOn).getTime();
+    if (!Number.isNaN(endTs) && ts > endTs) return false;
+  }
+  return true;
+}
+
+function majorityProposedRank(rows: Array<{ proposed_status?: string | null }>): Rank | null {
+  const counts: Record<Rank, number> = { Lehrling: 0, Geselle: 0, Meister: 0 };
+  for (const row of rows) {
+    if (isRank(row.proposed_status)) {
+      counts[row.proposed_status] += 1;
+    }
+  }
+  const top = Math.max(counts.Lehrling, counts.Geselle, counts.Meister);
+  if (top <= 0) return null;
+  // Require a strict modal leader so ties do not bias upward.
+  const leaders = RANKS.filter((rank) => counts[rank] === top);
+  return leaders.length === 1 ? leaders[0]! : null;
+}
 
 
 /**
@@ -73,6 +110,12 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return created;
+    });
+
+    broadcastToClass(newPupil.classId, {
+      type: 'PUPIL_ROSTER_CHANGED',
+      classId: newPupil.classId,
+      pupilId: newPupil.id,
     });
 
     return reply.status(201).send(newPupil);
@@ -157,6 +200,19 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       return updated;
     });
 
+    broadcastToClass(updatedPupil.classId, {
+      type: 'PUPIL_ROSTER_CHANGED',
+      classId: updatedPupil.classId,
+      pupilId: updatedPupil.id,
+    });
+    if (updatedPupil.classId !== existing.classId) {
+      broadcastToClass(existing.classId, {
+        type: 'PUPIL_ROSTER_CHANGED',
+        classId: existing.classId,
+        pupilId: updatedPupil.id,
+      });
+    }
+
     return reply.send(updatedPupil);
   });
 
@@ -198,6 +254,12 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       return row;
     });
 
+    broadcastToClass(existing.classId, {
+      type: 'PUPIL_ROSTER_CHANGED',
+      classId: existing.classId,
+      pupilId: pid,
+    });
+
     return reply.send({ success: true, message: 'Schüler wurde archiviert', pupil: archived });
   });
 
@@ -218,40 +280,46 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für diese Klasse' });
     }
 
-    const [classRow] = await db
-      .select({ id: schoolClasses.id, name: schoolClasses.name, grade: schoolClasses.grade })
-      .from(schoolClasses)
-      .where(eq(schoolClasses.id, pupil.classId))
-      .limit(1);
-
-    // Get current rank from final_ranks
-    const rankRows = await getPool().query(
-      `SELECT rank FROM final_ranks WHERE pupil_id = $1 ORDER BY confirmed_at DESC LIMIT 1`,
-      [pid]
-    );
-    const currentRank = rankRows.rows[0]?.rank || 'Geselle';
-
-    // Get active cards
-    const cardRows = await getPool().query(
-      `SELECT bc.id, bc.card_type, bc.note, bc.created_at, bc.teacher_id,
-              t.short_name AS teacher_short, COALESCE(t.full_name, 'Lehrkraft') AS teacher_name
-         FROM behavior_cards bc
-         LEFT JOIN teachers t ON t.id = bc.teacher_id
-        WHERE bc.pupil_id = $1 AND bc.revoked_at IS NULL
-        ORDER BY bc.created_at DESC`,
-      [pid]
-    );
-
-    // Get timeouts
-    const timeoutRows = await getPool().query(
-      `SELECT ti.id, ti.sent_at, ti.recorded_at, ti.retroactive, ti.task_assignment, ti.kind, ti.status, ti.resolved_at, ti.resolution_note,
-              t.short_name AS sent_by_short
-         FROM timeout_incidents ti
-         LEFT JOIN teachers t ON t.id = ti.sent_by_teacher_id
-        WHERE ti.pupil_id = $1
-        ORDER BY ti.sent_at DESC`,
-      [pid]
-    );
+    const [classResult, round, cardRows, timeoutRows, actionRows] = await Promise.all([
+      db
+        .select({ id: schoolClasses.id, name: schoolClasses.name, grade: schoolClasses.grade })
+        .from(schoolClasses)
+        .where(eq(schoolClasses.id, pupil.classId))
+        .limit(1),
+      getLatestRound(),
+      // Exclude consequence-free cooldown cards so only real red/yellow/green cards count.
+      getPool().query(
+        `SELECT bc.id, bc.card_type, bc.note, bc.created_at, bc.teacher_id,
+                t.short_name AS teacher_short, COALESCE(t.full_name, 'Lehrkraft') AS teacher_name
+           FROM behavior_cards bc
+           LEFT JOIN teachers t ON t.id = bc.teacher_id
+          WHERE bc.pupil_id = $1
+            AND bc.revoked_at IS NULL
+            AND bc.card_type IN ('green', 'yellow', 'red')
+          ORDER BY bc.created_at DESC`,
+        [pid]
+      ),
+      getPool().query(
+        `SELECT ti.id, ti.sent_at, ti.recorded_at, ti.retroactive, ti.task_assignment, ti.kind, ti.status, ti.resolved_at, ti.resolution_note,
+                t.short_name AS sent_by_short
+           FROM timeout_incidents ti
+           LEFT JOIN teachers t ON t.id = ti.sent_by_teacher_id
+          WHERE ti.pupil_id = $1
+          ORDER BY ti.sent_at DESC`,
+        [pid]
+      ),
+      getPool().query(
+        `SELECT pba.id, pba.pupil_id, pba.stage_level, pba.stage_title, pba.status,
+                pba.action_date, pba.teacher_id, pba.notes, pba.created_at,
+                t.short_name AS teacher_short, COALESCE(t.full_name, 'Lehrkraft') AS teacher_name
+           FROM pupil_behavior_actions pba
+           LEFT JOIN teachers t ON t.id = pba.teacher_id
+          WHERE pba.pupil_id = $1
+          ORDER BY pba.action_date DESC, pba.created_at DESC`,
+        [pid]
+      ),
+    ]);
+    const [classRow] = classResult;
 
     const greenCount = cardRows.rows.filter((c: any) => c.card_type === 'green').length;
     const yellowCount = cardRows.rows.filter((c: any) => c.card_type === 'yellow').length;
@@ -263,17 +331,35 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
 
     const calculation = computePupilBehaviorStage(greenCount, yellowCount, redCount, timeoutCount);
 
-    // Get documented actions
-    const actionRows = await getPool().query(
-      `SELECT pba.id, pba.pupil_id, pba.stage_level, pba.stage_title, pba.status,
-              pba.action_date, pba.teacher_id, pba.notes, pba.created_at,
-              t.short_name AS teacher_short, COALESCE(t.full_name, 'Lehrkraft') AS teacher_name
-         FROM pupil_behavior_actions pba
-         LEFT JOIN teachers t ON t.id = pba.teacher_id
-        WHERE pba.pupil_id = $1
-        ORDER BY pba.action_date DESC, pba.created_at DESC`,
-      [pid]
-    );
+    // Resolve rank strictly within the latest round: confirmed final_ranks first,
+    // then majority evaluations.proposed_status demoted by active cards, else 'Geselle'.
+    let currentRank: Rank = 'Geselle';
+    const roundId = round?.id ?? null;
+    if (roundId) {
+      const rankRows = await getPool().query<{ rank: string }>(
+        `SELECT rank FROM final_ranks WHERE pupil_id = $1 AND round_id = $2 ORDER BY confirmed_at DESC LIMIT 1`,
+        [pid, roundId]
+      );
+      const confirmedRank = rankRows.rows[0]?.rank;
+      if (isRank(confirmedRank)) {
+        currentRank = confirmedRank;
+      } else {
+        const evalRows = await getPool().query<{ proposed_status: string | null }>(
+          `SELECT proposed_status
+             FROM evaluations
+            WHERE pupil_id = $1 AND round_id = $2 AND proposed_status IS NOT NULL`,
+          [pid, roundId]
+        );
+        const majorityRank = majorityProposedRank(evalRows.rows);
+        if (majorityRank) {
+          const yellowInRoundCount = cardRows.rows.filter(
+            (c: { card_type?: string; created_at?: Date | string | null }) =>
+              c.card_type === 'yellow' && isCardInRound(c.created_at, round),
+          ).length;
+          currentRank = demoteBy(majorityRank, totalCardDemotionSteps(redCount, yellowInRoundCount));
+        }
+      }
+    }
 
     return reply.send({
       pupil: {
@@ -386,6 +472,12 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
       return recorded;
     });
 
+    broadcastToClass(pupil.classId, {
+      type: 'PUPIL_ROSTER_CHANGED',
+      classId: pupil.classId,
+      pupilId: pid,
+    });
+
     return reply.status(201).send(action);
   });
 
@@ -430,6 +522,12 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
         entityId: String(pid),
         payload: { actionId, stageLevel: existing.stageLevel, stageTitle: existing.stageTitle },
       });
+    });
+
+    broadcastToClass(pupil.classId, {
+      type: 'PUPIL_ROSTER_CHANGED',
+      classId: pupil.classId,
+      pupilId: pid,
     });
 
     return reply.send({ success: true });

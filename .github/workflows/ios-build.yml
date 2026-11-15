@@ -151,7 +151,7 @@ jobs:
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: SMILE-ipa
           path: ios/build/export/SMILE.ipa

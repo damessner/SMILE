@@ -229,4 +229,18 @@ describe('WebUntis Account Connection Routes', () => {
     expect(body.success).toBe(true);
     expect(mockState.accountRow).toBeNull();
   });
+
+  it('rejects outbox retry when no personal account is connected', async () => {
+    mockState.accountRow = null;
+    const token = app.jwt.sign({ id: '00000000-0000-0000-0000-000000000001', role: 'teacher', username: 'OFJ', teacherId: 242 });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/webuntis/outbox/retry',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).code).toBe('WEBUNTIS_NOT_CONNECTED');
+  });
 });

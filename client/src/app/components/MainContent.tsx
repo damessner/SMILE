@@ -1,13 +1,19 @@
+import { lazy, Suspense } from 'react';
 import { AlertTriangle, Users } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '../../components/ui';
 import type { PupilWithData, RubricCriterion, SchoolClass, User } from '../../types';
 import { BeobachtungsGrid } from '../../components/BeobachtungsGrid';
 import type { BeobachtungsGridProps } from '../../components/beobachtungsGrid/types';
 import { Schulalltag } from '../../components/Schulalltag';
-import { SchoolStatistics } from '../../components/SchoolStatistics';
-import { WebUntisView } from '../../features/webuntis/WebUntisView';
 import type { AppModals } from '../hooks/useAppModals';
 import type { AppTab } from '../types';
+
+const SchoolStatistics = lazy(() =>
+  import('../../components/SchoolStatistics').then((m) => ({ default: m.SchoolStatistics })),
+);
+const WebUntisView = lazy(() =>
+  import('../../features/webuntis/WebUntisView').then((m) => ({ default: m.WebUntisView })),
+);
 
 /** Live-sync values and senders the observation grid consumes. */
 export type GridLiveProps = Pick<
@@ -70,16 +76,22 @@ export function MainContent({
   const { setActiveCardDrawer, setActiveKelPupil, setTeacherReportModalOpen } = modals;
 
   if (activeTab === 'statistics') {
-    return <SchoolStatistics currentUser={currentUser} />;
+    return (
+      <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Statistik wird geladen...</div>}>
+        <SchoolStatistics currentUser={currentUser} />
+      </Suspense>
+    );
   }
   if (activeTab === 'webuntis') {
     return (
-      <WebUntisView
-        currentClass={currentClass}
-        classes={classes}
-        currentUser={currentUser}
-        pupils={pupils}
-      />
+      <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">WebUntis wird geladen...</div>}>
+        <WebUntisView
+          currentClass={currentClass}
+          classes={classes}
+          currentUser={currentUser}
+          pupils={pupils}
+        />
+      </Suspense>
     );
   }
   if (loadingClass && pupils.length === 0) {

@@ -35,7 +35,8 @@ export function useAppLiveSync({
       data.type === 'TIMEOUT_ISSUED' ||
       data.type === 'TIMEOUT_RESOLVED' ||
       data.type === 'FINAL_RANK_CONFIRMED' ||
-      data.type === 'FINAL_RANK_REVOKED'
+      data.type === 'FINAL_RANK_REVOKED' ||
+      data.type === 'PUPIL_ROSTER_CHANGED'
     ) {
       if (selectedClassId) loadClassData(selectedClassId);
       if (data.type === 'CARD_ISSUED' || data.type === 'CARD_REVOKED') {
@@ -99,7 +100,7 @@ export function useAppLiveSync({
         return { ...p, evaluations: updatedEvals };
       });
     });
-  }, [selectedClassId, refreshYellowCardAlerts]);
+  }, [selectedClassId, loadClassData, refreshYellowCardAlerts]);
 
   const liveSyncClassIds = useMemo(() => {
     return selectedClassId ? [selectedClassId, 999] : null;

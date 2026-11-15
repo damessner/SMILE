@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   auditLogs,
@@ -275,6 +275,7 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
 
     let touched = 0;
     let lockedDuringWrite = false;
+    let submittedDuringWrite = false;
 
     // Two statements for the whole class instead of one per pupil per item. The previous
     // nested loop issued ~540 sequential round trips (30 pupils x 18 rubric items) while
@@ -283,6 +284,24 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       await acquireClassRoundLock(tx, round.id, classId);
       if (await getClassRoundLockStateWith(tx, round.id, classId)) {
         lockedDuringWrite = true;
+        return;
+      }
+
+      const [submittedRow] = await tx
+        .select({ pupilId: evaluations.pupilId })
+        .from(evaluations)
+        .where(
+          and(
+            eq(evaluations.roundId, round.id),
+            eq(evaluations.classId, classId),
+            eq(evaluations.subjectCode, canonicalSubject),
+            eq(evaluations.isSubmitted, true),
+            inArray(evaluations.pupilId, classPupils.map((pupil) => pupil.id)),
+          ),
+        )
+        .limit(1);
+      if (submittedRow) {
+        submittedDuringWrite = true;
         return;
       }
 
@@ -349,6 +368,12 @@ export const evaluationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(423).send({
         error: 'Die Klassenkonferenz wurde während der Änderung gesperrt.',
         code: 'CLASS_CONFERENCE_LOCKED',
+      });
+    }
+    if (submittedDuringWrite) {
+      return reply.status(409).send({
+        error: 'Mindestens eine Bewertung ist bereits eingereicht. Bitte zuerst wieder öffnen.',
+        code: 'EVALUATION_SUBMITTED',
       });
     }
 

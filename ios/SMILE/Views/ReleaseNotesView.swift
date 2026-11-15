@@ -45,6 +45,34 @@ struct AppRelease: Identifiable {
 enum AppReleases {
     static let all: [AppRelease] = [
         AppRelease(
+            version: "2.1.1",
+            date: "15.11.2026",
+            title: "Gesamt-Bewertung, Verhaltensprofil & Sicherheit",
+            summary: "Mehrfachfach-Einstufung direkt im Gesamt-Modus, Verhaltensstufe in der Schülerhistorie und gehärtete Anmeldung.",
+            notes: [
+                AppReleaseNote(
+                    kind: .feature,
+                    title: "Gesamt-Modus in Bewertung",
+                    text: "Neuer Chip „🌟 Gesamt“ bei mehreren Fächern, um Bewertungen gebündelt für alle Fächer zu vergeben und abzugeben."
+                ),
+                AppReleaseNote(
+                    kind: .feature,
+                    title: "Verhaltensstufe & Maßnahmen",
+                    text: "Die Schüler-Historie zeigt nun aktuelle Verhaltensstufe, Rang, Verhaltensnote und dokumentierte pädagogische Maßnahmen."
+                ),
+                AppReleaseNote(
+                    kind: .improvement,
+                    title: "Automatische Badge-Aktualisierung",
+                    text: "Der Lernwerkstatt-Zähler aktualisiert sich alle 30 Sekunden sowie sofort beim Zurückkehren in die App."
+                ),
+                AppReleaseNote(
+                    kind: .fix,
+                    title: "Keychain, Face ID & Server-URL",
+                    text: "Biometrische Zugangsdaten werden mit aktuellem Biometrie-Schutz gesichert und benutzerdefinierte Server-URLs strenger geprüft."
+                ),
+            ]
+        ),
+        AppRelease(
             version: "2.1.0",
             date: "12.11.2026",
             title: "Alle Klassen, Bewertung & Live-Aktualisierung",

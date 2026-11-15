@@ -196,6 +196,32 @@ describe('GET /api/behavior/overview', () => {
     expect(bert.rank).toBeNull();
   });
 
+  it('does not double-count Cool-Downs and ignores expired active incidents', async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000);
+    const future = new Date(Date.now() + 60 * 60 * 1000);
+    state.cards = [
+      { pupilId: 11, cardType: 'cooldown' },
+      { pupilId: 22, cardType: 'cooldown' },
+    ];
+    state.incidents = [
+      { id: 'cd-11', pupilId: 11, kind: 'cooldown', status: 'active', sentAt: new Date('2026-11-12T08:00:00Z'), expiresAt: future, taskAssignment: 'Pause' },
+      { id: 't-expired', pupilId: 22, kind: 'timeout', status: 'active', sentAt: new Date('2026-11-12T07:00:00Z'), expiresAt: past, taskAssignment: 'Abgelaufen' },
+      { id: 'cd-22', pupilId: 22, kind: 'cooldown', status: 'resolved', sentAt: new Date('2026-11-11T07:00:00Z'), expiresAt: past, taskAssignment: 'Pause' },
+    ];
+
+    const res = await fetchOverview();
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    const anna = body.pupils.find((p: { id: number }) => p.id === 11);
+    expect(anna.counts.cooldown).toBe(1);
+    expect(anna.activeIncident).toMatchObject({ id: 'cd-11', kind: 'cooldown' });
+
+    const bert = body.pupils.find((p: { id: number }) => p.id === 22);
+    expect(bert.counts.cooldown).toBe(1);
+    expect(bert.activeIncident).toBeNull();
+  });
+
   it('scopes the list to the caller when the policy is off', async () => {
     (configModule.config as { behaviourSchoolWide: boolean }).behaviourSchoolWide = false;
     // The real query filters `pupils.class_id = ANY(...)`; the mock returns whole

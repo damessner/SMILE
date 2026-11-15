@@ -36,6 +36,8 @@ interface QuickGradeCardProps {
   isAllSubjectsMode: boolean;
   mySubjects: GridSubject[];
   disabled: boolean;
+  autoAdvance?: boolean;
+  onToggleAutoAdvance?: (next: boolean) => void;
   onQuickGrade: (rank: AssessmentRank) => void;
 }
 
@@ -45,21 +47,36 @@ export const QuickGradeCard: React.FC<QuickGradeCardProps> = ({
   isAllSubjectsMode,
   mySubjects,
   disabled,
+  autoAdvance,
+  onToggleAutoAdvance,
   onQuickGrade,
 }) => {
   return (
     <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-2.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
           <span>Schnellbewertung (1-Klick)</span>
         </span>
-        {saveSuccessMsg && (
-          <span className="text-emerald-400 text-[11px] font-bold flex items-center gap-1 animate-fadeIn">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{saveSuccessMsg}</span>
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {saveSuccessMsg && (
+            <span className="text-emerald-400 text-[11px] font-bold flex items-center gap-1 animate-fadeIn">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{saveSuccessMsg}</span>
+            </span>
+          )}
+          {onToggleAutoAdvance && (
+            <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 hover:text-slate-200 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={Boolean(autoAdvance)}
+                onChange={(e) => onToggleAutoAdvance(e.target.checked)}
+                className="h-3.5 w-3.5 accent-amber-400 rounded"
+              />
+              <span>Auto-Weiter</span>
+            </label>
+          )}
+        </div>
       </div>
       {isAllSubjectsMode && (
         <p className="text-[11px] text-amber-400/80">

@@ -60,6 +60,17 @@ interface CriterionItemCellProps {
   onSelectRating: (rating: string) => void;
 }
 
+const KEYBOARD_RATING_MAP: Record<string, string> = {
+  '1': 'crown',
+  '2': 'smile',
+  '3': 'struggle',
+  '4': 'sad',
+  '5': 'newstart',
+  '0': '',
+  Backspace: '',
+  Delete: '',
+};
+
 export const CriterionItemCell: React.FC<CriterionItemCellProps> = ({
   itemKey,
   description,
@@ -72,9 +83,19 @@ export const CriterionItemCell: React.FC<CriterionItemCellProps> = ({
 }) => {
   const isLocked = writeBlocked || !!softLock;
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isLocked || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (Object.prototype.hasOwnProperty.call(KEYBOARD_RATING_MAP, e.key)) {
+      e.preventDefault();
+      onSelectRating(KEYBOARD_RATING_MAP[e.key]!);
+    }
+  };
+
   return (
     <div
-      className={`bg-slate-900 border rounded-xl p-2.5 sm:p-3 flex flex-col justify-between transition ${
+      tabIndex={isLocked ? -1 : 0}
+      onKeyDown={handleKeyDown}
+      className={`bg-slate-900 border rounded-xl p-2.5 sm:p-3 flex flex-col justify-between transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 ${
         softLock
           ? 'border-amber-400/50 bg-amber-500/5'
           : 'border-slate-800/80 hover:border-slate-700'

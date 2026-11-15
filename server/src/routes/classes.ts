@@ -260,31 +260,63 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
 
 
-    const classPupils = await db
-      .select()
-      .from(pupils)
-      .where(and(eq(pupils.classId, cid), eq(pupils.isArchived, false)))
-      .orderBy(pupils.fullName);
-
-    const round = await getLatestRound();
+    const [classPupils, round, cards, pupilTeachers, hoursRows, resolvedClassName] =
+      await Promise.all([
+        db
+          .select()
+          .from(pupils)
+          .where(and(eq(pupils.classId, cid), eq(pupils.isArchived, false)))
+          .orderBy(pupils.fullName),
+        getLatestRound(),
+        db
+          .select()
+          .from(behaviorCards)
+          .where(and(eq(behaviorCards.classId, cid), isNull(behaviorCards.revokedAt)))
+          .orderBy(desc(behaviorCards.createdAt)),
+        db
+          .select()
+          .from(pupilSubjectTeachers)
+          .where(eq(pupilSubjectTeachers.classId, cid)),
+        user.teacherId
+          ? getPool()
+              .query<{ class_id: number; subject_code: string; hours: number }>(
+                `SELECT class_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
+                   FROM timetable_lessons
+                  WHERE teacher_id = $1 AND class_id = $2
+                  GROUP BY class_id, UPPER(TRIM(subject_code))`,
+                [user.teacherId, cid],
+              )
+              .then((res) => res.rows)
+              .catch((err) => {
+                fastify.log.warn(safeErrorLogFields(err), 'Failed to query timetable lessons for class pupils');
+                return [];
+              })
+          : Promise.resolve([]),
+        className(cid),
+      ]);
 
     let classEvaluations: Array<typeof evaluations.$inferSelect> = [];
     const itemsByEvaluationId: Record<string, Array<typeof evaluationItems.$inferSelect>> = {};
     const finalRankByPupil = new Map<number, string>();
+    let isLockedByConference = false;
 
     if (round && classPupils.length > 0) {
-      const confirmedRanks = await db
-        .select({ pupilId: finalRanks.pupilId, rank: finalRanks.rank })
-        .from(finalRanks)
-        .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.classId, cid)));
+      const [confirmedRanks, evalRows, isClassLocked] = await Promise.all([
+        db
+          .select({ pupilId: finalRanks.pupilId, rank: finalRanks.rank })
+          .from(finalRanks)
+          .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.classId, cid))),
+        db
+          .select()
+          .from(evaluations)
+          .where(and(eq(evaluations.classId, cid), eq(evaluations.roundId, round.id))),
+        getClassRoundLockState(round.id, cid),
+      ]);
       for (const row of confirmedRanks) {
         finalRankByPupil.set(row.pupilId, row.rank);
       }
-
-      classEvaluations = await db
-        .select()
-        .from(evaluations)
-        .where(and(eq(evaluations.classId, cid), eq(evaluations.roundId, round.id)));
+      classEvaluations = evalRows;
+      isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
 
       const evalIds = classEvaluations.map((e) => e.id);
       if (evalIds.length > 0) {
@@ -297,18 +329,10 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
           (itemsByEvaluationId[item.evaluationId] ??= []).push(item);
         }
       }
+    } else if (round) {
+      const isClassLocked = await getClassRoundLockState(round.id, cid);
+      isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
     }
-
-    const cards = await db
-      .select()
-      .from(behaviorCards)
-      .where(and(eq(behaviorCards.classId, cid), isNull(behaviorCards.revokedAt)))
-      .orderBy(desc(behaviorCards.createdAt));
-
-    const pupilTeachers = await db
-      .select()
-      .from(pupilSubjectTeachers)
-      .where(eq(pupilSubjectTeachers.classId, cid));
 
     const pupilTeachersMap = new Map<number, Record<string, number[]>>();
     const pupilGroupsMap = new Map<number, Record<string, string>>();
@@ -374,26 +398,9 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Look up teacher's timetable lesson hours for this class and subjects
     const userHoursMap = new Map<string, number>();
-    if (user.teacherId) {
-      try {
-        const hoursRes = await getPool().query<{
-          class_id: number;
-          subject_code: string;
-          hours: number;
-        }>(
-          `SELECT class_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
-             FROM timetable_lessons
-            WHERE teacher_id = $1 AND class_id = $2
-            GROUP BY class_id, UPPER(TRIM(subject_code))`,
-          [user.teacherId, cid],
-        );
-        for (const h of hoursRes.rows) {
-          const norm = normalizeSubject(h.subject_code).code;
-          userHoursMap.set(norm, (userHoursMap.get(norm) || 0) + h.hours);
-        }
-      } catch (err) {
-        fastify.log.warn(safeErrorLogFields(err), 'Failed to query timetable lessons for class pupils');
-      }
+    for (const h of hoursRows) {
+      const norm = normalizeSubject(h.subject_code).code;
+      userHoursMap.set(norm, (userHoursMap.get(norm) || 0) + h.hours);
     }
 
     const mySubjectsWithHours = access.subjects.map((s) => ({
@@ -401,16 +408,10 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       hours: userHoursMap.get(s.code) || 0,
     }));
 
-    let isLockedByConference = false;
-    if (round) {
-      const isClassLocked = await getClassRoundLockState(round.id, cid);
-      isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
-    }
-
     return reply.send({
       class: {
         id: access.classId,
-        name: (await className(cid)) ?? String(cid),
+        name: resolvedClassName ?? String(cid),
       },
       round,
       roundId: round?.id ?? null,

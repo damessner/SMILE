@@ -321,6 +321,9 @@ export const timeoutIncidents = pgTable('timeout_incidents', {
   expiresAtActiveIdx: index('timeout_incidents_expires_at_active_idx')
     .on(t.expiresAt)
     .where(sql`status = 'active'`),
+  retroactiveSlotUidx: uniqueIndex('timeout_incidents_retroactive_slot_uidx')
+    .on(t.pupilId, t.classId, t.kind, t.sentAt)
+    .where(sql`retroactive = true`),
 }));
 
 // 15. Timeout Escalations (Handled by SLC at 3, 6, 9... timeouts)

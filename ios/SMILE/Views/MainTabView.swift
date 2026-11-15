@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject var api: APIClient
+    @Environment(\.scenePhase) private var scenePhase
     let user: User
 
     @State private var selectedTab: AppTab = .schulalltag
@@ -85,6 +86,16 @@ struct MainTabView: View {
                 showWhatsNew = true
             }
             await refreshActiveBadge()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                if Task.isCancelled { break }
+                await refreshActiveBadge()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task { await refreshActiveBadge() }
+            }
         }
     }
 

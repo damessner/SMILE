@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { and, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   behaviorCards,
@@ -16,6 +16,7 @@ import {
   requireAuth,
   type ClassAccess,
 } from '../lib/guards.js';
+import { tallyBehaviorCounts } from '../lib/behavior-counts.js';
 import { computePupilBehaviorStage } from '../lib/behavior-stages.js';
 import { getLatestRound } from '../lib/rounds.js';
 
@@ -147,10 +148,12 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
         kind: timeoutIncidents.kind,
         status: timeoutIncidents.status,
         sentAt: timeoutIncidents.sentAt,
+        expiresAt: timeoutIncidents.expiresAt,
         taskAssignment: timeoutIncidents.taskAssignment,
       })
       .from(timeoutIncidents)
-      .where(inArray(timeoutIncidents.pupilId, pupilIds));
+      .where(inArray(timeoutIncidents.pupilId, pupilIds))
+      .orderBy(desc(timeoutIncidents.sentAt));
 
     const round = await getLatestRound();
     const confirmedRanks =
@@ -176,28 +179,26 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
       incidentsByPupil.set(incident.pupilId, list);
     }
 
+    const now = new Date();
     const rows: StatusPupil[] = classPupils.map((pupil) => {
       const pupilCards = cardsByPupil.get(pupil.id) ?? [];
       const pupilIncidents = incidentsByPupil.get(pupil.id) ?? [];
 
-      let green = 0;
-      let yellow = 0;
-      let red = 0;
-      let timeout = 0;
-      let cooldown = 0;
-      for (const type of pupilCards) {
-        if (type === 'green') green += 1;
-        else if (type === 'yellow') yellow += 1;
-        else if (type === 'red') red += 1;
-        else if (type === 'cooldown') cooldown += 1;
-      }
-      for (const incident of pupilIncidents) {
-        if (incident.kind === 'timeout') timeout += 1;
-        else cooldown += 1;
-      }
+      const { green, yellow, red, timeout, cooldown } = tallyBehaviorCounts(
+        pupilCards.map((cardType) => ({ cardType })),
+        pupilIncidents,
+      );
 
+      // Ignore already-expired rows before the background sweeper closes them, and pick
+      // the newest active incident deterministically.
       const activeIncident =
-        pupilIncidents.find((incident) => incident.status === 'active') ?? null;
+        pupilIncidents
+          .filter(
+            (incident) =>
+              incident.status === 'active' &&
+              (incident.expiresAt == null || new Date(incident.expiresAt) > now),
+          )
+          .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0] ?? null;
 
       const stageResult = computePupilBehaviorStage(green, yellow, red, timeout);
       const rank = rankByPupil.get(pupil.id);

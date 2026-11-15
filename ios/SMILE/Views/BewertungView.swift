@@ -21,6 +21,22 @@ struct BewertungView: View {
     @State private var statusMessage: String?
     @State private var busyPupilId: Int?
 
+    private let allSubjectsCode = "__ALL__"
+
+    private var isAllSubjectsMode: Bool {
+        subjects.count > 1 && selectedSubjectCode == allSubjectsCode
+    }
+
+    private var targetSubjectCodes: [String] {
+        if isAllSubjectsMode {
+            return subjects.map(\.code)
+        }
+        if let code = selectedSubjectCode {
+            return [code]
+        }
+        return []
+    }
+
     private var currentClass: SchoolClass? {
         classes.first(where: { $0.id == selectedClassId })
     }
@@ -35,7 +51,7 @@ struct BewertungView: View {
     }
 
     private var submittedCount: Int {
-        pupils.filter { subjectEvaluation(for: $0)?.isSubmitted == true }.count
+        pupils.filter { isSubmitted(for: $0) }.count
     }
 
     private var deadlineText: String? {
@@ -124,8 +140,11 @@ struct BewertungView: View {
             if !subjects.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
+                        if subjects.count > 1 {
+                            subjectChip(allSubjectsCode, label: "🌟 Gesamt")
+                        }
                         ForEach(subjects, id: \.code) { subject in
-                            subjectChip(subject)
+                            subjectChip(subject.code, label: "\(subject.name) (\(subject.code))")
                         }
                     }
                 }
@@ -152,13 +171,13 @@ struct BewertungView: View {
         .background(Color(red: 0.05, green: 0.07, blue: 0.12))
     }
 
-    private func subjectChip(_ subject: SubjectAssignment) -> some View {
-        let isSelected = subject.code == selectedSubjectCode
+    private func subjectChip(_ code: String, label: String) -> some View {
+        let isSelected = code == selectedSubjectCode
         return Button {
             Haptics.impact(.light)
-            selectedSubjectCode = subject.code
+            selectedSubjectCode = code
         } label: {
-            Text("\(subject.name) (\(subject.code))")
+            Text(label)
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -236,7 +255,7 @@ struct BewertungView: View {
 
     private func pupilRow(_ pupil: PupilWithData) -> some View {
         let evaluation = subjectEvaluation(for: pupil)
-        let isSubmitted = evaluation?.isSubmitted == true
+        let isSubmitted = self.isSubmitted(for: pupil)
         let rank = currentRank(for: pupil)
         let isBusy = busyPupilId == pupil.id
 
@@ -335,11 +354,36 @@ struct BewertungView: View {
 
     // MARK: - Data
 
-    private func subjectEvaluation(for pupil: PupilWithData) -> Evaluation? {
-        guard let code = selectedSubjectCode else { return nil }
-        return pupil.evaluations?.first {
-            $0.subjectCode.caseInsensitiveCompare(code) == .orderedSame
+    private func evaluation(for pupil: PupilWithData, subjectCode: String) -> Evaluation? {
+        pupil.evaluations?.first {
+            $0.subjectCode.caseInsensitiveCompare(subjectCode) == .orderedSame
         }
+    }
+
+    private func subjectEvaluation(for pupil: PupilWithData) -> Evaluation? {
+        if isAllSubjectsMode {
+            if let firstCode = subjects.first?.code,
+               let primary = evaluation(for: pupil, subjectCode: firstCode) {
+                return primary
+            }
+            for subject in subjects {
+                if let match = evaluation(for: pupil, subjectCode: subject.code) {
+                    return match
+                }
+            }
+            return nil
+        }
+        guard let code = selectedSubjectCode else { return nil }
+        return evaluation(for: pupil, subjectCode: code)
+    }
+
+    private func isSubmitted(for pupil: PupilWithData) -> Bool {
+        if isAllSubjectsMode {
+            return !subjects.isEmpty && subjects.allSatisfy {
+                evaluation(for: pupil, subjectCode: $0.code)?.isSubmitted == true
+            }
+        }
+        return subjectEvaluation(for: pupil)?.isSubmitted == true
     }
 
     private func currentRank(for pupil: PupilWithData) -> AssessmentRank? {
@@ -352,17 +396,20 @@ struct BewertungView: View {
     }
 
     private func setRank(_ rank: AssessmentRank, for pupil: PupilWithData) async {
-        guard let cid = selectedClassId, let subject = selectedSubjectCode, writable else { return }
+        let codes = targetSubjectCodes
+        guard let cid = selectedClassId, !codes.isEmpty, writable else { return }
 
         busyPupilId = pupil.id
         errorMessage = nil
         do {
-            try await api.saveProposedRank(
-                pupilId: pupil.id,
-                classId: cid,
-                subjectCode: subject,
-                rank: rank.rawValue
-            )
+            for code in codes where evaluation(for: pupil, subjectCode: code)?.isSubmitted != true {
+                try await api.saveProposedRank(
+                    pupilId: pupil.id,
+                    classId: cid,
+                    subjectCode: code,
+                    rank: rank.rawValue
+                )
+            }
             Haptics.impact(.light)
             await loadClass(classId: cid, keepSubject: true)
         } catch {
@@ -373,8 +420,9 @@ struct BewertungView: View {
     }
 
     private func submit(_ pupil: PupilWithData) async {
+        let codes = targetSubjectCodes
         guard let cid = selectedClassId,
-              let subject = selectedSubjectCode,
+              !codes.isEmpty,
               let rank = currentRank(for: pupil),
               writable else {
             return
@@ -383,12 +431,14 @@ struct BewertungView: View {
         busyPupilId = pupil.id
         errorMessage = nil
         do {
-            try await api.submitEvaluation(
-                pupilId: pupil.id,
-                classId: cid,
-                subjectCode: subject,
-                rank: rank.rawValue
-            )
+            for code in codes where evaluation(for: pupil, subjectCode: code)?.isSubmitted != true {
+                try await api.submitEvaluation(
+                    pupilId: pupil.id,
+                    classId: cid,
+                    subjectCode: code,
+                    rank: rank.rawValue
+                )
+            }
             Haptics.notify(.success)
             await loadClass(classId: cid, keepSubject: true)
         } catch {
@@ -399,16 +449,19 @@ struct BewertungView: View {
     }
 
     private func reopen(_ pupil: PupilWithData) async {
-        guard let cid = selectedClassId, let subject = selectedSubjectCode, writable else { return }
+        let codes = targetSubjectCodes
+        guard let cid = selectedClassId, !codes.isEmpty, writable else { return }
 
         busyPupilId = pupil.id
         errorMessage = nil
         do {
-            try await api.reopenEvaluation(
-                pupilId: pupil.id,
-                classId: cid,
-                subjectCode: subject
-            )
+            for code in codes where evaluation(for: pupil, subjectCode: code)?.isSubmitted == true {
+                try await api.reopenEvaluation(
+                    pupilId: pupil.id,
+                    classId: cid,
+                    subjectCode: code
+                )
+            }
             Haptics.impact(.medium)
             await loadClass(classId: cid, keepSubject: true)
         } catch {
@@ -462,10 +515,11 @@ struct BewertungView: View {
 
             if keepSubject,
                let code = selectedSubjectCode,
-               loadedSubjects.contains(where: { $0.code == code }) {
-                // Keep the subject the teacher was looking at.
+               (code == allSubjectsCode && loadedSubjects.count > 1)
+                || loadedSubjects.contains(where: { $0.code == code }) {
+                // Keep the subject or Gesamt selection the teacher was looking at.
             } else {
-                selectedSubjectCode = loadedSubjects.first?.code
+                selectedSubjectCode = loadedSubjects.count > 1 ? allSubjectsCode : loadedSubjects.first?.code
             }
 
             statusMessage = response.isLockedByConference == true

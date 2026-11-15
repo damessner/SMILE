@@ -114,6 +114,7 @@ export const PASSTHROUGH_LIVE_SYNC_TYPES = [
   'TIMEOUT_RESOLVED',
   'FINAL_RANK_CONFIRMED',
   'FINAL_RANK_REVOKED',
+  'PUPIL_ROSTER_CHANGED',
 ] as const;
 
 export type PassthroughLiveSyncType = (typeof PASSTHROUGH_LIVE_SYNC_TYPES)[number];
@@ -501,7 +502,8 @@ export function useLiveSync(
               case 'TIMEOUT_ISSUED':
               case 'TIMEOUT_RESOLVED':
               case 'FINAL_RANK_CONFIRMED':
-              case 'FINAL_RANK_REVOKED': {
+              case 'FINAL_RANK_REVOKED':
+              case 'PUPIL_ROSTER_CHANGED': {
                 onRatingUpdated?.(msg);
                 break;
               }

@@ -527,32 +527,6 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für diese Klasse' });
     }
 
-    const activePupils = await db
-      .select()
-      .from(pupils)
-      .where(and(eq(pupils.classId, cid), eq(pupils.isArchived, false)))
-      .orderBy(pupils.fullName);
-
-    const round = await getActiveRound();
-    const totalClassTeachers = await countClassTeachers(cid);
-
-    const cardsRes = await getPool().query(
-      `SELECT bc.id,
-              bc.pupil_id,
-              bc.card_type,
-              bc.note,
-              bc.created_at,
-              t.id AS teacher_id,
-              COALESCE(t.short_name, 'SL') AS teacher_short,
-              COALESCE(t.full_name, 'Schulleitung') AS teacher_name
-         FROM behavior_cards bc
-         LEFT JOIN teachers t ON t.id = bc.teacher_id
-        WHERE bc.class_id = $1 AND bc.revoked_at IS NULL
-        ORDER BY bc.created_at DESC`,
-      [cid],
-    );
-    const allCards: CardRow[] = cardsRes.rows;
-
     interface CardRow {
       id: string;
       pupil_id: number;
@@ -589,22 +563,71 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       confirmed_at: Date | null;
     }
 
+    const [activePupils, round, totalClassTeachers, cardsRes, hoursRes] = await Promise.all([
+      db
+        .select()
+        .from(pupils)
+        .where(and(eq(pupils.classId, cid), eq(pupils.isArchived, false)))
+        .orderBy(pupils.fullName),
+      getActiveRound(),
+      countClassTeachers(cid),
+      // Exclude consequence-free cooldown cards so conference views match scoring.
+      getPool().query<CardRow>(
+        `SELECT bc.id,
+                bc.pupil_id,
+                bc.card_type,
+                bc.note,
+                bc.created_at,
+                t.id AS teacher_id,
+                COALESCE(t.short_name, 'SL') AS teacher_short,
+                COALESCE(t.full_name, 'Schulleitung') AS teacher_name
+           FROM behavior_cards bc
+           LEFT JOIN teachers t ON t.id = bc.teacher_id
+          WHERE bc.class_id = $1
+            AND bc.revoked_at IS NULL
+            AND bc.card_type IN ('green', 'yellow', 'red')
+          ORDER BY bc.created_at DESC`,
+        [cid],
+      ),
+      getPool().query<{
+        teacher_id: number;
+        subject_code: string;
+        hours: number;
+      }>(
+        `SELECT teacher_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
+           FROM timetable_lessons
+          WHERE class_id = $1
+          GROUP BY teacher_id, UPPER(TRIM(subject_code))`,
+        [cid],
+      ),
+    ]);
+    const allCards: CardRow[] = cardsRes.rows;
+
     let evals: EvalRow[] = [];
     let items: Array<RatingLike & { evaluation_id: string; item_key: string }> = [];
     let confirmedRanks: ConfirmedRow[] = [];
 
     if (round && activePupils.length > 0) {
-      const evalsRes = await getPool().query<EvalRow>(
-        `SELECT e.id, e.pupil_id, e.teacher_id, e.subject_code, e.proposed_status,
-                e.next_step, e.comment, e.is_submitted, e.submitted_at, e.updated_at,
-                COALESCE(t.short_name, 'SL') AS teacher_short,
-                COALESCE(t.full_name, 'Schulleitung') AS teacher_name
-           FROM evaluations e
-           LEFT JOIN teachers t ON t.id = e.teacher_id
-          WHERE e.class_id = $1 AND e.round_id = $2`,
-        [cid, round.id],
-      );
+      const [evalsRes, confirmedRes] = await Promise.all([
+        getPool().query<EvalRow>(
+          `SELECT e.id, e.pupil_id, e.teacher_id, e.subject_code, e.proposed_status,
+                  e.next_step, e.comment, e.is_submitted, e.submitted_at, e.updated_at,
+                  COALESCE(t.short_name, 'SL') AS teacher_short,
+                  COALESCE(t.full_name, 'Schulleitung') AS teacher_name
+             FROM evaluations e
+             LEFT JOIN teachers t ON t.id = e.teacher_id
+            WHERE e.class_id = $1 AND e.round_id = $2`,
+          [cid, round.id],
+        ),
+        getPool().query<ConfirmedRow>(
+          `SELECT pupil_id, rank, votes_yes, votes_no, total_voters, override_reason, confirmed_at
+             FROM final_ranks
+            WHERE class_id = $1 AND round_id = $2`,
+          [cid, round.id],
+        ),
+      ]);
       evals = evalsRes.rows;
+      confirmedRanks = confirmedRes.rows;
 
       const evalIds = evals.map((e) => e.id);
       if (evalIds.length > 0) {
@@ -616,46 +639,13 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
         );
         items = itemsRes.rows;
       }
-
-      const confirmedRes = await getPool().query<ConfirmedRow>(
-        `SELECT pupil_id, rank, votes_yes, votes_no, total_voters, override_reason, confirmed_at
-           FROM final_ranks
-          WHERE class_id = $1 AND round_id = $2`,
-        [cid, round.id],
-      );
-      confirmedRanks = confirmedRes.rows;
     }
 
-    // Query teaching hours from timetable_lessons for this class
-    const hoursRes = await getPool().query<{
-      teacher_id: number;
-      subject_code: string;
-      hours: number;
-    }>(
-      `SELECT teacher_id, UPPER(TRIM(subject_code)) as subject_code, COUNT(*)::int as hours
-         FROM timetable_lessons
-        WHERE class_id = $1
-        GROUP BY teacher_id, UPPER(TRIM(subject_code))`,
-      [cid],
-    );
     const hoursMap = new Map<string, number>();
+    const teacherTotalHoursMap = new Map<number, number>();
     for (const h of hoursRes.rows) {
       hoursMap.set(`${h.teacher_id}_${h.subject_code}`, h.hours);
-    }
-
-    const teacherTotalHoursRes = await getPool().query<{
-      teacher_id: number;
-      total_hours: number;
-    }>(
-      `SELECT teacher_id, COUNT(*)::int as total_hours
-         FROM timetable_lessons
-        WHERE class_id = $1
-        GROUP BY teacher_id`,
-      [cid],
-    );
-    const teacherTotalHoursMap = new Map<number, number>();
-    for (const th of teacherTotalHoursRes.rows) {
-      teacherTotalHoursMap.set(th.teacher_id, th.total_hours);
+      teacherTotalHoursMap.set(h.teacher_id, (teacherTotalHoursMap.get(h.teacher_id) ?? 0) + h.hours);
     }
 
     const itemsByEval = new Map<string, Array<RatingLike & { item_key: string }>>();

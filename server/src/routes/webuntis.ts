@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest, RouteHandlerMethod } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   assertPasswordCurrent,
   badRequest,
@@ -25,8 +25,9 @@ import {
 import { encryptSecret } from '../lib/webuntis/crypto.js';
 import { asWebUntisError, isWebUntisError, WebUntisError } from '../lib/webuntis/errors.js';
 import { buildWebUntisScope, scopeClassIds } from '../lib/webuntis/scope.js';
+import { processWebUntisOutbox, type ClassregOutboxPayload } from '../lib/webuntis/outbox.js';
 import { db } from '../db/index.js';
-import { auditLogs, userWebuntisAccounts } from '../db/schema.js';
+import { auditLogs, userWebuntisAccounts, webuntisSyncOutbox } from '../db/schema.js';
 import { config } from '../config.js';
 
 /** Map the WebUntis error contract onto an HTTP response. */
@@ -684,6 +685,111 @@ export const webuntisRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.status(201).send({ success: true, eventId: res.eventId });
+    }),
+  );
+
+  /**
+   * GET /api/webuntis/outbox — pending and failed class-register mirrors for the caller.
+   */
+  fastify.get(
+    '/outbox',
+    { preValidation: [fastify.authenticate] },
+    webuntisHandler(async (request, reply) => {
+      const user = requireAuth(request);
+      if (!assertPasswordCurrent(user, reply)) return;
+      if (user.role === 'pupil') {
+        return forbid(reply, 'Schülerkonten haben keine WebUntis-Synchronisation.');
+      }
+
+      const rows = await db
+        .select({
+          id: webuntisSyncOutbox.id,
+          kind: webuntisSyncOutbox.kind,
+          status: webuntisSyncOutbox.status,
+          attempts: webuntisSyncOutbox.attempts,
+          maxAttempts: webuntisSyncOutbox.maxAttempts,
+          lastError: webuntisSyncOutbox.lastError,
+          nextAttemptAt: webuntisSyncOutbox.nextAttemptAt,
+          createdAt: webuntisSyncOutbox.createdAt,
+          payload: webuntisSyncOutbox.payload,
+        })
+        .from(webuntisSyncOutbox)
+        .where(
+          and(
+            eq(webuntisSyncOutbox.userId, user.id),
+            inArray(webuntisSyncOutbox.status, ['pending', 'processing', 'failed']),
+          ),
+        )
+        .orderBy(desc(webuntisSyncOutbox.createdAt))
+        .limit(50);
+
+      const items = rows.map((row) => {
+        const p = (row.payload ?? {}) as Partial<ClassregOutboxPayload>;
+        return {
+          id: row.id,
+          kind: row.kind,
+          status: row.status,
+          attempts: row.attempts,
+          maxAttempts: row.maxAttempts,
+          lastError: row.lastError,
+          nextAttemptAt: row.nextAttemptAt.toISOString(),
+          createdAt: row.createdAt.toISOString(),
+          date: p.date ?? null,
+          time: p.time ?? null,
+          eventKind: p.eventKind ?? null,
+          text: p.text ?? null,
+        };
+      });
+
+      return reply.send({
+        items,
+        pendingCount: items.filter((i) => i.status === 'pending' || i.status === 'processing').length,
+        failedCount: items.filter((i) => i.status === 'failed').length,
+      });
+    }),
+  );
+
+  /**
+   * POST /api/webuntis/outbox/retry — re-queue and process failed outbox items for the caller.
+   */
+  fastify.post(
+    '/outbox/retry',
+    { preValidation: [fastify.authenticate] },
+    webuntisHandler(async (request, reply) => {
+      const user = requireAuth(request);
+      if (!assertPasswordCurrent(user, reply)) return;
+      if (user.role === 'pupil') {
+        return forbid(reply, 'Schülerkonten können keine WebUntis-Einträge senden.');
+      }
+
+      const resolved = await resolveWriteClient(user);
+      if (!resolved) return notConnected(reply);
+
+      const now = new Date();
+      const updated = await db
+        .update(webuntisSyncOutbox)
+        .set({
+          status: 'pending',
+          attempts: 0,
+          lastError: null,
+          nextAttemptAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(webuntisSyncOutbox.userId, user.id),
+            eq(webuntisSyncOutbox.status, 'failed'),
+          ),
+        )
+        .returning({ id: webuntisSyncOutbox.id });
+
+      const result = updated.length > 0 ? await processWebUntisOutbox({ limit: 50, now }) : { processed: 0, succeeded: 0, retried: 0, failed: 0 };
+
+      return reply.send({
+        success: true,
+        requeued: updated.length,
+        result,
+      });
     }),
   );
 };

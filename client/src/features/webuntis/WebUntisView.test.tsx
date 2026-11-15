@@ -14,6 +14,9 @@ vi.mock('../../services/api', () => ({
   getWebUntisAbsences: vi.fn(),
   getWebUntisEvents: vi.fn(),
   createWebUntisEvent: vi.fn(),
+  getClassPupils: vi.fn(),
+  getWebUntisOutbox: vi.fn(),
+  retryWebUntisOutbox: vi.fn(),
 }));
 
 const mockUser = {
@@ -108,6 +111,17 @@ describe('WebUntisView', () => {
           syncedFromSmile: true,
         },
       ],
+    });
+    vi.mocked(api.getClassPupils).mockResolvedValue([]);
+    vi.mocked(api.getWebUntisOutbox).mockResolvedValue({
+      items: [],
+      pendingCount: 0,
+      failedCount: 0,
+    });
+    vi.mocked(api.retryWebUntisOutbox).mockResolvedValue({
+      success: true,
+      requeued: 0,
+      result: { processed: 0, succeeded: 0, retried: 0, failed: 0 },
     });
   });
 
@@ -438,5 +452,104 @@ describe('WebUntisView', () => {
     // MM is not displayed anywhere in the timetable
     expect(screen.queryByText('MM')).not.toBeInTheDocument();
     expect(screen.queryByText('Mittleres Management')).not.toBeInTheDocument();
+  });
+
+  it('loads matching class pupils when opening the event modal for a different filtered class', async () => {
+    const class2A = { id: 440, name: '2A', grade: 2 };
+    vi.mocked(api.getClassPupils).mockResolvedValueOnce({
+      pupils: [
+        {
+          id: 88,
+          classId: 440,
+          fullName: 'Anna Beispiel',
+          isSubmitted: false,
+          ratings: {},
+        },
+      ],
+    });
+
+    render(
+      <WebUntisView
+        currentClass={mockClass}
+        classes={[mockClass, class2A]}
+        currentUser={mockUser}
+        pupils={[{ id: 77, classId: 430, fullName: 'Max Mustermann', isSubmitted: false, ratings: {} } as any]}
+      />,
+    );
+
+    const filterSelect = await screen.findByDisplayValue('Alle meine Klassen & Stunden');
+    fireEvent.change(filterSelect, { target: { value: '440' } });
+
+    fireEvent.click(screen.getByText('Klassenbuch & Disziplinar'));
+    fireEvent.click(await screen.findByText('Neuer Eintrag'));
+
+    await waitFor(() => {
+      expect(api.getClassPupils).toHaveBeenCalledWith(440);
+    });
+    expect(await screen.findByRole('option', { name: 'Anna Beispiel' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Max Mustermann' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows failed outbox entries and retries them on button click', async () => {
+    vi.mocked(api.getWebUntisAccount).mockResolvedValue({
+      connected: true,
+      account: {
+        username: 'teacher',
+        teacherShort: 'SCH',
+        school: 'ms-telfs',
+        server: 'ms-telfs.webuntis.com',
+        authMethod: 'password',
+        lastVerifiedAt: '2026-11-14T00:00:00Z',
+      },
+    });
+    vi.mocked(api.getWebUntisOutbox)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'ob-1',
+            kind: 'classreg_event',
+            status: 'failed',
+            attempts: 5,
+            maxAttempts: 5,
+            lastError: 'WebUntis timeout',
+            nextAttemptAt: '2026-11-14T00:00:00Z',
+            createdAt: '2026-11-14T00:00:00Z',
+            date: '2026-11-14',
+            time: '08:15',
+            eventKind: 'red',
+            text: '[Rote Karte]',
+          },
+        ],
+        pendingCount: 0,
+        failedCount: 1,
+      })
+      .mockResolvedValueOnce({ items: [], pendingCount: 0, failedCount: 0 });
+    vi.mocked(api.retryWebUntisOutbox).mockResolvedValueOnce({
+      success: true,
+      requeued: 1,
+      result: { processed: 1, succeeded: 1, retried: 0, failed: 0 },
+    });
+
+    render(
+      <WebUntisView
+        currentClass={mockClass}
+        classes={[mockClass]}
+        currentUser={mockUser}
+        pupils={[]}
+      />,
+    );
+
+    expect(await screen.findByText(/1 fehlgeschlagen/)).toBeInTheDocument();
+    expect(screen.getByText(/WebUntis timeout/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Erneut senden/ }));
+    await waitFor(() => {
+      expect(api.retryWebUntisOutbox).toHaveBeenCalledTimes(1);
+    });
   });
 });

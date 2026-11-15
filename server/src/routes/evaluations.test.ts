@@ -312,6 +312,11 @@ describe('/batch-default', () => {
     expect(handler).toMatch(/returning\(\{ id: evaluations\.id, pupilId: evaluations\.pupilId \}\)/);
     expect(handler).toContain('evaluationIdByPupil');
   });
+
+  it('refuses to overwrite already submitted evaluations inside the transaction', () => {
+    expect(handler).toContain('eq(evaluations.isSubmitted, true)');
+    expect(handler).toContain('EVALUATION_SUBMITTED');
+  });
 });
 
 describe('a comment-only /status write is not broadcast', () => {

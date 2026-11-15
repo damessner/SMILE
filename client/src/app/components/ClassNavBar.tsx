@@ -14,7 +14,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
         <nav
           aria-label="Klassenauswahl"
           data-tour="rating-classes"
-          className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-[53px] md:top-[61px] z-30 px-4 md:px-6 py-2.5 flex items-center justify-between gap-3 shadow-xs"
+          className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 md:px-6 py-2.5 flex items-center justify-between gap-3 shadow-xs"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1 overflow-x-auto py-0.5 no-scrollbar">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 hidden sm:inline">

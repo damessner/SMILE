@@ -33,6 +33,19 @@ import {
   queueTimeoutEscalationNotification,
 } from '../lib/notification-events.js';
 
+class RetroactiveTimeoutAlreadyRecorded extends Error {
+  constructor() {
+    super('Für diese Stunde ist für diesen Schüler bereits ein Time-Out erfasst.');
+    this.name = 'RetroactiveTimeoutAlreadyRecorded';
+  }
+}
+
+function isUniqueConstraintError(error: unknown, indexName: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const pg = error as { code?: string; constraint?: string };
+  return pg.code === '23505' && (!pg.constraint || pg.constraint === indexName);
+}
+
 export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * POST /api/timeouts — send a pupil to the Lernwerkstatt.
@@ -148,31 +161,38 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    if (isRetroactive && occurrence) {
-      const [duplicate] = await db
-        .select({ id: timeoutIncidents.id })
-        .from(timeoutIncidents)
-        .where(
-          and(
-            eq(timeoutIncidents.pupilId, pupilId),
-            eq(timeoutIncidents.classId, classId),
-            eq(timeoutIncidents.kind, 'timeout'),
-            eq(timeoutIncidents.sentAt, occurrence.occurredAt),
-          ),
-        )
-        .limit(1);
-      if (duplicate) {
-        return reply.status(409).send({
-          error: 'Für diese Stunde ist für diesen Schüler bereits ein Time-Out erfasst.',
-          code: 'TIMEOUT_ALREADY_RECORDED',
-        });
-      }
-    }
+    let result: {
+      cooldownCard: typeof behaviorCards.$inferSelect | null;
+      incident: typeof timeoutIncidents.$inferSelect | undefined;
+      totalTimeouts: number;
+      isEscalationTriggered: boolean;
+    };
+    try {
+      result = await db.transaction(async (tx) => {
+        if (isRetroactive && occurrence) {
+          if (typeof (tx as { execute?: unknown }).execute === 'function') {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(${pupilId}, ${classId})`);
+          }
+          const [duplicate] = await tx
+            .select({ id: timeoutIncidents.id })
+            .from(timeoutIncidents)
+            .where(
+              and(
+                eq(timeoutIncidents.pupilId, pupilId),
+                eq(timeoutIncidents.classId, classId),
+                eq(timeoutIncidents.kind, 'timeout'),
+                eq(timeoutIncidents.sentAt, occurrence.occurredAt),
+              ),
+            )
+            .limit(1);
+          if (duplicate) {
+            throw new RetroactiveTimeoutAlreadyRecorded();
+          }
+        }
 
-    const result = await db.transaction(async (tx) => {
-      // A Time-Out is its own consequence. It does NOT create a red card:
-      // only an explicit red card demotes the rank.
-      let cooldownCard: typeof behaviorCards.$inferSelect | null = null;
+        // A Time-Out is its own consequence. It does NOT create a red card:
+        // only an explicit red card demotes the rank.
+        let cooldownCard: typeof behaviorCards.$inferSelect | null = null;
 
       if (isCooldown) {
         const [card] = await tx
@@ -256,8 +276,20 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      return { cooldownCard, incident, totalTimeouts, isEscalationTriggered };
-    });
+        return { cooldownCard, incident, totalTimeouts, isEscalationTriggered };
+      });
+    } catch (error) {
+      if (
+        error instanceof RetroactiveTimeoutAlreadyRecorded ||
+        isUniqueConstraintError(error, 'timeout_incidents_retroactive_slot_uidx')
+      ) {
+        return reply.status(409).send({
+          error: 'Für diese Stunde ist für diesen Schüler bereits ein Time-Out erfasst.',
+          code: 'TIMEOUT_ALREADY_RECORDED',
+        });
+      }
+      throw error;
+    }
 
     if (!isCooldown) {
       queueClassEventNotification({
@@ -704,11 +736,14 @@ error:
       if (cleanNotes && cleanNotes.length > 2000) return badRequest(reply, 'Der Hinweis ist zu lang.');
 
       // A leader must not be able to record a parent-contact milestone the pupil
-      // never reached (for example 999). Count the actual incidents first.
+      // never reached (for example 999). Count only disciplinary Time-Outs (not Cool-Downs).
       const [countRow] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(timeoutIncidents)
-        .where(eq(timeoutIncidents.pupilId, pupilId));
+        .where(and(
+          eq(timeoutIncidents.pupilId, pupilId),
+          eq(timeoutIncidents.kind, 'timeout'),
+        ));
       const totalTimeouts = countRow?.count ?? 0;
       if (milestoneCount > totalTimeouts) {
         return badRequest(

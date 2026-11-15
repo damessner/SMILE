@@ -84,6 +84,7 @@ describe('useLiveSync event handling symmetry', () => {
       'TIMEOUT_RESOLVED',
       'FINAL_RANK_CONFIRMED',
       'FINAL_RANK_REVOKED',
+      'PUPIL_ROSTER_CHANGED',
     ];
 
     for (const eventType of SERVER_EMITTED_EVENTS) {

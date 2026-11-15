@@ -8,18 +8,32 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(),
   desc: vi.fn(),
   eq: vi.fn(),
+  sql: vi.fn(),
 }));
 
 vi.mock('../db/schema.js', () => ({
   classRoundLocks: { roundId: {}, classId: {}, isLocked: {} },
-  evaluationItems: {},
+  evaluationItems: { id: {}, evaluationId: {}, itemKey: {}, version: {} },
   evaluations: {},
   observationRounds: { createdAt: {} },
   teachingAssignments: {},
 }));
 
+const lockMock = vi.hoisted(() => ({
+  locked: false,
+  acquireCalls: 0,
+  flipLockedDuringAcquire: false,
+}));
+
 vi.mock('../lib/class-round-lock.js', () => ({
-  getClassRoundLockState: vi.fn(async () => false),
+  getClassRoundLockState: vi.fn(async () => lockMock.locked),
+  acquireClassRoundLock: vi.fn(async () => {
+    lockMock.acquireCalls += 1;
+    if (lockMock.flipLockedDuringAcquire) {
+      lockMock.locked = true;
+    }
+  }),
+  getClassRoundLockStateWith: vi.fn(async () => lockMock.locked),
   isClassRoundLocked: vi.fn((g: boolean, c: boolean) => Boolean(g || c)),
 }));
 
@@ -53,36 +67,55 @@ vi.mock('../db/index.js', async () => {
       return [activeRound];
     },
   };
-  return {
-    db: {
-      select: () => {
-        query.__table = undefined;
-        return query;
+  const dbHandle: any = {
+    select: () => {
+      query.__table = undefined;
+      return query;
+    },
+    insert: (table: unknown) => ({
+      values: (values: unknown) => {
+        const execInsert = async () => {
+          if (table === schema.evaluationItems && dbState.itemInsertConflicts) {
+            dbState.evaluationItems = [
+              {
+                id: 'item-winner',
+                evaluationId: 'eval-1',
+                itemKey: 'org_1',
+                rating: '+',
+                version: 1,
+                updatedByTeacherId: 7,
+                updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+              },
+            ];
+            return [];
+          }
+          return Array.isArray(values) ? values : [values];
+        };
+        return {
+          onConflictDoNothing: () => ({
+            returning: execInsert,
+          }),
+          returning: execInsert,
+        };
       },
-      insert: (table: unknown) => ({
-        values: (values: unknown) => ({
+    }),
+    update: () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => ({
           returning: async () => {
-            if (table === schema.evaluationItems && dbState.itemInsertConflicts) {
-              // The other teacher's tap landed first: their row exists now and this insert
-              // violates the unique index.
-              dbState.evaluationItems = [
-                {
-                  id: 'item-winner',
-                  evaluationId: 'eval-1',
-                  itemKey: 'org_1',
-                  rating: '+',
-                  version: 1,
-                  updatedByTeacherId: 7,
-                  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-                },
-              ];
-              throw new Error('duplicate key value violates unique constraint');
-            }
-            return Array.isArray(values) ? values : [values];
+            const current = dbState.evaluationItems[0];
+            if (!current) return [];
+            const next = { ...current, ...values, version: (current.version ?? 0) + 1 };
+            dbState.evaluationItems[0] = next;
+            return [next];
           },
         }),
       }),
-    },
+    }),
+  };
+  dbHandle.transaction = async (cb: (tx: unknown) => Promise<unknown>) => cb(dbHandle);
+  return {
+    db: dbHandle,
     getPool: () => ({ query: vi.fn() }),
   };
 });
@@ -179,6 +212,9 @@ afterEach(() => {
   dbState.evaluations = [];
   dbState.evaluationItems = [];
   dbState.itemInsertConflicts = false;
+  lockMock.locked = false;
+  lockMock.acquireCalls = 0;
+  lockMock.flipLockedDuringAcquire = false;
   vi.mocked(getPersistedUserSessionState).mockReset().mockResolvedValue({
     sessionVersion: 0,
     mustChangePassword: false,
@@ -490,6 +526,42 @@ describe('subject-scoped WebSocket cell locks', () => {
       code: 'CLASS_CONFERENCE_LOCKED',
       clientMutationId: 'mut-lock-1',
     });
+  });
+
+  it('re-checks the conference lock inside the transaction after acquiring the advisory lock', async () => {
+    const socket = new TestSocket();
+    await subscribe(socket);
+
+    const rubric = await import('../lib/rubric.js');
+    vi.mocked(rubric.loadRubricIndex).mockResolvedValue({ keyToCriterion: new Map() } as never);
+    vi.mocked(rubric.resolveCriterionId).mockReturnValue(1 as never);
+    vi.mocked(rubric.isValidRating).mockReturnValue(true);
+
+    // Initially unlocked when the pre-check runs; chair locks the class right before tx acquires lock.
+    lockMock.locked = false;
+    lockMock.flipLockedDuringAcquire = true;
+
+    await socket.receive({
+      type: 'UPDATE_RATING',
+      payload: {
+        classId: 101,
+        pupilId: 501,
+        subjectCode: 'D',
+        itemKey: 'org_1',
+        rating: '+',
+        expectedVersion: 0,
+        clientMutationId: 'mut-lock-race',
+      },
+    });
+
+    expect(lockMock.acquireCalls).toBe(1);
+    expect(socket.messages).toContainEqual({
+      type: 'ERROR',
+      message: 'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+      code: 'CLASS_CONFERENCE_LOCKED',
+      clientMutationId: 'mut-lock-race',
+    });
+    expect(socket.messages.some((m) => m.type === 'RATING_ACK')).toBe(false);
   });
 
   it('rejects a raster write on a submitted evaluation without touching its items', async () => {

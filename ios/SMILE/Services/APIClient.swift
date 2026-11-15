@@ -56,7 +56,7 @@ final class InternalCATrustDelegate: NSObject, URLSessionDelegate, Sendable {
         if SecTrustEvaluateWithError(serverTrust, &error) {
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         } else {
-            completionHandler(.performDefaultHandling, nil)
+            completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }
 }
@@ -80,9 +80,29 @@ final class APIClient: ObservableObject {
     private let session: URLSession
     private let trustDelegate = InternalCATrustDelegate()
 
+    static func isAllowedServerURL(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased(),
+              !host.isEmpty else {
+            return false
+        }
+        if scheme == "https" {
+            return true
+        }
+        return scheme == "http" && (host == "localhost" || host == "127.0.0.1")
+    }
+
     private init() {
         let saved = UserDefaults.standard.string(forKey: Self.serverURLKey)
-        self.baseURL = (saved?.isEmpty == false) ? saved! : Self.defaultServerURL
+        if let saved, Self.isAllowedServerURL(saved) {
+            self.baseURL = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+        } else {
+            self.baseURL = Self.defaultServerURL
+        }
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
@@ -95,7 +115,8 @@ final class APIClient: ObservableObject {
     private func makeURL(_ path: String) throws -> URL {
         let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        guard let url = URL(string: "\(trimmedBase)/api\(path)") else {
+        guard Self.isAllowedServerURL(trimmedBase),
+              let url = URL(string: "\(trimmedBase)/api\(path)") else {
             throw APIError.invalidURL
         }
         return url
@@ -330,6 +351,10 @@ final class APIClient: ObservableObject {
 
     func getBehaviorOverview() async throws -> BehaviorOverview {
         return try await request("/behavior/overview")
+    }
+
+    func getPupilBehaviorProfile(pupilId: Int) async throws -> PupilBehaviorProfile {
+        return try await request("/pupils/\(pupilId)/behavior-profile")
     }
 
     // MARK: - Bewertung / Einstufung

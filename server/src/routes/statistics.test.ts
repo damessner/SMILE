@@ -169,4 +169,28 @@ describe('GET /api/statistics/overview factual statistics dashboard', () => {
     expect(data.pupilCardStats[1].yellow).toBe(2);
     expect(data.pupilCardStats[1].timeout).toBe(1);
   });
+
+  it('counts Cool-Downs once across totals, breakdown, and pupil stats even when both rows exist', async () => {
+    database.rowsByTable.school_classes = [{ id: 10, name: '3a', grade: 3 }];
+    database.rowsByTable.pupils = [
+      { id: 101, fullName: 'Anna Muster', classId: 10, className: '3a', grade: 3 },
+    ];
+    database.rowsByTable.behavior_cards = [
+      { id: 'c1', pupilId: 101, classId: 10, cardType: 'cooldown', createdAt: new Date('2026-11-02T08:00:00Z'), revokedAt: null },
+    ];
+    database.rowsByTable.timeout_incidents = [
+      { id: 't1', pupilId: 101, classId: 10, kind: 'cooldown', sentAt: new Date('2026-11-02T08:00:00Z'), status: 'resolved' },
+    ];
+
+    const response = await app!.inject({ method: 'GET', url: '/api/statistics/overview' });
+    const data = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(data.cardsSummary.totals.cooldown).toBe(1);
+    expect(data.cardsSummary.totals.total).toBe(1);
+    expect(data.classBreakdown[0].cooldown).toBe(1);
+    expect(data.classBreakdown[0].totalCards).toBe(1);
+    expect(data.pupilCardStats[0].cooldown).toBe(1);
+    expect(data.pupilCardStats[0].total).toBe(1);
+  });
 });

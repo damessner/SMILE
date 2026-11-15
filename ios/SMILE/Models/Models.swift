@@ -394,3 +394,56 @@ struct StatisticsResponse: Codable {
     let classBreakdown: [ClassBreakdownItem]?
     let pupilCardStats: [PupilCardStat]?
 }
+
+// MARK: - Pupil Behavior Profile
+
+struct BehaviorStageInfo: Codable, Equatable {
+    let level: Int
+    let title: String
+    let type: String
+    let description: String
+    let thresholdLabel: String
+    let defaultGrade: String
+}
+
+struct BehaviorStageStats: Codable, Equatable {
+    let greenCount: Int
+    let yellowCount: Int
+    let redCount: Int
+    let timeoutCount: Int
+}
+
+struct PupilStageCalculation: Codable, Equatable {
+    let currentStage: Int
+    let positiveStage: Int
+    let consequenceStage: Int
+    let stageInfo: BehaviorStageInfo
+    let behaviorGrade: String
+    let stats: BehaviorStageStats
+}
+
+struct PupilBehaviorActionItem: Codable, Identifiable, Equatable {
+    let id: String
+    let stage_level: Int
+    let stage_title: String
+    let status: String
+    let action_date: String?
+    let notes: String?
+    let teacher_short: String?
+    let teacher_name: String?
+    let created_at: String?
+}
+
+struct PupilBehaviorProfileSummary: Codable, Equatable {
+    let id: Int
+    let fullName: String
+    let classId: Int
+    let className: String
+    let currentRank: String
+}
+
+struct PupilBehaviorProfile: Codable, Equatable {
+    let pupil: PupilBehaviorProfileSummary
+    let calculation: PupilStageCalculation
+    let actions: [PupilBehaviorActionItem]?
+}

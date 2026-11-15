@@ -24,6 +24,7 @@ import {
   type AuthUser,
 } from '../lib/guards.js';
 import { config } from '../config.js';
+import { tallyBehaviorCounts } from '../lib/behavior-counts.js';
 import {
   buildSubjectStatistics,
   calculateSubjectDistribution,
@@ -170,25 +171,7 @@ export const statisticsRoutes: FastifyPluginAsync = async (fastify) => {
     const pupilCardStats = classPupils.map((p) => {
       const cards = activeCards.filter((c) => c.pupilId === p.id);
       const timeouts = classTimeouts.filter((t) => t.pupilId === p.id);
-
-      let green = 0;
-      let yellow = 0;
-      let red = 0;
-      let cooldown = 0;
-      let timeout = 0;
-
-      for (const c of cards) {
-        if (c.cardType === 'green') green++;
-        else if (c.cardType === 'yellow') yellow++;
-        else if (c.cardType === 'red') red++;
-        else if (c.cardType === 'cooldown') cooldown++;
-      }
-
-      for (const t of timeouts) {
-        if (t.kind === 'timeout') timeout++;
-        else if (t.kind === 'cooldown') cooldown++;
-      }
-
+      const { green, yellow, red, cooldown, timeout } = tallyBehaviorCounts(cards, timeouts);
       const total = green + yellow + red + cooldown + timeout;
 
       return {
@@ -422,24 +405,7 @@ function computeCardsSummary(
     status: string;
   }>,
 ) {
-  let green = 0;
-  let yellow = 0;
-  let red = 0;
-  let cooldown = 0;
-  let timeout = 0;
-
-  for (const c of activeCards) {
-    if (c.cardType === 'green') green++;
-    else if (c.cardType === 'yellow') yellow++;
-    else if (c.cardType === 'red') red++;
-    else if (c.cardType === 'cooldown') cooldown++;
-  }
-
-  for (const t of classTimeouts) {
-    if (t.kind === 'timeout') timeout++;
-    else if (t.kind === 'cooldown') cooldown++;
-  }
-
+  const { green, yellow, red, cooldown, timeout } = tallyBehaviorCounts(activeCards, classTimeouts);
   const total = green + yellow + red + cooldown + timeout;
 
   // Temporal analysis: Day of week & period
@@ -519,24 +485,10 @@ function computeClassBreakdown(
     const classPupilsInThisClass = classPupils.filter((p) => p.classId === sc.id);
     const cardsInClass = activeCards.filter((c) => c.classId === sc.id);
     const timeoutsInClass = classTimeouts.filter((t) => t.classId === sc.id);
-
-    let green = 0;
-    let yellow = 0;
-    let red = 0;
-    let cooldown = 0;
-    let timeout = 0;
-
-    for (const c of cardsInClass) {
-      if (c.cardType === 'green') green++;
-      else if (c.cardType === 'yellow') yellow++;
-      else if (c.cardType === 'red') red++;
-      else if (c.cardType === 'cooldown') cooldown++;
-    }
-    for (const t of timeoutsInClass) {
-      if (t.kind === 'timeout') timeout++;
-      else if (t.kind === 'cooldown') cooldown++;
-    }
-
+    const { green, yellow, red, cooldown, timeout } = tallyBehaviorCounts(
+      cardsInClass,
+      timeoutsInClass,
+    );
     const totalCards = green + yellow + red + cooldown + timeout;
     const totalIncidents = yellow + red + timeout;
 

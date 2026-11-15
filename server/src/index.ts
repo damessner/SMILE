@@ -30,7 +30,7 @@ import { statisticsRoutes } from './routes/statistics.js';
 import { timetableRoutes } from './routes/timetable.js';
 import { timeoutRoutes } from './routes/timeouts.js';
 import { notificationRoutes } from './routes/notifications.js';
-import { registerTimeoutSweeper } from './lib/timeout-sweeper.js';
+import { registerTimeoutSweeper, type TimeoutSweeper } from './lib/timeout-sweeper.js';
 import { registerWebUntisOutboxWorker } from './lib/webuntis/outbox.js';
 import { startWeeklyDigestScheduler } from './lib/notification-digest.js';
 import { bellScheduleTimezoneWarning } from './lib/period-times.js';
@@ -41,6 +41,8 @@ import {
   stopWebSocketHeartbeat,
 } from './ws/live-sync.js';
 import { isRestoreInProgress } from './lib/restore-lock.js';
+
+const timeoutSweepers = new WeakMap<object, TimeoutSweeper>();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -289,7 +291,7 @@ export async function buildServer(
 
   // Release expired timeouts at the bell.
   if (config.env !== 'test') {
-    registerTimeoutSweeper(fastify);
+    timeoutSweepers.set(fastify, registerTimeoutSweeper(fastify));
   }
 
   return fastify;
@@ -377,6 +379,7 @@ export async function start() {
 
   const shutdown = async (signal: string) => {
     fastify.log.info(`${signal} received, shutting down`);
+    timeoutSweepers.get(fastify)?.stop();
     stopWebUntisOutbox();
     stopWebSocketHeartbeat(heartbeat);
     clearInterval(digestTimer);

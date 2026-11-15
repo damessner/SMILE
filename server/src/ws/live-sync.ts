@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm';
-import { db, getPool } from '../db/index.js';
+import { and, eq, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
 import {
   evaluationItems,
   evaluations,
@@ -12,7 +12,12 @@ import { safeErrorLogFields } from '../lib/log-safety.js';
 import { getClassAccess, findPupilInClass, canRatePupilSubject, canRateSubject, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parsePositiveInt, LW_CLASS_ID, type AuthUser } from '../lib/guards.js';
 import { isValidRating, invalidateRubricCache, loadRubricIndex, resolveCriterionId } from '../lib/rubric.js';
 import { normalizeKnownSubject, normalizeSubject } from '../utils/subject.js';
-import { getClassRoundLockState, isClassRoundLocked } from '../lib/class-round-lock.js';
+import {
+  acquireClassRoundLock,
+  getClassRoundLockState,
+  getClassRoundLockStateWith,
+  isClassRoundLocked,
+} from '../lib/class-round-lock.js';
 import { getLatestRound } from '../lib/rounds.js';
 import { isRestoreInProgress } from '../lib/restore-lock.js';
 
@@ -697,40 +702,53 @@ async function onUpdateRating(client: ClientConnection, payload: unknown): Promi
     return;
   }
 
-  // One evaluation per (round, pupil, class, subject). A concurrent insert can hit the
-  // unique index, so fall back to re-reading rather than failing the write.
-  let [evalRecord] = await db
-    .select()
-    .from(evaluations)
-    .where(
-      and(
-        eq(evaluations.roundId, round.id),
-        eq(evaluations.pupilId, pupilId),
-        eq(evaluations.classId, classId),
-        eq(evaluations.subjectCode, subjectCode),
-      ),
-    )
-    .limit(1);
+  // Serialise the conference lock check with the item write via `acquireClassRoundLock`,
+  // matching the HTTP evaluation routes. Use `onConflictDoNothing().returning()` instead
+  // of `try/catch` so a concurrent empty-cell or evaluation race never aborts the
+  // PostgreSQL transaction.
+  type TxOutcome =
+    | { kind: 'locked' }
+    | { kind: 'create_failed' }
+    | { kind: 'submitted' }
+    | { kind: 'race_error' }
+    | { kind: 'conflict_missing'; evaluationId?: string }
+    | {
+        kind: 'conflict_item';
+        evaluationId: string;
+        winner: typeof evaluationItems.$inferSelect | undefined;
+        lostInsertRace: boolean;
+      }
+    | {
+        kind: 'written';
+        evalRecord: typeof evaluations.$inferSelect;
+        item: typeof evaluationItems.$inferSelect;
+      };
 
-  if (!evalRecord && payload.expectedVersion !== undefined && expectedVersion > 0) {
-    sendTo(client, {
-      type: 'CONFLICT',
-      message: 'Konflikt: Die Bewertung wurde seit dem letzten Laden geändert.',
-      classId,
-      pupilId,
-      itemKey,
-      subjectCode,
-      currentRating: '',
-      currentVersion: 0,
-      updatedBy: '',
-      ...(clientMutationId ? { clientMutationId } : {}),
-    });
-    return;
-  }
+  const outcome: TxOutcome = await db.transaction(async (tx) => {
+    await acquireClassRoundLock(tx, round.id, classId);
+    if (await getClassRoundLockStateWith(tx, round.id, classId)) {
+      return { kind: 'locked' };
+    }
 
-  if (!evalRecord) {
-    try {
-      [evalRecord] = await db
+    let [evalRecord] = await tx
+      .select()
+      .from(evaluations)
+      .where(
+        and(
+          eq(evaluations.roundId, round.id),
+          eq(evaluations.pupilId, pupilId),
+          eq(evaluations.classId, classId),
+          eq(evaluations.subjectCode, subjectCode),
+        ),
+      )
+      .limit(1);
+
+    if (!evalRecord && payload.expectedVersion !== undefined && expectedVersion > 0) {
+      return { kind: 'conflict_missing' };
+    }
+
+    if (!evalRecord) {
+      [evalRecord] = await tx
         .insert(evaluations)
         .values({
           roundId: round.id,
@@ -739,74 +757,51 @@ async function onUpdateRating(client: ClientConnection, payload: unknown): Promi
           subjectCode,
           teacherId,
         })
+        .onConflictDoNothing()
         .returning();
-    } catch {
-      [evalRecord] = await db
-        .select()
-        .from(evaluations)
-        .where(
-          and(
-            eq(evaluations.roundId, round.id),
-            eq(evaluations.pupilId, pupilId),
-            eq(evaluations.classId, classId),
-            eq(evaluations.subjectCode, subjectCode),
-          ),
-        )
-        .limit(1);
+
       if (!evalRecord) {
-        sendRatingError(client, clientMutationId, 'Bewertung konnte nicht angelegt werden.');
-        return;
+        [evalRecord] = await tx
+          .select()
+          .from(evaluations)
+          .where(
+            and(
+              eq(evaluations.roundId, round.id),
+              eq(evaluations.pupilId, pupilId),
+              eq(evaluations.classId, classId),
+              eq(evaluations.subjectCode, subjectCode),
+            ),
+          )
+          .limit(1);
+      }
+
+      if (!evalRecord) {
+        return { kind: 'create_failed' };
       }
     }
-  }
 
-  // A submitted ballot is final until it is explicitly reopened. The rank/next-step
-  // write path enforces that with a conditional update, but the raster items behind the
-  // ballot were still writable: a co-teacher's client disables the grid, a crafted frame
-  // did not. Changing the items changes the evidence the conference screen shows, so the
-  // write is refused here for the same reason /reopen exists.
-  if (evalRecord.isSubmitted) {
-    sendRatingError(
-      client,
-      clientMutationId,
-      'Diese Bewertung ist bereits eingereicht. Bitte zuerst wieder öffnen.',
-      'EVALUATION_SUBMITTED',
-    );
-    return;
-  }
+    // A submitted ballot is final until it is explicitly reopened.
+    if (evalRecord.isSubmitted) {
+      return { kind: 'submitted' };
+    }
 
-  const [existingItem] = await db
-    .select()
-    .from(evaluationItems)
-    .where(
-      and(
-        eq(evaluationItems.evaluationId, evalRecord.id),
-        eq(evaluationItems.itemKey, itemKey),
-      ),
-    )
-    .limit(1);
+    const [existingItem] = await tx
+      .select()
+      .from(evaluationItems)
+      .where(
+        and(
+          eq(evaluationItems.evaluationId, evalRecord.id),
+          eq(evaluationItems.itemKey, itemKey),
+        ),
+      )
+      .limit(1);
 
-  if (!existingItem && payload.expectedVersion !== undefined && expectedVersion > 0) {
-    sendTo(client, {
-      type: 'CONFLICT',
-      message: 'Konflikt: Die Bewertung wurde seit dem letzten Laden geändert.',
-      evaluationId: evalRecord.id,
-      classId,
-      pupilId,
-      itemKey,
-      subjectCode,
-      currentRating: '',
-      currentVersion: 0,
-      updatedBy: '',
-      ...(clientMutationId ? { clientMutationId } : {}),
-    });
-    return;
-  }
+    if (!existingItem && payload.expectedVersion !== undefined && expectedVersion > 0) {
+      return { kind: 'conflict_missing', evaluationId: evalRecord.id };
+    }
 
-  if (!existingItem) {
-    let newItem;
-    try {
-      [newItem] = await db
+    if (!existingItem) {
+      const [newItem] = await tx
         .insert(evaluationItems)
         .values({
           evaluationId: evalRecord.id,
@@ -817,110 +812,145 @@ async function onUpdateRating(client: ClientConnection, payload: unknown): Promi
           updatedByTeacherId: teacherId,
           updatedAt: new Date(),
         })
+        .onConflictDoNothing()
         .returning();
-    } catch {
-      // Both clients read this empty cell as "no row" and both inserted; one lost the race
-      // on the unique index. An error message would be a dead end - the winning value is
-      // not on the loser's screen anywhere - so answer with the same reconcilable CONFLICT
-      // the version race uses and let the client apply the value that actually landed.
-      const [winner] = await db
-        .select()
-        .from(evaluationItems)
-        .where(
-          and(
-            eq(evaluationItems.evaluationId, evalRecord.id),
-            eq(evaluationItems.itemKey, itemKey),
-          ),
-        )
-        .limit(1);
 
-      if (winner) {
-        sendTo(client, {
-          type: 'CONFLICT',
-          message: 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade gesetzt.',
-          evaluationId: evalRecord.id,
-          classId,
-          pupilId,
-          itemKey,
-          subjectCode,
-          currentRating: winner.rating,
-          currentVersion: winner.version,
-          updatedAt: winner.updatedAt,
-          ...(clientMutationId ? { clientMutationId } : {}),
-        });
-        return;
+      if (!newItem) {
+        // Both clients read this empty cell as "no row" and both inserted; one lost the race
+        // on the unique index. Answer with a reconcilable CONFLICT so the loser applies what landed.
+        const [winner] = await tx
+          .select()
+          .from(evaluationItems)
+          .where(
+            and(
+              eq(evaluationItems.evaluationId, evalRecord.id),
+              eq(evaluationItems.itemKey, itemKey),
+            ),
+          )
+          .limit(1);
+
+        if (winner) {
+          return {
+            kind: 'conflict_item',
+            evaluationId: evalRecord.id,
+            winner,
+            lostInsertRace: true,
+          };
+        }
+        return { kind: 'race_error' };
       }
 
-      sendRatingError(client, clientMutationId, 'Diese Bewertung wurde gerade von einer Kollegin gesetzt.');
-      return;
+      return { kind: 'written', evalRecord, item: newItem };
     }
 
-    releaseSoftLock(softLockKey(classId, subjectCode, pupilId, itemKey));
-    acknowledgeRatingWrite(client, clientMutationId);
-    await broadcastToClass(classId, {
-      type: 'RATING_UPDATED',
-      evaluationId: evalRecord.id,
-      pupilId,
-      itemKey,
-      rating: newItem.rating,
-      version: newItem.version,
-      updatedBy: client.teacherName,
-      updatedAt: newItem.updatedAt,
-      subjectCode: evalRecord.subjectCode,
-    });
-    return;
-  }
+    // Atomic optimistic concurrency control: the version predicate is evaluated by
+    // Postgres inside the same transaction, so two simultaneous taps cannot both win.
+    const [updated] = await tx
+      .update(evaluationItems)
+      .set({
+        rating,
+        version: sql`${evaluationItems.version} + 1`,
+        updatedByTeacherId: teacherId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(evaluationItems.id, existingItem.id),
+          eq(evaluationItems.version, expectedVersion),
+        ),
+      )
+      .returning();
 
-  // Atomic optimistic concurrency control: the version predicate is evaluated by
-  // Postgres, so two simultaneous taps cannot both win.
-  const updateResult = await getPool().query(
-    `UPDATE evaluation_items
-       SET rating = $1,
-           version = version + 1,
-           updated_by_teacher_id = $2,
-           updated_at = NOW()
-     WHERE id = $3 AND version = $4
-     RETURNING *;`,
-    [rating, teacherId, existingItem.id, expectedVersion],
-  );
+    if (!updated) {
+      const [latest] = await tx
+        .select()
+        .from(evaluationItems)
+        .where(eq(evaluationItems.id, existingItem.id))
+        .limit(1);
 
-  if (updateResult.rowCount === 0) {
-    const [latest] = await db
-      .select()
-      .from(evaluationItems)
-      .where(eq(evaluationItems.id, existingItem.id))
-      .limit(1);
+      return {
+        kind: 'conflict_item',
+        evaluationId: evalRecord.id,
+        winner: latest,
+        lostInsertRace: false,
+      };
+    }
 
-    sendTo(client, {
-      type: 'CONFLICT',
-      message: 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade geändert.',
-      evaluationId: evalRecord.id,
-      classId,
-      pupilId,
-      itemKey,
-      subjectCode,
-      currentRating: latest?.rating ?? '',
-      currentVersion: latest?.version ?? 0,
-      updatedAt: latest?.updatedAt ?? null,
-      ...(clientMutationId ? { clientMutationId } : {}),
-    });
-    return;
-  }
-
-  const updated = updateResult.rows[0];
-  releaseSoftLock(softLockKey(classId, subjectCode, pupilId, itemKey));
-  acknowledgeRatingWrite(client, clientMutationId);
-  await broadcastToClass(classId, {
-    type: 'RATING_UPDATED',
-    evaluationId: evalRecord.id,
-    pupilId,
-    itemKey,
-    rating: updated.rating,
-    version: updated.version,
-    updatedBy: client.teacherName,
-    updatedAt: updated.updated_at,
-    subjectCode: evalRecord.subjectCode,
+    return { kind: 'written', evalRecord, item: updated };
   });
+
+  switch (outcome.kind) {
+    case 'locked':
+      sendRatingError(
+        client,
+        clientMutationId,
+        'Die Klassenkonferenz ist gesperrt. Bewertungen können nicht mehr geändert werden.',
+        'CLASS_CONFERENCE_LOCKED',
+      );
+      return;
+    case 'create_failed':
+      sendRatingError(client, clientMutationId, 'Bewertung konnte nicht angelegt werden.');
+      return;
+    case 'submitted':
+      sendRatingError(
+        client,
+        clientMutationId,
+        'Diese Bewertung ist bereits eingereicht. Bitte zuerst wieder öffnen.',
+        'EVALUATION_SUBMITTED',
+      );
+      return;
+    case 'race_error':
+      sendRatingError(client, clientMutationId, 'Diese Bewertung wurde gerade von einer Kollegin gesetzt.');
+      return;
+    case 'conflict_missing':
+      sendTo(client, {
+        type: 'CONFLICT',
+        message: 'Konflikt: Die Bewertung wurde seit dem letzten Laden geändert.',
+        ...(outcome.evaluationId ? { evaluationId: outcome.evaluationId } : {}),
+        classId,
+        pupilId,
+        itemKey,
+        subjectCode,
+        currentRating: '',
+        currentVersion: 0,
+        updatedBy: '',
+        ...(clientMutationId ? { clientMutationId } : {}),
+      });
+      return;
+    case 'conflict_item':
+      sendTo(client, {
+        type: 'CONFLICT',
+        message: outcome.lostInsertRace
+          ? 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade gesetzt.'
+          : 'Konflikt: Eine Kollegin oder ein Kollege hat diesen Wert gerade geändert.',
+        evaluationId: outcome.evaluationId,
+        classId,
+        pupilId,
+        itemKey,
+        subjectCode,
+        currentRating: outcome.winner?.rating ?? '',
+        currentVersion: outcome.winner?.version ?? 0,
+        updatedAt: outcome.winner?.updatedAt ?? null,
+        ...(clientMutationId ? { clientMutationId } : {}),
+      });
+      return;
+    case 'written': {
+      releaseSoftLock(softLockKey(classId, subjectCode, pupilId, itemKey));
+      acknowledgeRatingWrite(client, clientMutationId);
+      await broadcastToClass(classId, {
+        type: 'RATING_UPDATED',
+        evaluationId: outcome.evalRecord.id,
+        pupilId,
+        itemKey,
+        rating: outcome.item.rating,
+        version: outcome.item.version,
+        updatedBy: client.teacherName,
+        updatedAt: outcome.item.updatedAt,
+        subjectCode: outcome.evalRecord.subjectCode,
+      });
+      return;
+    }
+  }
 }
 
 /**

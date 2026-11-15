@@ -1,18 +1,51 @@
+import { lazy, Suspense } from 'react';
 import type { PupilWithData, RubricCriterion, SchoolClass, User } from '../../types';
-import { AdminAccountsModal } from '../../components/AdminAccountsModal';
-import { AdminRestoreModal } from '../../components/AdminRestoreModal';
-import { CardDrawer } from '../../components/CardDrawer';
-import { KelPdfModal } from '../../components/KelPdfModal';
-import { PupilManagerModal } from '../../components/PupilManagerModal';
-import { ConferenceVotingModal } from '../../components/ConferenceVotingModal';
-import { TeacherClassReportModal } from '../../components/TeacherClassReportModal';
-import { AllClassesConferenceExportModal } from '../../components/AllClassesConferenceExportModal';
-import { TimeoutEscalationModal } from '../../components/TimeoutEscalationModal';
-import { OnboardingTour } from '../../components/OnboardingTour';
-import { ReleaseHistoryModal, WhatsNewDialog } from '../../components/ReleaseNotes';
-import { NotificationSettingsModal } from '../../components/NotificationSettingsModal';
 import type { AppModals } from '../hooks/useAppModals';
 import type { AppTab } from '../types';
+
+const AdminAccountsModal = lazy(() =>
+  import('../../components/AdminAccountsModal').then((m) => ({ default: m.AdminAccountsModal })),
+);
+const AdminRestoreModal = lazy(() =>
+  import('../../components/AdminRestoreModal').then((m) => ({ default: m.AdminRestoreModal })),
+);
+const CardDrawer = lazy(() =>
+  import('../../components/CardDrawer').then((m) => ({ default: m.CardDrawer })),
+);
+const KelPdfModal = lazy(() =>
+  import('../../components/KelPdfModal').then((m) => ({ default: m.KelPdfModal })),
+);
+const PupilManagerModal = lazy(() =>
+  import('../../components/PupilManagerModal').then((m) => ({ default: m.PupilManagerModal })),
+);
+const ConferenceVotingModal = lazy(() =>
+  import('../../components/ConferenceVotingModal').then((m) => ({ default: m.ConferenceVotingModal })),
+);
+const TeacherClassReportModal = lazy(() =>
+  import('../../components/TeacherClassReportModal').then((m) => ({ default: m.TeacherClassReportModal })),
+);
+const AllClassesConferenceExportModal = lazy(() =>
+  import('../../components/AllClassesConferenceExportModal').then((m) => ({
+    default: m.AllClassesConferenceExportModal,
+  })),
+);
+const TimeoutEscalationModal = lazy(() =>
+  import('../../components/TimeoutEscalationModal').then((m) => ({ default: m.TimeoutEscalationModal })),
+);
+const OnboardingTour = lazy(() =>
+  import('../../components/OnboardingTour').then((m) => ({ default: m.OnboardingTour })),
+);
+const ReleaseHistoryModal = lazy(() =>
+  import('../../components/ReleaseNotes').then((m) => ({ default: m.ReleaseHistoryModal })),
+);
+const WhatsNewDialog = lazy(() =>
+  import('../../components/ReleaseNotes').then((m) => ({ default: m.WhatsNewDialog })),
+);
+const NotificationSettingsModal = lazy(() =>
+  import('../../components/NotificationSettingsModal').then((m) => ({
+    default: m.NotificationSettingsModal,
+  })),
+);
 
 export interface AppModalsProps {
   modals: AppModals;
@@ -78,7 +111,7 @@ export function AppModals({
   } = modals;
 
   return (
-    <>
+    <Suspense fallback={null}>
       {conferenceModalOpen && classes.length > 0 && (
         <ConferenceVotingModal
           classes={classes}
@@ -191,6 +224,6 @@ export function AppModals({
         activeTab={activeTab}
         setActiveTab={setActiveTab}
       />
-    </>
+    </Suspense>
   );
 }

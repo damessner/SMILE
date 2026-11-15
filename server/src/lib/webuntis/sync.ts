@@ -57,6 +57,7 @@ function reportEnqueueFailure(err: unknown): void {
  */
 export function queueWebUntisClassregEvent(payload: DisciplinarySyncPayload): void {
   if (!config.webuntis.autoSyncDisciplinary) return;
+  if (!payload.teacherUserId) return;
 
   const when = payload.occurredAt ?? new Date();
   const { date, time } = localDateParts(when);
@@ -88,6 +89,7 @@ export function queueWebUntisClassregEvent(payload: DisciplinarySyncPayload): vo
  */
 export function queueWebUntisClassregCorrection(payload: DisciplinarySyncPayload): void {
   if (!config.webuntis.autoSyncDisciplinary) return;
+  if (!payload.teacherUserId) return;
 
   const when = payload.occurredAt ?? new Date();
   const { date, time } = localDateParts(when);

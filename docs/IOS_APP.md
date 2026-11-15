@@ -1,6 +1,6 @@
 # SMILE — Native iOS / iPadOS App (`ios/`)
 
-Die native SMILE App für **iPadOS & iOS (ab Version 17.0)** ist in **Swift & SwiftUI** geschrieben und greift direkt auf die SMILE REST-API (`https://172.16.1.11` bzw. `https://smile.schule.intern`) zu. Aktuelle App-Version: **2.1.0**.
+Die native SMILE App für **iPadOS & iOS (ab Version 17.0)** ist in **Swift & SwiftUI** geschrieben und greift direkt auf die SMILE REST-API (`https://172.16.1.11` bzw. `https://smile.schule.intern`) zu. Aktuelle App-Version: **2.1.1**.
 
 Die App ist **kein Web-Wrapper**: keine `WKWebView`, keine gebündelten HTML/JS-Dateien. Alle Daten laufen über `URLSession` gegen dieselben `/api`-Endpunkte wie die Web-App.
 

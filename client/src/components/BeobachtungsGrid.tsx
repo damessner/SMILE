@@ -102,6 +102,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
   const [votedComment, setVotedComment] = useState<string>('');
   const [isSavingVote, setIsSavingVote] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [autoAdvanceQuickGrade, setAutoAdvanceQuickGrade] = useState(false);
 
   // Autosave and feedback state
   const saveFeedback = useSaveFeedback();
@@ -320,6 +321,14 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
       setVotedRank(targetRank);
       finishSave();
       setSaveSuccessMsg(`Rang „${targetRank}“ übermittelt`);
+      if (autoAdvanceQuickGrade) {
+        const activeList = currentList.length > 0 ? currentList : effectivePupils;
+        const currIdx = activeList.findIndex((p) => p.id === selectedPupil.id);
+        const nextPupil = currIdx >= 0 ? activeList[currIdx + 1] : undefined;
+        if (nextPupil) {
+          setSelectedPupilId(nextPupil.id);
+        }
+      }
     } catch (err) {
       finishSave(err);
       toast.error('Rang konnte nicht gespeichert werden');
@@ -567,6 +576,8 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             isAllSubjectsMode={isAllSubjectsMode}
             mySubjects={mySubjects}
             disabled={!canWrite || isLockedByConference || isPastDeadline}
+            autoAdvance={autoAdvanceQuickGrade}
+            onToggleAutoAdvance={setAutoAdvanceQuickGrade}
             onQuickGrade={handleQuickGrade}
           />
 

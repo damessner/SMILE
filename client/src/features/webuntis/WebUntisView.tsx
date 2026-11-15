@@ -1,5 +1,6 @@
 import { WebUntisConnectModal } from './WebUntisConnectModal';
-import React, { useState, useEffect, useMemo } from 'react';
+import { Dialog } from '../../components/ui/Dialog';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BookOpen,
   Calendar,
@@ -31,10 +32,14 @@ import {
   getWebUntisAbsences,
   getWebUntisEvents,
   createWebUntisEvent,
+  getClassPupils,
+  getWebUntisOutbox,
+  retryWebUntisOutbox,
   type WebUntisStatus,
   type WebUntisLessonItem,
   type WebUntisAbsenceItem,
   type WebUntisEventItem,
+  type WebUntisOutboxResponse,
 } from '../../services/api';
 
 interface WebUntisViewProps {
@@ -213,10 +218,21 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
   // Modal: New Event
   const [isNewEventModalOpen, setIsNewEventModalOpen] = useState<boolean>(false);
   const [modalPupilId, setModalPupilId] = useState<number>(0);
+  const [modalPupils, setModalPupils] = useState<PupilWithData[] | null>(null);
+  const [loadingModalPupils, setLoadingModalPupils] = useState<boolean>(false);
   const [modalCategoryId, setModalCategoryId] = useState<number>(2); // 2 = Verhalten
   const [modalText, setModalText] = useState<string>('');
   const [submittingEvent, setSubmittingEvent] = useState<boolean>(false);
   const [eventError, setEventError] = useState<string | null>(null);
+
+  // Outbox sync queue (pending/failed SMILE -> WebUntis mirrors)
+  const [outbox, setOutbox] = useState<WebUntisOutboxResponse | null>(null);
+  const [retryingOutbox, setRetryingOutbox] = useState<boolean>(false);
+
+  // Request generation counters discard stale responses across rapid filter/date switches.
+  const lessonsReqRef = useRef(0);
+  const absencesReqRef = useRef(0);
+  const eventsReqRef = useRef(0);
 
   // Calculate School Week (Monday through Friday)
   const schoolWeek = useMemo(() => {
@@ -318,8 +334,33 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     }
   };
 
+  // Load Outbox
+  const loadOutbox = async () => {
+    try {
+      const res = await getWebUntisOutbox();
+      setOutbox(res);
+    } catch {
+      // Non-fatal: outbox visibility shouldn't block timetable/event views.
+    }
+  };
+
+  // Retry failed outbox items
+  const handleRetryOutbox = async () => {
+    try {
+      setRetryingOutbox(true);
+      setSaveError(null);
+      await retryWebUntisOutbox();
+      await Promise.all([loadOutbox(), loadEvents()]);
+    } catch (err) {
+      setSaveError(errorMessage(err));
+    } finally {
+      setRetryingOutbox(false);
+    }
+  };
+
   // Load Timetable
   const loadLessons = async () => {
+    const reqId = ++lessonsReqRef.current;
     try {
       setLoadingLessons(true);
       setDataError(null);
@@ -336,6 +377,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
         res = await getWebUntisTimetable(selectedDate, classIdParam);
       }
 
+      if (reqId !== lessonsReqRef.current) return;
       setLessons(res.lessons || []);
 
       // Prepopulate lesson edits from existing Lehrstoff
@@ -347,11 +389,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
       }
       setLessonEdits((prev) => ({ ...initialEdits, ...prev }));
     } catch (err) {
+      if (reqId !== lessonsReqRef.current) return;
       // An outage is not an empty timetable. Keep the previous data visible and
       // show why it could not be refreshed.
       setDataError(errorMessage(err));
     } finally {
-      setLoadingLessons(false);
+      if (reqId === lessonsReqRef.current) {
+        setLoadingLessons(false);
+      }
     }
   };
 
@@ -388,32 +433,42 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
   // Load Absences
   const loadAbsences = async () => {
+    const reqId = ++absencesReqRef.current;
     try {
       setLoadingAbsences(true);
       setDataError(null);
       const classIdParam = selectedClassId === 'all' ? undefined : selectedClassId;
       const res = await getWebUntisAbsences(selectedDate, classIdParam);
+      if (reqId !== absencesReqRef.current) return;
       setAbsences(res.absences || []);
     } catch (err) {
+      if (reqId !== absencesReqRef.current) return;
       setDataError(errorMessage(err));
     } finally {
-      setLoadingAbsences(false);
+      if (reqId === absencesReqRef.current) {
+        setLoadingAbsences(false);
+      }
     }
   };
 
   // Load Events
   const loadEvents = async () => {
+    const reqId = ++eventsReqRef.current;
     try {
       setLoadingEvents(true);
       const classIdParam = selectedClassId === 'all' ? undefined : selectedClassId;
       const res = await getWebUntisEvents(classIdParam);
+      if (reqId !== eventsReqRef.current) return;
       setEvents(res.events || []);
     } catch {
+      if (reqId !== eventsReqRef.current) return;
       // Event reading permissions may not be granted to standard teacher accounts.
       // Keep events empty rather than masking the timetable or absences.
       setEvents([]);
     } finally {
-      setLoadingEvents(false);
+      if (reqId === eventsReqRef.current) {
+        setLoadingEvents(false);
+      }
     }
   };
 
@@ -421,6 +476,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     loadLessons();
     loadAbsences();
     loadEvents();
+    loadOutbox();
   };
 
   useEffect(() => {
@@ -532,6 +588,57 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
     setActiveSubTab('absences');
   };
 
+  const eventTargetClassId =
+    selectedClassId === 'all' ? (currentClass?.id || classes[0]?.id || null) : selectedClassId;
+  const eventTargetClass = useMemo(
+    () => classes.find((c) => c.id === eventTargetClassId) ?? (currentClass?.id === eventTargetClassId ? currentClass : null),
+    [classes, currentClass, eventTargetClassId],
+  );
+  const effectiveModalPupils =
+    eventTargetClassId && eventTargetClassId === currentClass?.id
+      ? pupils
+      : (modalPupils ?? []);
+
+  // Load matching class roster when creating an event for a different filtered class.
+  useEffect(() => {
+    if (!isNewEventModalOpen || !eventTargetClassId) {
+      setModalPupils(null);
+      setLoadingModalPupils(false);
+      return;
+    }
+    if (eventTargetClassId === currentClass?.id) {
+      setModalPupils(null);
+      setLoadingModalPupils(false);
+      return;
+    }
+
+    let cancelled = false;
+    setModalPupilId(0);
+    setLoadingModalPupils(true);
+    getClassPupils(eventTargetClassId)
+      .then((res) => {
+        if (!cancelled) {
+          const list = Array.isArray(res) ? res : res?.pupils;
+          setModalPupils(Array.isArray(list) ? list : []);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setModalPupils([]);
+          setEventError(errorMessage(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingModalPupils(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewEventModalOpen, eventTargetClassId, currentClass?.id]);
+
   // Submit New Klassenbucheintrag
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -540,7 +647,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
       return;
     }
 
-    const targetClassId = selectedClassId === 'all' ? (currentClass?.id || classes[0]?.id) : selectedClassId;
+    const targetClassId = eventTargetClassId;
     if (!targetClassId) {
       setEventError('Keine Klasse ausgewählt.');
       return;
@@ -779,6 +886,44 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <Sparkles className="w-3.5 h-3.5" />
             <span>Jetzt verknüpfen</span>
           </button>
+        </div>
+      )}
+
+      {/* Outbox queue banner (pending/failed SMILE -> WebUntis class-register mirrors) */}
+      {outbox && (outbox.failedCount > 0 || outbox.pendingCount > 0) && (
+        <div
+          className={`p-3 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-3 ${
+            outbox.failedCount > 0
+              ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+              : 'bg-sky-500/10 border-sky-500/30 text-sky-200'
+          }`}
+        >
+          <div className="space-y-0.5">
+            <p className="font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>
+                WebUntis-Synchronisation: {outbox.failedCount > 0 ? `${outbox.failedCount} fehlgeschlagen` : ''}
+                {outbox.failedCount > 0 && outbox.pendingCount > 0 ? ', ' : ''}
+                {outbox.pendingCount > 0 ? `${outbox.pendingCount} ausstehend` : ''}
+              </span>
+            </p>
+            {outbox.items.find((i) => i.status === 'failed' && i.lastError)?.lastError && (
+              <p className="text-[11px] opacity-80">
+                Letzter Fehler: {outbox.items.find((i) => i.status === 'failed' && i.lastError)?.lastError}
+              </p>
+            )}
+          </div>
+          {accountStatus?.connected && outbox.failedCount > 0 && (
+            <button
+              type="button"
+              onClick={handleRetryOutbox}
+              disabled={retryingOutbox}
+              className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 font-bold flex items-center gap-1.5 shrink-0 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${retryingOutbox ? 'animate-spin' : ''}`} />
+              <span>{retryingOutbox ? 'Sende erneut...' : 'Erneut senden'}</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -1539,15 +1684,21 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
       {/* MODAL: Neuer Klassenbucheintrag */}
       {isNewEventModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+        <Dialog
+          onClose={() => setIsNewEventModalOpen(false)}
+          labelledBy="webuntis-new-event-title"
+          align="sheet"
+          panelClassName="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4 animate-fade-in"
+        >
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-slate-100 font-bold">
+              <h3 id="webuntis-new-event-title" className="flex items-center gap-2 text-slate-100 font-bold">
                 <ShieldAlert className="w-5 h-5 text-sky-400" />
                 <span>Neuer Klassenbucheintrag in WebUntis</span>
-              </div>
+              </h3>
               <button
+                type="button"
                 onClick={() => setIsNewEventModalOpen(false)}
+                aria-label="Schließen"
                 className="text-slate-400 hover:text-slate-200 text-sm font-bold"
               >
                 ✕
@@ -1563,14 +1714,19 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <form onSubmit={handleCreateEvent} className="space-y-4">
               {/* Pupil Selector */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400">Schüler*in:</label>
+                <label className="text-xs font-semibold text-slate-400">
+                  Schüler*in{eventTargetClass ? ` (${eventTargetClass.name})` : ''}:
+                </label>
                 <select
                   value={modalPupilId}
                   onChange={(e) => setModalPupilId(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                  disabled={loadingModalPupils}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-60"
                 >
-                  <option value={0}>-- Schüler*in auswählen --</option>
-                  {pupils.map((p) => (
+                  <option value={0}>
+                    {loadingModalPupils ? '-- Schüler*innen werden geladen... --' : '-- Schüler*in auswählen --'}
+                  </option>
+                  {effectiveModalPupils.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.fullName}
                     </option>
@@ -1625,8 +1781,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

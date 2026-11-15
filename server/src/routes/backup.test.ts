@@ -332,4 +332,44 @@ describe('Backup API endpoints (Task 6)', () => {
       expect(res.json().error).toContain('Entschlüsselungs-Passwort');
     });
   });
+
+  describe('GET /api/backup/export-json', () => {
+    it('exports all domain tables including locks, notifications, outbox, and chunked auditLogs', async () => {
+      const token = createToken('admin');
+      const res = await app!.inject({
+        method: 'GET',
+        url: '/api/backup/export-json',
+        cookies: { smile_session: token },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json().data as Record<string, unknown>;
+      for (const key of [
+        'teachers',
+        'classes',
+        'pupils',
+        'pupilSubjectTeachers',
+        'teachingAssignments',
+        'timetableLessons',
+        'observationRounds',
+        'classRoundLocks',
+        'rubrics',
+        'rubricCriteria',
+        'evaluations',
+        'evaluationItems',
+        'behaviorCards',
+        'pupilBehaviorActions',
+        'finalRanks',
+        'timeoutIncidents',
+        'timeoutEscalations',
+        'notificationPreferences',
+        'notificationSubscriptions',
+        'webuntisSyncOutbox',
+        'auditLogs',
+        'passwordResetRequests',
+      ]) {
+        expect(Array.isArray(data[key]), `expected array for backup key ${key}`).toBe(true);
+      }
+    });
+  });
 });

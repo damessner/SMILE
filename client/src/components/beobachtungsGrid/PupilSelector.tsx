@@ -1,5 +1,5 @@
-import React from 'react';
-import { ClipboardList, CheckCircle2, Folder, FolderCheck, Users } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ClipboardList, CheckCircle2, Folder, FolderCheck, Search, Users, X } from 'lucide-react';
 import { isPupilFullySubmitted } from '../../lib/pupilItems';
 import type { PupilWithData } from '../../types';
 import type { RankInfo } from './helpers';
@@ -42,6 +42,31 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
   myPupilCount,
   totalPupilCount,
 }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return currentList;
+    return currentList.filter((p) => {
+      if (p.fullName.toLowerCase().includes(q)) return true;
+      const groupName = activeSubjectCode ? p.assignedGroups?.[activeSubjectCode] : undefined;
+      return Boolean(groupName && groupName.toLowerCase().includes(q));
+    });
+  }, [currentList, searchQuery, activeSubjectCode]);
+
+  const handleListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    if (filteredList.length === 0) return;
+    event.preventDefault();
+    const currentIdx = filteredList.findIndex((p) => p.id === selectedPupilId);
+    const delta = event.key === 'ArrowDown' ? 1 : -1;
+    const nextIdx =
+      currentIdx < 0
+        ? 0
+        : (currentIdx + delta + filteredList.length) % filteredList.length;
+    onSelectPupil(filteredList[nextIdx]!.id);
+  };
+
   return (
     <div className="w-full lg:w-80 bg-slate-900 border border-slate-800 rounded-3xl p-3 sm:p-4 flex flex-col max-h-[44vh] lg:max-h-[86vh] overflow-hidden shadow-lg shrink-0">
       {/* Folder Tabs (Offen vs Bewertet) */}
@@ -100,7 +125,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
             <Users className="w-3.5 h-3.5" />
             <span>Meine Schüler</span>
             <span
-              className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
+              className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
                 groupFilterMode === 'my_pupils' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -118,7 +143,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           >
             <span>Ganze Klasse</span>
             <span
-              className={`text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
+              className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
                 groupFilterMode === 'all' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -128,11 +153,46 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
         </div>
       )}
 
+      {/* Quick Pupil Filter */}
+      {currentList.length > 0 && (
+        <div className="relative mb-2.5">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Schüler*in filtern..."
+            aria-label="Schüler*in filtern"
+            className="w-full pl-8 pr-8 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Filter zurücksetzen"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-100 rounded-md"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Pupil List according to active folder */}
-      <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-        {currentList.length === 0 ? (
+      <div
+        role="listbox"
+        aria-label="Schülerauswahl"
+        onKeyDown={handleListKeyDown}
+        className="flex-1 overflow-y-auto space-y-1.5 pr-1"
+      >
+        {filteredList.length === 0 ? (
           <div className="py-12 text-center text-slate-500 text-xs px-2">
-            {folderTab === 'offen' ? (
+            {currentList.length > 0 ? (
+              <div>
+                <strong className="text-slate-50 block mb-1">Keine Treffer</strong>
+                <span>Keine Schüler*innen passen zum Filter &bdquo;{searchQuery.trim()}&ldquo;.</span>
+              </div>
+            ) : folderTab === 'offen' ? (
               <div>
                 <span className="text-2xl block mb-2">🎉</span>
                 <strong className="text-slate-50 block mb-1">Alle Schüler bewertet!</strong>
@@ -147,7 +207,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
             )}
           </div>
         ) : (
-          currentList.map((p) => {
+          filteredList.map((p) => {
             const isSelected = p.id === selectedPupilId;
             const pRank = calculateRank(p);
             const pDone = isPupilFullySubmitted(p.evaluations, subjectCodes);

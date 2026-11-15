@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { listBackups, restoreBackup, type BackupFileItem } from '../services/api';
 import { useToast } from './Toast';
+import { Dialog } from './ui/Dialog';
 
 interface Props {
   onClose: () => void;
@@ -113,13 +114,11 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
   const latestBackup = backups.length > 0 ? backups[0] : null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim backdrop-blur-sm animate-fade-in"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="restore-modal-title"
+    <Dialog
+      onClose={restoring ? () => {} : onClose}
+      labelledBy="restore-modal-title"
+      panelClassName="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
     >
-      <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-900/50">
           <div className="flex items-center gap-3">
@@ -401,7 +400,6 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
             Schließen
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

@@ -50,7 +50,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'crown')}
                 title="Alle Merkmale dieser Kategorie mit Krone (👑) füllen" aria-label="Alle Merkmale dieser Kategorie mit Krone füllen"
-                className="pressable focus-ring w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
+                className="pressable focus-ring w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-400/15 hover:bg-amber-400/30 text-amber-300 flex items-center justify-center transition disabled:opacity-30"
               >
                 <Crown className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
@@ -59,7 +59,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'smile')}
                 title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen" aria-label="Alle Merkmale dieser Kategorie mit Gut füllen"
-                className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
               >
                 😊
               </button>
@@ -68,7 +68,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'struggle')}
                 title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen" aria-label="Alle Merkmale dieser Kategorie mit Mühe füllen"
-                className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
               >
                 😖
               </button>
@@ -77,7 +77,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'sad')}
                 title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen" aria-label="Alle Merkmale dieser Kategorie mit Traurig füllen"
-                className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
               >
                 😢
               </button>
@@ -86,7 +86,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'newstart')}
                 title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen" aria-label="Alle Merkmale dieser Kategorie mit Neustart füllen"
-                className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
               >
                 🔄
               </button>
@@ -95,7 +95,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, '')}
                 title="Kategorie leeren" aria-label="Kategorie leeren"
-                className="w-6 h-6 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
               >
                 ✕
               </button>

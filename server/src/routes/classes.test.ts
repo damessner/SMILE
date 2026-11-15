@@ -47,45 +47,48 @@ vi.mock('../db/index.js', async (importOriginal) => {
     }
   };
 
-  let source: unknown = null;
-  const rows = (): unknown[] => {
-    switch (tableName(source)) {
-      case 'pupils':
-        return classState.pupils;
-      case 'observation_rounds':
-        return classState.round ? [classState.round] : [];
-      case 'evaluations':
-        return classState.evaluations;
-      case 'evaluation_items':
-        return classState.evaluationItems;
-      case 'behavior_cards':
-        return classState.behaviorCards;
-      case 'pupil_subject_teachers':
-        return classState.pupilSubjectTeachers;
-      case 'school_classes':
-        return classState.schoolClassName ? [{ name: classState.schoolClassName }] : [];
-      default:
-        return [];
-    }
-  };
+  // Allocate per-query table tracking so concurrent Promise.all `db.select()`
+  // calls cannot clobber each other's source table.
+  function makeSelectBuilder() {
+    let source: unknown = null;
+    const rows = (): unknown[] => {
+      switch (tableName(source)) {
+        case 'pupils':
+          return classState.pupils;
+        case 'observation_rounds':
+          return classState.round ? [classState.round] : [];
+        case 'evaluations':
+          return classState.evaluations;
+        case 'evaluation_items':
+          return classState.evaluationItems;
+        case 'behavior_cards':
+          return classState.behaviorCards;
+        case 'pupil_subject_teachers':
+          return classState.pupilSubjectTeachers;
+        case 'school_classes':
+          return classState.schoolClassName ? [{ name: classState.schoolClassName }] : [];
+        default:
+          return [];
+      }
+    };
 
-  // The roster route awaits several queries directly (no `.limit()`), so the
-  // builder has to be thenable as well as chainable.
-  const query = {
-    from: (table: unknown) => {
-      source = table;
-      return query;
-    },
-    where: () => query,
-    orderBy: () => query,
-    then: <T>(onFulfilled: (value: unknown[]) => T) => Promise.resolve(rows()).then(onFulfilled),
-    limit: async () => rows(),
-  };
+    const query = {
+      from: (table: unknown) => {
+        source = table;
+        return query;
+      },
+      where: () => query,
+      orderBy: () => query,
+      then: <T>(onFulfilled: (value: unknown[]) => T) => Promise.resolve(rows()).then(onFulfilled),
+      limit: async () => rows(),
+    };
+    return query;
+  }
 
   return {
     ...(await importOriginal<typeof import('../db/index.js')>()),
     db: {
-      select: () => query,
+      select: () => makeSelectBuilder(),
       // Timetable hours are advisory: the route tolerates the lookup failing,
       // and the mock must too, or a shape mismatch would silently mask a real
       // break in the fields this test is about.

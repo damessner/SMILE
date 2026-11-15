@@ -183,35 +183,37 @@ export function App() {
           </button>
         </div>
       )}
-      <AppHeader
-        currentUser={currentUser}
-        currentClass={currentClass}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        showAllModules={showAllModules}
-        toggleAllModules={toggleAllModules}
-        isConnected={live.isConnected}
-        connectionError={live.connectionError}
-        canAccessConference={canAccessConference}
-        isSchoolLeadership={isSchoolLeadership}
-        isAccountAdministrator={isAccountAdministrator}
-        isSystemAdministrator={isSystemAdministrator}
-        pendingTimeoutCount={pendingTimeoutCount}
-        modals={modals}
-        onDownloadBackup={() => downloadBackup(toast)}
-        onLogout={handleLogout}
-      />
-
-      {/* Dedicated Class Navigation Sub-Header for Bewertung */}
-      {activeTab === 'bewertung' && classes.length > 0 && (
-        <ClassNavBar
-          classes={classes}
-          selectedClassId={selectedClassId}
+      <div className="sticky top-0 z-40">
+        <AppHeader
+          currentUser={currentUser}
           currentClass={currentClass}
-          pupilCount={pupils.length}
-          onSelectClass={classData.setSelectedClassId}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          showAllModules={showAllModules}
+          toggleAllModules={toggleAllModules}
+          isConnected={live.isConnected}
+          connectionError={live.connectionError}
+          canAccessConference={canAccessConference}
+          isSchoolLeadership={isSchoolLeadership}
+          isAccountAdministrator={isAccountAdministrator}
+          isSystemAdministrator={isSystemAdministrator}
+          pendingTimeoutCount={pendingTimeoutCount}
+          modals={modals}
+          onDownloadBackup={() => downloadBackup(toast)}
+          onLogout={handleLogout}
         />
-      )}
+
+        {/* Dedicated Class Navigation Sub-Header for Bewertung */}
+        {activeTab === 'bewertung' && classes.length > 0 && (
+          <ClassNavBar
+            classes={classes}
+            selectedClassId={selectedClassId}
+            currentClass={currentClass}
+            pupilCount={pupils.length}
+            onSelectClass={classData.setSelectedClassId}
+          />
+        )}
+      </div>
 
       <AppBanners
         yellowAlertError={yellowAlertError}

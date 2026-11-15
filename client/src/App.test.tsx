@@ -100,6 +100,7 @@ describe('App session and alert recovery', () => {
   afterEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    window.history.replaceState(null, '', '/');
   });
 
   afterEach(() => resetActiveRubricConfig());
@@ -307,5 +308,27 @@ describe('App session and alert recovery', () => {
     const quickFill = await screen.findByTitle(/Alle Merkmale dieser Kategorie mit Krone/);
     expect(quickFill).toBeDisabled();
     liveSyncMock.canRate = true;
+  });
+
+  it('opens and closes the consolidated account tools menu with Escape', async () => {
+    renderApp();
+
+    const trigger = await screen.findByRole('button', { name: 'Konto und Werkzeuge' });
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole('menu', { name: 'Konto- und Systemwerkzeuge' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Abmelden' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Konto- und Systemwerkzeuge' })).not.toBeInTheDocument();
+  });
+
+  it('restores active tab from the URL query parameter', async () => {
+    localStorage.clear();
+    window.history.replaceState(null, '', '/?tab=bewertung');
+    renderApp();
+
+    const bewertungButton = await screen.findByRole('button', { name: 'Einstufung' });
+    expect(bewertungButton).toHaveAttribute('aria-current', 'true');
   });
 });

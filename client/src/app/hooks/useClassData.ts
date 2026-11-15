@@ -1,9 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import type { PupilWithData, RubricCriterion, SchoolClass, User } from '../../types';
 import { getClasses, getClassPupils, getClassRubric, getCurrentTimetable } from '../../services/api';
 import { setActiveRubricConfig } from '../../lib/rubricConfig';
 import type { ClassSyncState } from '../../hooks/useLiveSync';
 import { isOpenableClass, pickTimetableClassId } from '../helpers';
+
+function readClassIdFromUrl(): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('class');
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function writeClassIdToUrl(classId: number | null): void {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  if (classId && classId > 0) {
+    url.searchParams.set('class', String(classId));
+  } else {
+    url.searchParams.delete('class');
+  }
+  const nextRelative = `${url.pathname}${url.search}${url.hash}`;
+  const currentRelative = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextRelative !== currentRelative) {
+    window.history.replaceState(window.history.state, '', nextRelative);
+  }
+}
 
 export interface UseClassDataOptions {
   refreshYellowCardAlerts: () => Promise<void>;
@@ -24,6 +47,14 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
   const [loadingClass, setLoadingClass] = useState(false);
   const [classLoadError, setClassLoadError] = useState<string | null>(null);
   const loadedClassIdRef = useRef<number | null>(null);
+  const seedClassSyncStateRef = useRef(seedClassSyncState);
+  seedClassSyncStateRef.current = seedClassSyncState;
+  const userSelectedClassRef = useRef(false);
+
+  const selectClass = useCallback((next: SetStateAction<number | null>) => {
+    userSelectedClassRef.current = true;
+    setSelectedClassId(next);
+  }, []);
 
   // Guards against out-of-order class loads.
   //
@@ -36,7 +67,7 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
   // allowed to replace stale local state.
   const classLoadGenerationRef = useRef(0);
 
-  const loadClassData = async (cid: number) => {
+  const loadClassData = useCallback(async (cid: number) => {
     const generation = ++classLoadGenerationRef.current;
     const isCurrent = () => classLoadGenerationRef.current === generation;
 
@@ -70,7 +101,7 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
       setActiveRubricConfig(pupilData.rubricConfig);
       // Seed the sync state from the roster so a locked (or non-ratable) class
       // never shows a writable grid during the round trip until the first SYNCED.
-      seedClassSyncState(cid, {
+      seedClassSyncStateRef.current(cid, {
         isLocked: Boolean(pupilData.isLockedByConference),
         canRate: typeof pupilData.canRate === 'boolean' ? pupilData.canRate : null,
       });
@@ -84,13 +115,14 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
     } finally {
       if (isCurrent()) setLoadingClass(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (selectedClassId) {
       loadClassData(selectedClassId);
+      writeClassIdToUrl(selectedClassId);
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, loadClassData]);
 
   const loadClasses = async (user: User) => {
     try {
@@ -99,7 +131,10 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
       const validClasses = cls.filter((c: any) => isOpenableClass(c));
       setClasses(validClasses);
 
-      let targetClassId = validClasses[0]?.id || null;
+      const urlClassId = readClassIdFromUrl();
+      const hasUrlClass = urlClassId !== null && validClasses.some((c: any) => c.id === urlClassId);
+      let targetClassId = hasUrlClass ? urlClassId : (validClasses[0]?.id || null);
+      userSelectedClassRef.current = hasUrlClass;
 
       // Select the fallback class first: a slow or hung timetable endpoint must
       // not leave the user with a class header and no roster request.
@@ -108,11 +143,11 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
       }
 
       // Auto-detect class based on current timetable. If it names another class,
-      // move there once the answer arrives.
+      // move there once the answer arrives (unless the user already picked one).
       try {
         const tt = await getCurrentTimetable();
         const detected = pickTimetableClassId(validClasses, tt, targetClassId);
-        if (detected && detected !== targetClassId) {
+        if (!userSelectedClassRef.current && detected && detected !== targetClassId) {
           targetClassId = detected;
           setSelectedClassId(detected);
         }
@@ -137,8 +172,10 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
   const clearClassState = useCallback(() => {
     classLoadGenerationRef.current += 1;
     loadedClassIdRef.current = null;
+    userSelectedClassRef.current = false;
     setClasses([]);
     setSelectedClassId(null);
+    writeClassIdToUrl(null);
     setPupils([]);
     setCriteria([]);
     setSubmissionDeadline(null);
@@ -150,7 +187,7 @@ export function useClassData({ refreshYellowCardAlerts, seedClassSyncState }: Us
     classes,
     classListError,
     selectedClassId,
-    setSelectedClassId,
+    setSelectedClassId: selectClass,
     pupils,
     setPupils,
     criteria,
