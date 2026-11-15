@@ -1,0 +1,519 @@
+name: SMILE iOS App Store Screenshots
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capture-screenshots:
+    name: Capture Simulator Screenshots (iPhone & 13-inch iPad)
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: ios
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+
+      - name: Start local mock SMILE API server for anonymized screenshots
+        run: |
+          cat <<'PY' > /tmp/mock_smile_server.py
+          import json
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+          from urllib.parse import urlparse
+
+          DEMO_USER = {
+              "id": "u-demo",
+              "username": "mes",
+              "role": "teacher",
+              "teacherId": 1,
+              "teacher": {"id": 1, "shortName": "MES", "fullName": "Max Mustermann"},
+              "mustChangePassword": False,
+              "viewAs": True,
+              "schoolWideBehaviour": True,
+          }
+
+          CLASSES = [
+              {
+                  "id": 1,
+                  "name": "3a",
+                  "grade": 7,
+                  "headTeacher1": "MES",
+                  "headTeacher2": "HUB",
+                  "canAccessRaster": True,
+                  "canRate": True,
+                  "isKv": True,
+                  "mySubjects": [
+                      {"code": "D", "name": "Deutsch", "isCoreSmile": True, "hours": 4},
+                      {"code": "M", "name": "Mathematik", "isCoreSmile": True, "hours": 4},
+                  ],
+              },
+              {
+                  "id": 2,
+                  "name": "3b",
+                  "grade": 7,
+                  "headTeacher1": "SCH",
+                  "headTeacher2": "MAY",
+                  "canAccessRaster": True,
+                  "canRate": True,
+                  "isKv": False,
+                  "mySubjects": [
+                      {"code": "D", "name": "Deutsch", "isCoreSmile": True, "hours": 4},
+                  ],
+              },
+          ]
+
+          PUPILS = [
+              {
+                  "id": 101,
+                  "classId": 1,
+                  "fullName": "Berger Anna",
+                  "isArchived": False,
+                  "evaluations": [
+                      {
+                          "id": "e-101-d",
+                          "roundId": "r-1",
+                          "pupilId": 101,
+                          "classId": 1,
+                          "subjectCode": "D",
+                          "teacherId": 1,
+                          "proposedStatus": "Meister",
+                          "nextStep": None,
+                          "comment": None,
+                          "isSubmitted": True,
+                          "items": [],
+                      },
+                      {
+                          "id": "e-101-m",
+                          "roundId": "r-1",
+                          "pupilId": 101,
+                          "classId": 1,
+                          "subjectCode": "M",
+                          "teacherId": 1,
+                          "proposedStatus": "Meister",
+                          "nextStep": None,
+                          "comment": None,
+                          "isSubmitted": True,
+                          "items": [],
+                      },
+                  ],
+                  "cards": [],
+                  "greenCardCount": 4,
+                  "yellowCardCount": 0,
+                  "redCardCount": 0,
+                  "rankDemotionSteps": 0,
+                  "finalRank": "Meister",
+              },
+              {
+                  "id": 102,
+                  "classId": 1,
+                  "fullName": "Gruber Lukas",
+                  "isArchived": False,
+                  "evaluations": [
+                      {
+                          "id": "e-102-d",
+                          "roundId": "r-1",
+                          "pupilId": 102,
+                          "classId": 1,
+                          "subjectCode": "D",
+                          "teacherId": 1,
+                          "proposedStatus": "Geselle",
+                          "nextStep": None,
+                          "comment": None,
+                          "isSubmitted": False,
+                          "items": [],
+                      },
+                  ],
+                  "cards": [],
+                  "greenCardCount": 2,
+                  "yellowCardCount": 1,
+                  "redCardCount": 0,
+                  "rankDemotionSteps": 0,
+                  "finalRank": "Geselle",
+              },
+              {
+                  "id": 103,
+                  "classId": 1,
+                  "fullName": "Hofer Sophie",
+                  "isArchived": False,
+                  "evaluations": [
+                      {
+                          "id": "e-103-d",
+                          "roundId": "r-1",
+                          "pupilId": 103,
+                          "classId": 1,
+                          "subjectCode": "D",
+                          "teacherId": 1,
+                          "proposedStatus": "Meister",
+                          "nextStep": None,
+                          "comment": None,
+                          "isSubmitted": True,
+                          "items": [],
+                      },
+                  ],
+                  "cards": [],
+                  "greenCardCount": 3,
+                  "yellowCardCount": 0,
+                  "redCardCount": 0,
+                  "rankDemotionSteps": 0,
+                  "finalRank": "Meister",
+              },
+              {
+                  "id": 104,
+                  "classId": 1,
+                  "fullName": "Pichler Noah",
+                  "isArchived": False,
+                  "evaluations": [],
+                  "cards": [],
+                  "greenCardCount": 1,
+                  "yellowCardCount": 1,
+                  "redCardCount": 0,
+                  "rankDemotionSteps": 0,
+                  "finalRank": "Lehrling",
+              },
+          ]
+
+          ACTIVE_TIMEOUTS = [
+              {
+                  "id": "to-1",
+                  "pupil_id": 104,
+                  "class_id": 1,
+                  "sent_by_teacher_id": 1,
+                  "sent_at": "2026-11-15T09:15:00.000Z",
+                  "recorded_at": None,
+                  "retroactive": False,
+                  "task_assignment": "Arbeitsauftrag S. 42 Nr. 1–4 selbstständig fertigstellen",
+                  "kind": "timeout",
+                  "status": "active",
+                  "pupil_name": "Pichler Noah",
+                  "class_name": "3a",
+                  "sent_by_short": "MES",
+                  "sent_by_name": "Max Mustermann",
+                  "resolved_at": None,
+                  "resolution_note": None,
+              }
+          ]
+
+          ROUTES = {
+              "/api/auth/me": {"user": DEMO_USER},
+              "/api/auth/login": {"user": DEMO_USER, "expiresAt": 1900000000},
+              "/api/classes": CLASSES,
+              "/api/timetable/current": {
+                  "isTeacher": True,
+                  "dayOfWeek": 2,
+                  "period": 3,
+                  "periodInfo": {"period": 3, "start": "09:50", "end": "10:40", "label": "3. Stunde"},
+                  "isSchoolHours": True,
+                  "currentLesson": {
+                      "id": 1,
+                      "classId": 1,
+                      "className": "3a",
+                      "teacherId": 1,
+                      "teacherShort": "MES",
+                      "subjectCode": "D",
+                      "subjectName": "Deutsch",
+                      "room": "R204",
+                      "dayOfWeek": 2,
+                      "period": 3,
+                  },
+                  "nextLesson": None,
+                  "todayLessons": [],
+                  "weekLessonsCount": 22,
+              },
+              "/api/classes/1/pupils": {
+                  "pupils": PUPILS,
+                  "canAccessRaster": True,
+                  "canRate": True,
+                  "isKv": True,
+                  "mySubjects": CLASSES[0]["mySubjects"],
+                  "submissionDeadline": "2026-12-18T12:00:00.000Z",
+                  "isLockedByConference": False,
+              },
+              "/api/cards/class/1": [
+                  {
+                      "id": "c-1",
+                      "pupil_id": 101,
+                      "class_id": 1,
+                      "teacher_id": 1,
+                      "teacher_short": "MES",
+                      "teacher_name": "Max Mustermann",
+                      "card_type": "green",
+                      "note": "Sehr hilfsbereit in der Gruppenarbeit",
+                      "created_at": "2026-11-14T10:15:00.000Z",
+                  }
+              ],
+              "/api/timeouts/class/1": ACTIVE_TIMEOUTS,
+              "/api/timeouts/active": ACTIVE_TIMEOUTS,
+              "/api/timeouts/history": [],
+              "/api/statistics/overview": {
+                  "classes": [
+                      {"id": 1, "name": "3a", "grade": 7},
+                      {"id": 2, "name": "3b", "grade": 7},
+                  ],
+                  "cardsSummary": {
+                      "totals": {"green": 42, "yellow": 9, "red": 2, "cooldown": 3, "timeout": 4, "total": 60},
+                      "incidentsByDayOfWeek": [
+                          {"day": 1, "dayName": "Mo", "count": 4},
+                          {"day": 2, "dayName": "Di", "count": 3},
+                          {"day": 3, "dayName": "Mi", "count": 5},
+                          {"day": 4, "dayName": "Do", "count": 2},
+                          {"day": 5, "dayName": "Fr", "count": 1},
+                      ],
+                      "incidentsByPeriod": [
+                          {"period": 1, "label": "1. Std", "time": "07:50", "count": 2},
+                          {"period": 2, "label": "2. Std", "time": "08:45", "count": 4},
+                          {"period": 3, "label": "3. Std", "time": "09:50", "count": 5},
+                      ],
+                  },
+                  "classBreakdown": [
+                      {
+                          "classId": 1,
+                          "className": "3a",
+                          "grade": 7,
+                          "pupilCount": 22,
+                          "green": 24,
+                          "yellow": 5,
+                          "red": 1,
+                          "cooldown": 2,
+                          "timeout": 2,
+                          "totalCards": 30,
+                          "totalIncidents": 4,
+                      },
+                      {
+                          "classId": 2,
+                          "className": "3b",
+                          "grade": 7,
+                          "pupilCount": 21,
+                          "green": 18,
+                          "yellow": 4,
+                          "red": 1,
+                          "cooldown": 1,
+                          "timeout": 2,
+                          "totalCards": 23,
+                          "totalIncidents": 3,
+                      },
+                  ],
+                  "pupilCardStats": [],
+              },
+          }
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  path = urlparse(self.path).path
+                  payload = ROUTES.get(path)
+                  if payload is None:
+                      if path.startswith("/api/classes/") and path.endswith("/pupils"):
+                          payload = ROUTES["/api/classes/1/pupils"]
+                      elif path.startswith("/api/cards/class/"):
+                          payload = ROUTES["/api/cards/class/1"]
+                      elif path.startswith("/api/timeouts/class/"):
+                          payload = ACTIVE_TIMEOUTS
+                      else:
+                          payload = {}
+                  body = json.dumps(payload).encode("utf-8")
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def do_POST(self):
+                  self.do_GET()
+
+              def log_message(self, format, *args):
+                  pass
+
+          server = ThreadingHTTPServer(("127.0.0.1", 3000), Handler)
+          server.serve_forever()
+          PY
+          nohup python3 /tmp/mock_smile_server.py >/tmp/mock_smile_server.log 2>&1 &
+          sleep 1
+          curl -fsS http://127.0.0.1:3000/api/auth/me
+
+      - name: Add temporary UITest target and generate Xcode project
+        run: |
+          mkdir -p SMILEUITests
+          cat <<'SWIFT' > SMILEUITests/ScreenshotUITests.swift
+          import XCTest
+
+          final class ScreenshotUITests: XCTestCase {
+              private func saveScreenshot(_ app: XCUIApplication, name: String) {
+                  let attachment = XCTAttachment(screenshot: app.screenshot())
+                  attachment.name = name
+                  attachment.lifetime = .keepAlways
+                  add(attachment)
+              }
+
+              private func tapTab(_ app: XCUIApplication, label: String) {
+                  let tabBtn = app.tabBars.buttons[label]
+                  if tabBtn.waitForExistence(timeout: 3) {
+                      tabBtn.tap()
+                      return
+                  }
+                  let anyBtn = app.buttons[label].firstMatch
+                  if anyBtn.waitForExistence(timeout: 3) {
+                      anyBtn.tap()
+                  }
+              }
+
+              func testCaptureAppStoreScreenshots() throws {
+                  let app = XCUIApplication()
+                  app.launch()
+
+                  // Wait for Schulalltag data to populate
+                  let pupil = app.staticTexts["Berger Anna"]
+                  _ = pupil.waitForExistence(timeout: 12)
+                  sleep(1)
+                  saveScreenshot(app, name: "01_Schulalltag")
+
+                  tapTab(app, label: "Bewertung")
+                  sleep(2)
+                  saveScreenshot(app, name: "02_Bewertung")
+
+                  tapTab(app, label: "Lernwerkstatt")
+                  sleep(2)
+                  saveScreenshot(app, name: "03_Lernwerkstatt")
+
+                  tapTab(app, label: "Schulstatistik")
+                  sleep(2)
+                  saveScreenshot(app, name: "04_Schulstatistik")
+              }
+          }
+          SWIFT
+
+          cat <<'YAML' >> project.yml
+
+            SMILEUITests:
+              type: bundle.ui-testing
+              platform: iOS
+              deploymentTarget: "17.0"
+              sources:
+                - path: SMILEUITests
+              dependencies:
+                - target: SMILE
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: at.ac.ms-telfs.smile.uitests
+                  CODE_SIGN_STYLE: Automatic
+                  DEVELOPMENT_TEAM: ""
+          YAML
+
+          xcodegen generate
+
+      - name: Build for Testing and capture iPhone & 13-inch iPad screenshots
+        run: |
+          python3 - <<'PY'
+          import json, os, shutil, subprocess, glob
+
+          devices_raw = subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"], text=True)
+          devices_data = json.loads(devices_raw)["devices"]
+
+          def find_udid(prefixes):
+              for pref in prefixes:
+                  for runtime, devs in sorted(devices_data.items(), reverse=True):
+                      if "iOS" not in runtime:
+                          continue
+                      for d in devs:
+                          if d.get("isAvailable") and d["name"].startswith(pref):
+                              return d["udid"], d["name"], runtime
+              raise RuntimeError(f"No matching simulator found for {prefixes}")
+
+          iphone_udid, iphone_name, _ = find_udid([
+              "iPhone 17 Pro",
+              "iPhone 16 Pro",
+              "iPhone 17",
+              "iPhone 16",
+              "iPhone 15 Pro",
+              "iPhone 15",
+          ])
+          ipad_udid, ipad_name, _ = find_udid([
+              "iPad Pro 13-inch",
+              "iPad Pro (13-inch)",
+              "iPad Air 13-inch",
+              "iPad Pro (12.9-inch)",
+          ])
+
+          print(f"Selected iPhone simulator: {iphone_name} ({iphone_udid})")
+          print(f"Selected iPad simulator:   {ipad_name} ({ipad_udid})")
+
+          subprocess.run([
+              "xcodebuild", "build-for-testing",
+              "-project", "SMILE.xcodeproj",
+              "-scheme", "SMILEUITests",
+              "-destination", f"id={iphone_udid}",
+              "-derivedDataPath", "build/DerivedData",
+              "CODE_SIGNING_ALLOWED=NO",
+              "CODE_SIGNING_REQUIRED=NO",
+              "CODE_SIGN_IDENTITY=",
+              "CODE_SIGN_STYLE=Automatic",
+          ], check=True)
+
+          app_paths = glob.glob("build/DerivedData/Build/Products/Debug-iphonesimulator/SMILE.app")
+          if not app_paths:
+              raise RuntimeError("Built SMILE.app not found")
+          app_path = app_paths[0]
+
+          os.makedirs("build/appstore-screenshots/iphone", exist_ok=True)
+          os.makedirs("build/appstore-screenshots/ipad-13", exist_ok=True)
+
+          for label, udid, out_dir in [
+              ("iphone", iphone_udid, "build/appstore-screenshots/iphone"),
+              ("ipad-13", ipad_udid, "build/appstore-screenshots/ipad-13"),
+          ]:
+              subprocess.run(["xcrun", "simctl", "boot", udid], check=False)
+              subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], check=True)
+              subprocess.run(["xcrun", "simctl", "install", udid, app_path], check=True)
+              subprocess.run([
+                  "xcrun", "simctl", "spawn", udid, "defaults", "write",
+                  "at.ac.ms-telfs.smile", "smile_server_base_url", "http://127.0.0.1:3000"
+              ], check=True)
+
+              xcresult = f"build/TestResults-{label}.xcresult"
+              shutil.rmtree(xcresult, ignore_errors=True)
+              subprocess.run([
+                  "xcodebuild", "test-without-building",
+                  "-project", "SMILE.xcodeproj",
+                  "-scheme", "SMILEUITests",
+                  "-destination", f"id={udid}",
+                  "-derivedDataPath", "build/DerivedData",
+                  "-resultBundlePath", xcresult,
+                  "CODE_SIGNING_ALLOWED=NO",
+                  "CODE_SIGNING_REQUIRED=NO",
+                  "CODE_SIGN_IDENTITY=",
+                  "CODE_SIGN_STYLE=Automatic",
+              ], check=True)
+
+              raw_dir = f"build/raw-{label}"
+              shutil.rmtree(raw_dir, ignore_errors=True)
+              os.makedirs(raw_dir, exist_ok=True)
+              subprocess.run([
+                  "xcrun", "xcresulttool", "export", "attachments",
+                  "--path", xcresult,
+                  "--output-path", raw_dir,
+              ], check=True)
+
+              exported = sorted(glob.glob(f"{raw_dir}/**/*.png", recursive=True))
+              if not exported:
+                  raise RuntimeError(f"No attachments exported from {xcresult}")
+
+              for idx, png in enumerate(exported, start=1):
+                  base = os.path.splitext(os.path.basename(png))[0]
+                  jpg = os.path.join(out_dir, f"{idx:02d}_{base}.jpg")
+                  subprocess.run([
+                      "sips", "-s", "format", "jpeg", "-s", "formatOptions", "95", png, "--out", jpg
+                  ], check=True)
+                  dims = subprocess.check_output(["sips", "-g", "pixelWidth", "-g", "pixelHeight", jpg], text=True)
+                  print(f"[{label}] {jpg}:\n{dims.strip()}")
+          PY
+
+      - name: Upload App Store Screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMILE-appstore-screenshots
+          path: ios/build/appstore-screenshots
