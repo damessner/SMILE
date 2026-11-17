@@ -184,6 +184,70 @@ describe('Schulalltag subject-scoped results and independent red card demotions'
     expect(within(row).queryByText('Ausstehend')).toBeNull();
   });
 
+  it('demotes a confirmed final rank after three post-confirmation yellow cards without double-demoting pre-conference cards', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      {
+        id: 'y1',
+        pupil_id: 1,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'yellow' as const,
+        created_at: '2026-11-04T07:55:10Z',
+      },
+      {
+        id: 'y2',
+        pupil_id: 1,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'yellow' as const,
+        created_at: '2026-11-06T09:41:27Z',
+      },
+      {
+        id: 'y3',
+        pupil_id: 1,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'yellow' as const,
+        created_at: '2026-11-17T06:51:59Z',
+      },
+      {
+        id: 'r-pre',
+        pupil_id: 2,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'red' as const,
+        created_at: '2026-10-20T09:00:00Z',
+      },
+    ]);
+    const confirmedAt = '2026-11-03T13:25:35Z';
+    const emil = {
+      ...pupil(1, 'Emil PostYellow'),
+      finalRank: 'Meister' as const,
+      finalRankConfirmedAt: confirmedAt,
+    };
+    const preRed = {
+      ...pupil(2, 'Fabio PreRed'),
+      finalRank: 'Geselle' as const,
+      finalRankConfirmedAt: confirmedAt,
+    };
+    renderSchulalltag([emil, preRed]);
+
+    const emilRow = (await screen.findByText('Emil PostYellow')).closest<HTMLElement>('div.cursor-pointer')!;
+    await waitFor(() => expect(within(emilRow).getByText('Geselle')).toBeInTheDocument());
+
+    const preRedRow = (await screen.findByText('Fabio PreRed')).closest<HTMLElement>('div.cursor-pointer')!;
+    await waitFor(() => expect(within(preRedRow).getByText('Geselle')).toBeInTheDocument());
+  });
+
   it('demotes one step after three active yellow cards', async () => {
     const api = await import('../services/api');
     vi.mocked(api.getClassCards).mockResolvedValueOnce(

@@ -196,13 +196,18 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    if (typedCard === 'red') {
+    if (typedCard === 'red' || typedCard === 'yellow') {
       queueRedCardRankChange({
         pupilId,
         classId,
         actorTeacherId: actorId,
         direction: 'issued',
-        source: 'Rote Karte',
+        cardType: typedCard,
+        cardId: card.id,
+        source:
+          typedCard === 'red'
+            ? 'Rote Karte'
+            : `${config.yellowCardRankLossThreshold} Gelbe Karten`,
         note: cleanNote ?? null,
       });
     }
@@ -285,13 +290,19 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    if (existing.cardType === 'red') {
+    if (existing.cardType === 'red' || existing.cardType === 'yellow') {
       queueRedCardRankChange({
         pupilId: existing.pupilId,
         classId: existing.classId,
         actorTeacherId: user.teacherId ?? null,
         direction: 'revoked',
-        source: 'Rote Karte',
+        cardType: existing.cardType,
+        cardId: existing.id,
+        cardCreatedAt: existing.createdAt,
+        source:
+          existing.cardType === 'red'
+            ? 'Rote Karte'
+            : `${config.yellowCardRankLossThreshold} Gelbe Karten`,
         note: existing.note,
       });
     }

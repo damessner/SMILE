@@ -27,7 +27,7 @@ import {
   type ConferenceTeacherVote,
   type SubmittedTeacherVoteSummary,
 } from '../lib/conference-rank.js';
-import { yellowDemotionSteps } from '../lib/rank-demotion.js';
+import { isCardInRound, yellowDemotionSteps } from '../lib/rank-demotion.js';
 import type { ClassAccess, Identity } from '../lib/guards.js';
 
 export { hoursWeightedSuggestion, summarizeSubmittedTeacherVotes };
@@ -746,10 +746,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
       const redCards = mapCards('red');
       const hasRedCard = redCards.length > 0;
       const yellowCardCount = pupilCards.filter(
-        (card) =>
-          card.card_type === 'yellow' &&
-          (!round?.startsOn || card.created_at >= round.startsOn) &&
-          (!round?.endsOn || card.created_at <= round.endsOn),
+        (card) => card.card_type === 'yellow' && isCardInRound(card.created_at, round),
       ).length;
       const yellowSteps = yellowDemotionSteps(yellowCardCount);
 

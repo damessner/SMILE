@@ -247,4 +247,27 @@ describe('GET /api/behavior/overview', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().classes).toHaveLength(2);
   });
+
+  it('demotes a confirmed rank after 3 post-confirmation yellow cards without double-demoting pre-conference cards', async () => {
+    const confirmedAt = new Date('2026-11-03T13:25:35Z');
+    state.ranks = [
+      { pupilId: 11, rank: 'Meister', confirmedAt },
+      { pupilId: 22, rank: 'Geselle', confirmedAt },
+    ];
+    state.cards = [
+      // Pupil 11: 3 yellow cards issued after conference confirmation -> Geselle.
+      { pupilId: 11, cardType: 'yellow', createdAt: new Date('2026-11-04T07:55:00Z') },
+      { pupilId: 11, cardType: 'yellow', createdAt: new Date('2026-11-06T09:41:00Z') },
+      { pupilId: 11, cardType: 'yellow', createdAt: new Date('2026-11-17T06:51:00Z') },
+      // Pupil 22: 1 red card issued before confirmation -> already reflected in Geselle.
+      { pupilId: 22, cardType: 'red', createdAt: new Date('2026-10-20T09:00:00Z') },
+    ];
+
+    const res = await fetchOverview();
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.pupils.find((p: { id: number }) => p.id === 11)?.rank).toBe('Geselle');
+    expect(body.pupils.find((p: { id: number }) => p.id === 22)?.rank).toBe('Geselle');
+  });
 });

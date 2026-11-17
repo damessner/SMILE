@@ -4,29 +4,10 @@ import { db, getPool } from '../db/index.js';
 import { auditLogs, pupils, pupilBehaviorActions, schoolClasses } from '../db/schema.js';
 import { assertPasswordCurrent, badRequest, forbid, getClassAccess, getPupil, hasPersistedTeacherActor, MAX_POSTGRES_INTEGER, parseIdParam, requireAuth, safeTeacherId } from '../lib/guards.js';
 import { BEHAVIOR_STAGES, computePupilBehaviorStage } from '../lib/behavior-stages.js';
-import { totalCardDemotionSteps } from '../lib/rank-demotion.js';
+import { effectiveCardDemotionSteps } from '../lib/rank-demotion.js';
 import { demoteBy, isRank, RANKS, type Rank } from '../lib/ranking.js';
 import { getLatestRound } from '../lib/rounds.js';
 import { broadcastToClass } from '../ws/live-sync.js';
-
-function isCardInRound(
-  createdAt: Date | string | null | undefined,
-  round: { startsOn?: Date | string | null; endsOn?: Date | string | null } | null,
-): boolean {
-  if (!round?.startsOn && !round?.endsOn) return true;
-  if (!createdAt) return false;
-  const ts = new Date(createdAt).getTime();
-  if (Number.isNaN(ts)) return false;
-  if (round.startsOn) {
-    const startTs = new Date(round.startsOn).getTime();
-    if (!Number.isNaN(startTs) && ts < startTs) return false;
-  }
-  if (round.endsOn) {
-    const endTs = new Date(round.endsOn).getTime();
-    if (!Number.isNaN(endTs) && ts > endTs) return false;
-  }
-  return true;
-}
 
 function majorityProposedRank(rows: Array<{ proposed_status?: string | null }>): Rank | null {
   const counts: Record<Rank, number> = { Lehrling: 0, Geselle: 0, Meister: 0 };
@@ -331,18 +312,33 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
 
     const calculation = computePupilBehaviorStage(greenCount, yellowCount, redCount, timeoutCount);
 
-    // Resolve rank strictly within the latest round: confirmed final_ranks first,
-    // then majority evaluations.proposed_status demoted by active cards, else 'Geselle'.
+    // Resolve rank strictly within the latest round: confirmed final_ranks first
+    // (with post-confirmation card demotions applied), then majority
+    // evaluations.proposed_status demoted by active cards, else 'Geselle'.
     let currentRank: Rank = 'Geselle';
     const roundId = round?.id ?? null;
     if (roundId) {
-      const rankRows = await getPool().query<{ rank: string }>(
-        `SELECT rank FROM final_ranks WHERE pupil_id = $1 AND round_id = $2 ORDER BY confirmed_at DESC LIMIT 1`,
+      const rankRows = await getPool().query<{
+        rank: string;
+        confirmed_at: Date | string | null;
+      }>(
+        `SELECT rank, confirmed_at FROM final_ranks WHERE pupil_id = $1 AND round_id = $2 ORDER BY confirmed_at DESC LIMIT 1`,
         [pid, roundId]
+      );
+      const cardInputs = cardRows.rows.map(
+        (c: { card_type: string; created_at?: Date | string | null }) => ({
+          cardType: c.card_type,
+          createdAt: c.created_at ?? null,
+        }),
       );
       const confirmedRank = rankRows.rows[0]?.rank;
       if (isRank(confirmedRank)) {
-        currentRank = confirmedRank;
+        const postConfirmSteps = effectiveCardDemotionSteps(
+          cardInputs,
+          round,
+          rankRows.rows[0]?.confirmed_at ?? null,
+        );
+        currentRank = demoteBy(confirmedRank, postConfirmSteps);
       } else {
         const evalRows = await getPool().query<{ proposed_status: string | null }>(
           `SELECT proposed_status
@@ -352,11 +348,7 @@ export const pupilRoutes: FastifyPluginAsync = async (fastify) => {
         );
         const majorityRank = majorityProposedRank(evalRows.rows);
         if (majorityRank) {
-          const yellowInRoundCount = cardRows.rows.filter(
-            (c: { card_type?: string; created_at?: Date | string | null }) =>
-              c.card_type === 'yellow' && isCardInRound(c.created_at, round),
-          ).length;
-          currentRank = demoteBy(majorityRank, totalCardDemotionSteps(redCount, yellowInRoundCount));
+          currentRank = demoteBy(majorityRank, effectiveCardDemotionSteps(cardInputs, round));
         }
       }
     }

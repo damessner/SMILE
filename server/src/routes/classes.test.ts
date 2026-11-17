@@ -11,6 +11,7 @@ import type { FastifyInstance } from 'fastify';
 const classState = vi.hoisted(() => ({
   round: null as { id: string; isLocked: boolean } | null,
   classLockRow: { isLocked: false } as { isLocked: boolean },
+  finalRanks: [] as Array<Record<string, unknown>>,
   pupils: [] as Array<Record<string, unknown>>,
   evaluations: [] as Array<Record<string, unknown>>,
   evaluationItems: [] as Array<Record<string, unknown>>,
@@ -63,6 +64,10 @@ vi.mock('../db/index.js', async (importOriginal) => {
           return classState.evaluationItems;
         case 'behavior_cards':
           return classState.behaviorCards;
+        case 'final_ranks':
+          return classState.finalRanks;
+        case 'class_round_locks':
+          return [classState.classLockRow];
         case 'pupil_subject_teachers':
           return classState.pupilSubjectTeachers;
         case 'school_classes':
@@ -147,6 +152,7 @@ function sessionCookie(): string {
 function resetState(): void {
   classState.round = null;
   classState.classLockRow = { isLocked: false };
+  classState.finalRanks = [];
   classState.pupils = [];
   classState.evaluations = [];
   classState.evaluationItems = [];
@@ -248,6 +254,50 @@ describe('GET /api/classes/:classId/pupils rubric configuration', () => {
     const gulderen = body.pupils.find((p: any) => p.id === 4633);
     expect(gulderen.assignedTeachers).toEqual({ TUD: [247] });
     expect(gulderen.assignedGroups).toEqual({ TUD: 'TUD_4B_AKU' });
+  });
+
+  it('computes post-confirmation demotion steps without double-demoting pre-conference cards', async () => {
+    resetState();
+    classState.round = {
+      id: 'round-1',
+      isLocked: false,
+      startsOn: new Date('2026-09-14T00:00:00Z'),
+      endsOn: new Date('2027-02-15T00:00:00Z'),
+    } as any;
+    const confirmedAt = new Date('2026-11-03T13:25:35Z');
+    classState.pupils = [
+      { id: 5572, classId: 1, fullName: 'Gapp Emil', isArchived: false },
+      { id: 5573, classId: 1, fullName: 'Pre Red Pupil', isArchived: false },
+    ];
+    classState.finalRanks = [
+      { pupilId: 5572, rank: 'Meister', confirmedAt },
+      { pupilId: 5573, rank: 'Geselle', confirmedAt },
+    ];
+    classState.behaviorCards = [
+      // Emil: 3 active yellow cards after conference confirmation -> 1 demotion step.
+      { id: 'y1', pupilId: 5572, cardType: 'yellow', createdAt: new Date('2026-11-04T07:55:10Z'), revokedAt: null },
+      { id: 'y2', pupilId: 5572, cardType: 'yellow', createdAt: new Date('2026-11-06T09:41:27Z'), revokedAt: null },
+      { id: 'y3', pupilId: 5572, cardType: 'yellow', createdAt: new Date('2026-11-17T06:51:59Z'), revokedAt: null },
+      // Pre Red Pupil: red card issued before confirmation -> already factored in -> 0 steps.
+      { id: 'r1', pupilId: 5573, cardType: 'red', createdAt: new Date('2026-10-20T09:00:00Z'), revokedAt: null },
+    ];
+
+    const res = await app!.inject({
+      method: 'GET',
+      url: '/api/classes/1/pupils',
+      headers: { cookie: 'smile_session=' + sessionCookie() },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const emil = body.pupils.find((p: any) => p.id === 5572);
+    expect(emil.finalRank).toBe('Meister');
+    expect(emil.rankDemotionSteps).toBe(1);
+    expect(emil.finalRankConfirmedAt).toBe(confirmedAt.toISOString());
+
+    const preRed = body.pupils.find((p: any) => p.id === 5573);
+    expect(preRed.finalRank).toBe('Geselle');
+    expect(preRed.rankDemotionSteps).toBe(0);
   });
 });
 

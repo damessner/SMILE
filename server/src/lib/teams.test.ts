@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildBeforeAndAfterCards,
   buildRedCardCard,
   postTeamsCard,
   rankChangeFromSuggestion,
   type RedCardMessage,
 } from './teams.js';
+import { effectiveCardDemotionSteps } from './rank-demotion.js';
 
 describe('rankChangeFromSuggestion', () => {
   it('demotes a Geselle to Lehrling and a Meister to Geselle', () => {
@@ -29,6 +31,43 @@ describe('rankChangeFromSuggestion', () => {
     expect(rankChangeFromSuggestion('Lehrling', 0, 1)).toBeNull();
     expect(rankChangeFromSuggestion('Geselle', 1, 1)).toBeNull();
     expect(rankChangeFromSuggestion(null, 0, 1)).toBeNull();
+  });
+
+  it('reconstructs before/after card states for 3rd yellow card and revoke', () => {
+    const round = {
+      startsOn: new Date('2026-09-14T00:00:00Z'),
+      endsOn: new Date('2027-02-15T00:00:00Z'),
+    };
+    const confirmedAt = new Date('2026-11-03T13:25:35Z');
+    const activeCards = [
+      { id: 'y3', cardType: 'yellow', createdAt: new Date('2026-11-17T06:51:59Z') },
+      { id: 'y2', cardType: 'yellow', createdAt: new Date('2026-11-06T09:41:27Z') },
+      { id: 'y1', cardType: 'yellow', createdAt: new Date('2026-11-04T07:55:10Z') },
+    ];
+    const issued = buildBeforeAndAfterCards(activeCards, {
+      direction: 'issued',
+      cardType: 'yellow',
+      cardId: 'y3',
+    });
+    expect(effectiveCardDemotionSteps(issued.before, round, confirmedAt, 3)).toBe(0);
+    expect(effectiveCardDemotionSteps(issued.after, round, confirmedAt, 3)).toBe(1);
+    expect(rankChangeFromSuggestion('Meister', 0, 1)).toEqual({
+      from: 'Meister',
+      to: 'Geselle',
+    });
+
+    const revoked = buildBeforeAndAfterCards(activeCards.slice(1), {
+      direction: 'revoked',
+      cardType: 'yellow',
+      cardId: 'y3',
+      cardCreatedAt: new Date('2026-11-17T06:51:59Z'),
+    });
+    expect(effectiveCardDemotionSteps(revoked.before, round, confirmedAt, 3)).toBe(1);
+    expect(effectiveCardDemotionSteps(revoked.after, round, confirmedAt, 3)).toBe(0);
+    expect(rankChangeFromSuggestion('Meister', 1, 0)).toEqual({
+      from: 'Geselle',
+      to: 'Meister',
+    });
   });
 });
 

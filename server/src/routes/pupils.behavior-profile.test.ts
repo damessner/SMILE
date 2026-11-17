@@ -361,6 +361,42 @@ describe('GET /api/pupils/:id/behavior-profile', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().pupil.currentRank).toBe('Meister');
   });
+
+  it('demotes a confirmed final rank after 3 post-confirmation yellow cards without double-demoting pre-conference cards', async () => {
+    const confirmedAt = new Date('2026-11-03T13:25:35Z');
+    state.finalRanks = [
+      { pupil_id: 11, round_id: 'round-2', rank: 'Meister', confirmed_at: confirmedAt },
+    ];
+    state.cards = [
+      { id: 'y1', pupil_id: 11, card_type: 'yellow', note: null, created_at: new Date('2026-11-04T07:55:00Z') },
+      { id: 'y2', pupil_id: 11, card_type: 'yellow', note: null, created_at: new Date('2026-11-06T09:41:00Z') },
+      { id: 'y3', pupil_id: 11, card_type: 'yellow', note: null, created_at: new Date('2026-11-17T06:51:00Z') },
+    ];
+
+    const demotedRes = await app.inject({
+      method: 'GET',
+      url: '/api/pupils/11/behavior-profile',
+      headers: { cookie: cookieHeader() },
+    });
+    expect(demotedRes.statusCode).toBe(200);
+    expect(demotedRes.json().pupil.currentRank).toBe('Geselle');
+
+    // A red card already present before confirmed_at must not demote final_ranks again.
+    state.finalRanks = [
+      { pupil_id: 11, round_id: 'round-2', rank: 'Geselle', confirmed_at: confirmedAt },
+    ];
+    state.cards = [
+      { id: 'r-pre', pupil_id: 11, card_type: 'red', note: 'Alt', created_at: new Date('2026-10-20T09:00:00Z') },
+    ];
+
+    const preRedRes = await app.inject({
+      method: 'GET',
+      url: '/api/pupils/11/behavior-profile',
+      headers: { cookie: cookieHeader() },
+    });
+    expect(preRedRes.statusCode).toBe(200);
+    expect(preRedRes.json().pupil.currentRank).toBe('Geselle');
+  });
 });
 
 describe('PUPIL_ROSTER_CHANGED broadcasts on pupil mutations', () => {

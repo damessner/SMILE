@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { and, desc, eq, gt, inArray, isNull, ne } from 'drizzle-orm';
 import { db, getPool } from '../db/index.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
-import { totalCardDemotionSteps } from '../lib/rank-demotion.js';
+import { effectiveCardDemotionSteps } from '../lib/rank-demotion.js';
 import {
   assessmentRubrics,
   behaviorCards,
@@ -297,13 +297,17 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
 
     let classEvaluations: Array<typeof evaluations.$inferSelect> = [];
     const itemsByEvaluationId: Record<string, Array<typeof evaluationItems.$inferSelect>> = {};
-    const finalRankByPupil = new Map<number, string>();
+    const finalRankByPupil = new Map<number, { rank: string; confirmedAt: Date | null }>();
     let isLockedByConference = false;
 
     if (round && classPupils.length > 0) {
       const [confirmedRanks, evalRows, isClassLocked] = await Promise.all([
         db
-          .select({ pupilId: finalRanks.pupilId, rank: finalRanks.rank })
+          .select({
+            pupilId: finalRanks.pupilId,
+            rank: finalRanks.rank,
+            confirmedAt: finalRanks.confirmedAt,
+          })
           .from(finalRanks)
           .where(and(eq(finalRanks.roundId, round.id), eq(finalRanks.classId, cid))),
         db
@@ -313,7 +317,10 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         getClassRoundLockState(round.id, cid),
       ]);
       for (const row of confirmedRanks) {
-        finalRankByPupil.set(row.pupilId, row.rank);
+        finalRankByPupil.set(row.pupilId, {
+          rank: row.rank,
+          confirmedAt: row.confirmedAt ?? null,
+        });
       }
       classEvaluations = evalRows;
       isLockedByConference = isClassRoundLocked(round.isLocked, isClassLocked);
@@ -365,6 +372,7 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
     const pupilsWithData = classPupils.map((p) => {
       const pupilEvals = classEvaluations.filter((e) => e.pupilId === p.id);
       const pupilCards = cards.filter((c) => c.pupilId === p.id);
+      const confirmed = finalRankByPupil.get(p.id) ?? null;
 
       return {
         ...p,
@@ -381,16 +389,13 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
         greenCardCount: pupilCards.filter((c) => c.cardType === 'green').length,
         yellowCardCount: pupilCards.filter((c) => c.cardType === 'yellow').length,
         redCardCount: pupilCards.filter((c) => c.cardType === 'red').length,
-        rankDemotionSteps: totalCardDemotionSteps(
-          pupilCards.filter((c) => c.cardType === 'red').length,
-          pupilCards.filter(
-            (c) =>
-              c.cardType === 'yellow' &&
-              (!round?.startsOn || c.createdAt >= round.startsOn) &&
-              (!round?.endsOn || c.createdAt <= round.endsOn),
-          ).length,
-        ),
-        finalRank: finalRankByPupil.get(p.id) ?? null,
+        rankDemotionSteps: confirmed
+          ? effectiveCardDemotionSteps(pupilCards, round, confirmed.confirmedAt)
+          : effectiveCardDemotionSteps(pupilCards, round),
+        finalRank: confirmed?.rank ?? null,
+        finalRankConfirmedAt: confirmed?.confirmedAt
+          ? new Date(confirmed.confirmedAt).toISOString()
+          : null,
         assignedTeachers: pupilTeachersMap.get(p.id) ?? {},
         assignedGroups: pupilGroupsMap.get(p.id) ?? {},
       };

@@ -49,6 +49,19 @@ describe('buildRedCardEmail', () => {
     );
   });
 
+  it('uses the yellow-card source label for 3-yellow rank changes', () => {
+    const mail = buildRedCardEmail({
+      ...message,
+      source: '3 Gelbe Karten',
+      rankChange: { from: 'Meister', to: 'Geselle' },
+    });
+
+    expect(mail.subject).toBe('Schüler Anna Muster (3a) Meister ---> Geselle');
+    expect(mail.text).toContain(
+      'Anna Muster (3a) Meister ---> Geselle · 3 Gelbe Karten · Lehrerin Beispiel (LBE)',
+    );
+  });
+
   it('escapes HTML in names and notes, and falls back when no note exists', () => {
     const mail = buildRedCardEmail({
       ...message,

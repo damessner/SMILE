@@ -109,7 +109,7 @@ interface SchulalltagProps {
   pupils: PupilWithData[];
   currentUser: User;
   onSelectClass: (classId: number) => void;
-  onRefreshClassData: () => void;
+  onRefreshClassData: () => void | Promise<void>;
   criteria: RubricCriterion[];
 }
 
@@ -285,7 +285,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const refreshAfterBehaviourAction = async (classId: number) => {
     if (classId === currentClass.id) {
       await loadClassCards(classId);
-      onRefreshClassData();
+      await onRefreshClassData();
     }
     await loadTimeoutsData();
     if (isAllClassesView) await loadAllClasses();
@@ -334,8 +334,38 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
     return current;
   };
 
-  const getDemotionSteps = (p: PupilWithData, pupilCards: Array<{ card_type: string }>): number => {
-    if (typeof p.rankDemotionSteps === 'number') return p.rankDemotionSteps;
+  const getDemotionSteps = (
+    p: PupilWithData,
+    pupilCards: Array<{ card_type: string; created_at?: string }>,
+  ): number => {
+    const serverCountsStale =
+      typeof p.redCardCount === 'number' &&
+      (pupilCards.filter((c) => c.card_type === 'yellow').length !== p.yellowCardCount ||
+        pupilCards.filter((c) => c.card_type === 'red').length !== p.redCardCount);
+    if (typeof p.rankDemotionSteps === 'number' && !serverCountsStale) {
+      return p.rankDemotionSteps;
+    }
+
+    const confirmMs = p.finalRankConfirmedAt ? Date.parse(p.finalRankConfirmedAt) : NaN;
+    if (Number.isFinite(confirmMs)) {
+      const redAfterConfirm = pupilCards.filter((c) => {
+        if (c.card_type !== 'red') return false;
+        const ts = c.created_at ? Date.parse(c.created_at) : NaN;
+        return Number.isFinite(ts) && ts > confirmMs;
+      }).length;
+      const yellowAll = pupilCards.filter((c) => c.card_type === 'yellow');
+      const yellowAtConfirm = yellowAll.filter((c) => {
+        const ts = c.created_at ? Date.parse(c.created_at) : NaN;
+        return Number.isFinite(ts) && ts <= confirmMs;
+      }).length;
+      const yellowSteps = Math.max(
+        0,
+        Math.floor(yellowAll.length / YELLOW_RANK_LOSS_THRESHOLD) -
+          Math.floor(yellowAtConfirm / YELLOW_RANK_LOSS_THRESHOLD),
+      );
+      return (redAfterConfirm > 0 ? 1 : 0) + yellowSteps;
+    }
+
     const redCount = pupilCards.filter((c) => c.card_type === 'red').length;
     const yellowCount = pupilCards.filter((c) => c.card_type === 'yellow').length;
     return (redCount > 0 ? 1 : 0) + Math.floor(yellowCount / YELLOW_RANK_LOSS_THRESHOLD);
@@ -406,7 +436,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       p.finalRank === 'Geselle' ||
       p.finalRank === 'Meister'
     ) {
-      return p.finalRank;
+      return applyDemotion(p.finalRank, demotionSteps);
     }
 
     const votes: Record<AssessmentRank, number> = {
@@ -491,7 +521,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
   /** Class view: compute the per-subject demotion preview from the loaded pupil. */
   const handleOpenRedCardModal = (pupil: PupilWithData) => {
-    const { subjectResults } = getPupilRank(pupil);
+    const { demotionSteps, subjectResults } = getPupilRank(pupil);
 
     // A red card demotes each subject's rank one level from its calculated
     // (base) rank; subjects without a calculated rank are untouched and called
@@ -510,6 +540,26 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         : [],
     );
     const pendingSubjects = subjectResults.filter((r) => !r.baseRank).map((r) => r.subjectCode);
+
+    if (deductions.length === 0 && pupil.finalRank) {
+      const currentDisplayed = getDisplayedRank(pupil, subjectResults, demotionSteps) ?? pupil.finalRank;
+      const demoted = demoteRank(currentDisplayed);
+      openRedCardModal({
+        pupilId: pupil.id,
+        pupilName: pupil.fullName,
+        classId: currentClass.id,
+        className: currentClass.name,
+        deductions: [
+          {
+            label: 'Gesamtrang',
+            currentRank: currentDisplayed,
+            demotedRank: (demoted === 'Geselle' ? 'Geselle' : 'Lehrling') as 'Lehrling' | 'Geselle',
+          },
+        ],
+        pendingNote: null,
+      });
+      return;
+    }
 
     openRedCardModal({
       pupilId: pupil.id,
@@ -738,8 +788,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
     try {
       await revokeCard(card.id);
-      if (currentClass) await loadClassCards(currentClass.id);
-      onRefreshClassData();
+      await refreshAfterBehaviourAction(card.class_id);
       toast.success('Karte zurückgezogen.');
     } catch (e: any) {
       toast.error(e.message || 'Fehler beim Zurückziehen');
@@ -1658,6 +1707,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         {/* Header inside detail: Info Bar */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 text-xs">
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {pupil.finalRank && currentRank && currentRank !== pupil.finalRank && (
+                              <span className="text-rose-300 font-semibold">
+                                Konferenzbeschluss: {pupil.finalRank} (herabgestuft auf {currentRank} durch Karten)
+                              </span>
+                            )}
                             {subjectResults.map((sr) => (
                               <span key={sr.subjectCode} className="text-slate-400">
                                 {sr.subjectCode}: {sr.positiveCount}/{rubricItemKeys.length} positiv ·

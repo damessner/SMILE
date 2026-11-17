@@ -18,6 +18,8 @@ import {
 } from '../lib/guards.js';
 import { tallyBehaviorCounts } from '../lib/behavior-counts.js';
 import { computePupilBehaviorStage } from '../lib/behavior-stages.js';
+import { effectiveCardDemotionSteps } from '../lib/rank-demotion.js';
+import { demoteBy, isRank } from '../lib/ranking.js';
 import { getLatestRound } from '../lib/rounds.js';
 
 /**
@@ -137,6 +139,7 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
       .select({
         pupilId: behaviorCards.pupilId,
         cardType: behaviorCards.cardType,
+        createdAt: behaviorCards.createdAt,
       })
       .from(behaviorCards)
       .where(and(inArray(behaviorCards.pupilId, pupilIds), isNull(behaviorCards.revokedAt)));
@@ -160,15 +163,22 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
       round === null
         ? []
         : await db
-            .select({ pupilId: finalRanks.pupilId, rank: finalRanks.rank })
+            .select({
+              pupilId: finalRanks.pupilId,
+              rank: finalRanks.rank,
+              confirmedAt: finalRanks.confirmedAt,
+            })
             .from(finalRanks)
             .where(and(inArray(finalRanks.pupilId, pupilIds), eq(finalRanks.roundId, round.id)));
-    const rankByPupil = new Map(confirmedRanks.map((row) => [row.pupilId, row.rank]));
+    const rankByPupil = new Map(confirmedRanks.map((row) => [row.pupilId, row]));
 
-    const cardsByPupil = new Map<number, string[]>();
+    const cardsByPupil = new Map<
+      number,
+      Array<{ cardType: string; createdAt?: Date | string | null }>
+    >();
     for (const card of cards) {
       const list = cardsByPupil.get(card.pupilId) ?? [];
-      list.push(card.cardType);
+      list.push({ cardType: card.cardType, createdAt: card.createdAt });
       cardsByPupil.set(card.pupilId, list);
     }
 
@@ -185,7 +195,7 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
       const pupilIncidents = incidentsByPupil.get(pupil.id) ?? [];
 
       const { green, yellow, red, timeout, cooldown } = tallyBehaviorCounts(
-        pupilCards.map((cardType) => ({ cardType })),
+        pupilCards,
         pupilIncidents,
       );
 
@@ -201,7 +211,16 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
           .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0] ?? null;
 
       const stageResult = computePupilBehaviorStage(green, yellow, red, timeout);
-      const rank = rankByPupil.get(pupil.id);
+      const confirmed = rankByPupil.get(pupil.id);
+      let rank: StatusPupil['rank'] = null;
+      if (isRank(confirmed?.rank)) {
+        const demotionSteps = effectiveCardDemotionSteps(
+          pupilCards,
+          round,
+          confirmed?.confirmedAt ?? null,
+        );
+        rank = demoteBy(confirmed.rank, demotionSteps);
+      }
       const canRecord = schoolWide
         ? canActSchoolWide
         : accessByClass?.get(pupil.classId)?.canRecord === true && user.viewAs !== true;
@@ -212,7 +231,7 @@ export const behaviorRoutes: FastifyPluginAsync = async (fastify) => {
         classId: pupil.classId,
         className: pupil.className,
         grade: pupil.grade,
-        rank: rank === 'Lehrling' || rank === 'Geselle' || rank === 'Meister' ? rank : null,
+        rank,
         stage: {
           level: stageResult.currentStage,
           title: stageResult.stageInfo.title,

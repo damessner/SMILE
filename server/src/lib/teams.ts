@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { config } from '../config.js';
 import { db, getPool } from '../db/index.js';
 import {
@@ -8,7 +8,7 @@ import {
   schoolClasses,
   teachers,
 } from '../db/schema.js';
-import { demoteBy, type Rank } from './ranking.js';
+import { demoteBy, isRank, type Rank } from './ranking.js';
 import { getLatestRound } from './rounds.js';
 import { formatViennaTime } from './notification-format.js';
 import { isEmailConfigured, sendRedCardEmail } from './email.js';
@@ -16,7 +16,10 @@ import {
   summarizeSubmittedTeacherVotes,
   type ConferenceTeacherVote,
 } from './conference-rank.js';
-import { countActiveYellowCards, yellowDemotionSteps } from './rank-demotion.js';
+import {
+  effectiveCardDemotionSteps,
+  type CardDemotionInput,
+} from './rank-demotion.js';
 import { normalizeSubject } from '../utils/subject.js';
 
 /**
@@ -43,7 +46,13 @@ export interface RedCardRankChangeEvent {
   /** Teacher who issued or revoked the card; null for a non-teacher admin action. */
   actorTeacherId: number | null;
   direction: RedCardDirection;
-  /** Human-readable cause, e.g. "Rote Karte" or "Time-Out". */
+  /** Card kind that triggered the check (defaults to 'red'). */
+  cardType?: 'red' | 'yellow';
+  /** Persisted card ID when available, so pre/post state excludes/includes the exact row. */
+  cardId?: string;
+  /** Original creation timestamp of a revoked card, relative to confirmedAt. */
+  cardCreatedAt?: Date;
+  /** Human-readable cause, e.g. "Rote Karte" or "3 Gelbe Karten". */
   source: string;
   /** The note / incident description the teacher entered on the card. */
   note?: string | null;
@@ -83,9 +92,10 @@ export interface TeamsWebhookPayload {
 /** Build the Adaptive Card exactly as the Teams Workflow webhook expects it. */
 export function buildRedCardCard(event: RedCardMessage): TeamsWebhookPayload {
   const isIssued = event.direction === 'issued';
+  const sourceLabel = event.source || 'Rote Karte';
   const title = `${isIssued
-    ? 'Rote Karte – Rangverlust'
-    : 'Rote Karte zurückgezogen – Rang wiederhergestellt'}${event.retroactive ? ' (Nachtrag)' : ''}`;
+    ? `${sourceLabel} – Rangverlust`
+    : `${sourceLabel} zurückgezogen – Rang wiederhergestellt`}${event.retroactive ? ' (Nachtrag)' : ''}`;
 
   const body: Record<string, unknown>[] = [
     {
@@ -190,20 +200,6 @@ export async function postTeamsCard(
   }
 }
 
-async function activeRedCardCount(pupilId: number): Promise<number> {
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(behaviorCards)
-    .where(
-      and(
-        eq(behaviorCards.pupilId, pupilId),
-        eq(behaviorCards.cardType, 'red'),
-        isNull(behaviorCards.revokedAt),
-      ),
-    );
-  return row?.count ?? 0;
-}
-
 /**
  * Apply card demotion steps to one pupil-level suggestion. A Lehrling stays
  * Lehrling, so no notification is emitted for a no-op.
@@ -219,13 +215,45 @@ export function rankChangeFromSuggestion(
   return from === to ? null : { from, to };
 }
 
+export function buildBeforeAndAfterCards(
+  activeCards: ReadonlyArray<CardDemotionInput & { id?: string }>,
+  event: Pick<RedCardRankChangeEvent, 'direction' | 'cardType' | 'cardId' | 'cardCreatedAt' | 'occurredAt'>,
+): { before: CardDemotionInput[]; after: CardDemotionInput[] } {
+  const cardType = event.cardType ?? 'red';
+  if (event.direction === 'issued') {
+    const after = [...activeCards];
+    let removed = false;
+    const before: CardDemotionInput[] = [];
+    for (const card of activeCards) {
+      if (!removed && ((event.cardId && card.id === event.cardId) || (!event.cardId && card.cardType === cardType))) {
+        removed = true;
+        continue;
+      }
+      before.push(card);
+    }
+    return { before, after };
+  }
+
+  const after = [...activeCards];
+  const before: CardDemotionInput[] = [
+    ...activeCards,
+    {
+      cardType,
+      createdAt: event.cardCreatedAt ?? event.occurredAt ?? new Date(),
+    },
+  ];
+  return { before, after };
+}
+
 /**
- * Compute the pupil-level conference rank before and after the card state.
+ * Compute the pupil-level rank change for a card event.
  *
- * Ranks are a pupil property, not a per-subject value. The base is the
- * hours-weighted suggestion from submitted teacher votes; red and yellow card
- * demotions are applied as steps. A confirmed final rank is official and is
- * never demoted again, so it produces no notification.
+ * Ranks are a pupil property, not a per-subject value. When the conference has
+ * already confirmed a `final_ranks` decision for this round, only cards whose
+ * consequence threshold is crossed *after* `confirmedAt` change the rank (preventing
+ * double-demotion for pre-conference cards while ensuring post-conference red cards
+ * and 3-yellow-card thresholds downgrade and notify properly). Before conference
+ * confirmation, the base is the hours-weighted suggestion from submitted votes.
  */
 export async function computePupilRankChange(
   pupilId: number,
@@ -249,7 +277,13 @@ export async function computePupilRankChange(
       ),
     )
     .limit(1);
-  if (confirmed.length > 0) return null;
+  if (confirmed.length > 0 && isRank(confirmed[0]!.rank)) {
+    return rankChangeFromSuggestion(
+      confirmed[0]!.rank,
+      beforeDemotionSteps,
+      afterDemotionSteps,
+    );
+  }
 
   const evals = await getPool().query<{
     teacher_id: number | null;
@@ -362,17 +396,41 @@ async function loadRedCardMessage(
     actorName = teacher?.fullName ?? 'Unbekannt';
   }
 
-  const activeCards = await activeRedCardCount(event.pupilId);
-  const isIssued = event.direction === 'issued';
-  // An issued card is already committed, so it is included in the count. A revoked
-  // card is already excluded; before the revoke it was active by definition.
-  const beforeRedCount = isIssued ? Math.max(0, activeCards - 1) : activeCards + 1;
-  const afterRedCount = activeCards;
-  const yellowSteps = yellowDemotionSteps(
-    await countActiveYellowCards(event.pupilId, event.classId),
-  );
-  const beforeSteps = (beforeRedCount > 0 ? 1 : 0) + yellowSteps;
-  const afterSteps = (afterRedCount > 0 ? 1 : 0) + yellowSteps;
+  const round = await getLatestRound();
+  if (!round) return null;
+
+  const activeCards = await db
+    .select({
+      id: behaviorCards.id,
+      cardType: behaviorCards.cardType,
+      createdAt: behaviorCards.createdAt,
+    })
+    .from(behaviorCards)
+    .where(
+      and(
+        eq(behaviorCards.pupilId, event.pupilId),
+        inArray(behaviorCards.cardType, ['red', 'yellow']),
+        isNull(behaviorCards.revokedAt),
+      ),
+    )
+    .orderBy(desc(behaviorCards.createdAt));
+
+  const confirmedRows = await db
+    .select({ confirmedAt: finalRanks.confirmedAt })
+    .from(finalRanks)
+    .where(
+      and(
+        eq(finalRanks.roundId, round.id),
+        eq(finalRanks.pupilId, event.pupilId),
+        eq(finalRanks.classId, event.classId),
+      ),
+    )
+    .limit(1);
+  const confirmedAt = confirmedRows[0]?.confirmedAt ?? null;
+
+  const { before, after } = buildBeforeAndAfterCards(activeCards, event);
+  const beforeSteps = effectiveCardDemotionSteps(before, round, confirmedAt);
+  const afterSteps = effectiveCardDemotionSteps(after, round, confirmedAt);
 
   const rankChange = await computePupilRankChange(
     event.pupilId,
