@@ -144,7 +144,7 @@ struct AccountSheetView: View {
                     LabeledContent("Name", value: user.displayName)
                     LabeledContent("Kürzel / Login", value: user.shortBadge)
                     LabeledContent("Rolle", value: roleLabel(user.role))
-                    LabeledContent("Server", value: api.baseURL)
+                    LabeledContent("Server", value: api.isDemoMode ? "Demo-Modus (Offline)" : api.baseURL)
                 }
 
                 Section("Über SMILE") {

@@ -76,7 +76,9 @@ final class APIClient: ObservableObject {
 
     @Published var currentUser: User?
     @Published var isAuthenticated = false
+    @Published private(set) var isDemoMode = false
 
+    private let demoService = DemoReviewService()
     private let session: URLSession
     private let trustDelegate = InternalCATrustDelegate()
 
@@ -191,6 +193,14 @@ final class APIClient: ObservableObject {
     // MARK: - Auth
 
     func login(username: String, password: String) async throws -> User {
+        if DemoReviewService.matchesCredentials(username: username, password: password) {
+            demoService.reset()
+            self.isDemoMode = true
+            self.currentUser = demoService.demoUser
+            self.isAuthenticated = true
+            return demoService.demoUser
+        }
+        self.isDemoMode = false
         let res: LoginResponse = try await request(
             "/auth/login",
             method: "POST",
@@ -202,6 +212,11 @@ final class APIClient: ObservableObject {
     }
 
     func checkSession() async {
+        if isDemoMode {
+            self.currentUser = demoService.demoUser
+            self.isAuthenticated = true
+            return
+        }
         do {
             let res: MeResponse = try await request("/auth/me")
             self.currentUser = res.user
@@ -213,6 +228,12 @@ final class APIClient: ObservableObject {
     }
 
     func logout() async {
+        if isDemoMode {
+            self.isDemoMode = false
+            self.currentUser = nil
+            self.isAuthenticated = false
+            return
+        }
         struct EmptyResponse: Decodable {}
         _ = try? await request("/auth/logout", method: "POST") as EmptyResponse
         if let cookies = HTTPCookieStorage.shared.cookies {
@@ -244,6 +265,7 @@ final class APIClient: ObservableObject {
     // MARK: - Timetable & Classes
 
     func getCurrentTimetable(day: Int? = nil, period: Int? = nil) async throws -> TimetableResponse {
+        if isDemoMode { return demoService.getCurrentTimetable() }
         var queryItems: [String] = []
         if let day = day { queryItems.append("day=\(day)") }
         if let period = period { queryItems.append("period=\(period)") }
@@ -252,20 +274,32 @@ final class APIClient: ObservableObject {
     }
 
     func getClasses() async throws -> [SchoolClass] {
+        if isDemoMode { return demoService.getClasses() }
         return try await request("/classes")
     }
 
     func getClassPupils(classId: Int) async throws -> ClassPupilsResponse {
+        if isDemoMode { return demoService.getClassPupils(classId: classId) }
         return try await request("/classes/\(classId)/pupils")
     }
 
     // MARK: - Cards (Grün, Gelb, Rot)
 
     func getClassCards(classId: Int) async throws -> [ClassCardItem] {
+        if isDemoMode { return demoService.getClassCards(classId: classId) }
         return try await request("/cards/class/\(classId)")
     }
 
     func issueCard(pupilId: Int, classId: Int, cardType: String, note: String?) async throws {
+        if isDemoMode {
+            demoService.issueCard(
+                pupilId: pupilId,
+                classId: classId,
+                cardType: cardType,
+                note: note?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            return
+        }
         struct CardResponse: Decodable {}
         var body: [String: Any] = [
             "pupilId": pupilId,
@@ -279,6 +313,10 @@ final class APIClient: ObservableObject {
     }
 
     func revokeCard(cardId: String) async throws {
+        if isDemoMode {
+            demoService.revokeCard(cardId: cardId)
+            return
+        }
         struct RevokeResponse: Decodable {}
         _ = try await request("/cards/\(cardId)/revoke", method: "POST") as RevokeResponse
     }
@@ -286,14 +324,17 @@ final class APIClient: ObservableObject {
     // MARK: - Time-Out & Cool-Down (Lernwerkstatt)
 
     func getClassTimeouts(classId: Int) async throws -> [TimeoutIncident] {
+        if isDemoMode { return demoService.getClassTimeouts(classId: classId) }
         return try await request("/timeouts/class/\(classId)")
     }
 
     func getActiveTimeouts() async throws -> [TimeoutIncident] {
+        if isDemoMode { return demoService.getActiveTimeouts() }
         return try await request("/timeouts/active")
     }
 
     func getTimeoutHistory() async throws -> [TimeoutIncident] {
+        if isDemoMode { return demoService.getTimeoutHistory() }
         return try await request("/timeouts/history")
     }
 
@@ -304,6 +345,10 @@ final class APIClient: ObservableObject {
         retroactiveDate: String? = nil,
         retroactivePeriod: Int? = nil
     ) async throws {
+        if isDemoMode {
+            demoService.sendToTimeout(pupilId: pupilId, classId: classId, kind: "timeout", taskAssignment: taskAssignment)
+            return
+        }
         struct TimeoutCreated: Decodable {}
         var body: [String: Any] = [
             "pupilId": pupilId,
@@ -320,6 +365,15 @@ final class APIClient: ObservableObject {
     }
 
     func sendToCooldown(pupilId: Int, classId: Int, note: String?) async throws {
+        if isDemoMode {
+            demoService.sendToTimeout(
+                pupilId: pupilId,
+                classId: classId,
+                kind: "cooldown",
+                taskAssignment: note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Cool-Down"
+            )
+            return
+        }
         struct CooldownCreated: Decodable {}
         var body: [String: Any] = [
             "pupilId": pupilId,
@@ -333,6 +387,13 @@ final class APIClient: ObservableObject {
     }
 
     func resolveTimeout(id: String, resolutionNote: String?) async throws {
+        if isDemoMode {
+            demoService.resolveTimeout(
+                id: id,
+                resolutionNote: resolutionNote?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            return
+        }
         struct ResolveResponse: Decodable {}
         var body: [String: Any] = [:]
         if let note = resolutionNote, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -344,16 +405,19 @@ final class APIClient: ObservableObject {
     // MARK: - Schulstatistik
 
     func getStatistics(classId: String = "all") async throws -> StatisticsResponse {
+        if isDemoMode { return demoService.getStatistics(classId: classId) }
         return try await request("/statistics/overview?classId=\(classId)")
     }
 
     // MARK: - School-wide Behaviour ("Alle Klassen")
 
     func getBehaviorOverview() async throws -> BehaviorOverview {
+        if isDemoMode { return demoService.getBehaviorOverview() }
         return try await request("/behavior/overview")
     }
 
     func getPupilBehaviorProfile(pupilId: Int) async throws -> PupilBehaviorProfile {
+        if isDemoMode { return demoService.getPupilBehaviorProfile(pupilId: pupilId) }
         return try await request("/pupils/\(pupilId)/behavior-profile")
     }
 
@@ -366,6 +430,10 @@ final class APIClient: ObservableObject {
         subjectCode: String,
         rank: String
     ) async throws {
+        if isDemoMode {
+            demoService.saveEvaluation(pupilId: pupilId, classId: classId, subjectCode: subjectCode, rank: rank, submit: false)
+            return
+        }
         try await requestWithoutResponse(
             "/evaluations/status",
             body: [
@@ -384,6 +452,10 @@ final class APIClient: ObservableObject {
         subjectCode: String,
         rank: String
     ) async throws {
+        if isDemoMode {
+            demoService.saveEvaluation(pupilId: pupilId, classId: classId, subjectCode: subjectCode, rank: rank, submit: true)
+            return
+        }
         try await requestWithoutResponse(
             "/evaluations/submit",
             body: [
@@ -397,6 +469,10 @@ final class APIClient: ObservableObject {
 
     /// Withdraws a submitted ballot before the deadline so it can be edited again.
     func reopenEvaluation(pupilId: Int, classId: Int, subjectCode: String) async throws {
+        if isDemoMode {
+            demoService.reopenEvaluation(pupilId: pupilId, subjectCode: subjectCode)
+            return
+        }
         try await requestWithoutResponse(
             "/evaluations/reopen",
             body: [
