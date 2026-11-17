@@ -16,6 +16,7 @@ vi.mock('../services/api', () => ({
   getTimeoutHistory: vi.fn().mockResolvedValue([]),
   issueCard: vi.fn().mockResolvedValue({ success: true, card: { id: 'c1' } }),
   revokeCard: vi.fn().mockResolvedValue({ success: true }),
+  updateCardNote: vi.fn().mockResolvedValue({ success: true, card: { id: 'c1', note: '' } }),
   sendToTimeout: vi.fn().mockResolvedValue({ success: true }),
   resolveTimeout: vi.fn().mockResolvedValue({ success: true }),
   getBehaviorOverview: vi.fn().mockResolvedValue({ schoolWide: true, classes: [], pupils: [] }),
@@ -685,5 +686,167 @@ describe('school-wide Alle Klassen view', () => {
   it('does not offer the Alle Klassen entry without the capability', async () => {
     renderSchulalltag([]);
     expect(screen.queryByRole('button', { name: /Alle Klassen/ })).toBeNull();
+  });
+});
+
+describe('Schulalltag retroactive card note editing', () => {
+  it('allows the issuing teacher to add a note afterwards and edit an existing note', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards)
+      .mockResolvedValueOnce([
+        {
+          id: 'card-yellow-1',
+          pupil_id: 1,
+          class_id: CLASS_ID,
+          teacher_id: 1,
+          teacher_short: 'TST',
+          teacher_name: 'Test',
+          card_type: 'yellow',
+          note: null,
+          created_at: '2026-11-17T08:00:00Z',
+        },
+        {
+          id: 'card-green-2',
+          pupil_id: 1,
+          class_id: CLASS_ID,
+          teacher_id: 1,
+          teacher_short: 'TST',
+          teacher_name: 'Test',
+          card_type: 'green',
+          note: 'Alte Notiz',
+          created_at: '2026-11-17T09:00:00Z',
+        },
+      ] as any)
+      .mockResolvedValueOnce([
+        {
+          id: 'card-yellow-1',
+          pupil_id: 1,
+          class_id: CLASS_ID,
+          teacher_id: 1,
+          teacher_short: 'TST',
+          teacher_name: 'Test',
+          card_type: 'yellow',
+          note: 'Nachträglich ergänzt',
+          created_at: '2026-11-17T08:00:00Z',
+        },
+        {
+          id: 'card-green-2',
+          pupil_id: 1,
+          class_id: CLASS_ID,
+          teacher_id: 1,
+          teacher_short: 'TST',
+          teacher_name: 'Test',
+          card_type: 'green',
+          note: 'Alte Notiz',
+          created_at: '2026-11-17T09:00:00Z',
+        },
+      ] as any)
+      .mockResolvedValue([
+        {
+          id: 'card-yellow-1',
+          pupil_id: 1,
+          class_id: CLASS_ID,
+          teacher_id: 1,
+          teacher_short: 'TST',
+          teacher_name: 'Test',
+          card_type: 'yellow',
+          note: 'Nachträglich ergänzt',
+          created_at: '2026-11-17T08:00:00Z',
+        },
+        {
+          id: 'card-green-2',
+          pupil_id: 1,
+          class_id: CLASS_ID,
+          teacher_id: 1,
+          teacher_short: 'TST',
+          teacher_name: 'Test',
+          card_type: 'green',
+          note: 'Geänderte Notiz',
+          created_at: '2026-11-17T09:00:00Z',
+        },
+      ] as any);
+    vi.mocked(api.updateCardNote).mockResolvedValue({ success: true, card: {} } as any);
+
+    renderSchulalltag([pupil(1, 'Anna Notiz')]);
+
+    const row = (await screen.findByText('Anna Notiz')).closest<HTMLElement>('div.cursor-pointer')!;
+    await userEvent.click(row);
+
+    // Add note to note-less yellow card
+    await userEvent.click(await screen.findByRole('button', { name: /Notiz hinzufügen/ }));
+    const editor = screen.getByLabelText('Kartennotiz bearbeiten');
+    await userEvent.type(editor, 'Nachträglich ergänzt');
+    await userEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() =>
+      expect(api.updateCardNote).toHaveBeenCalledWith('card-yellow-1', 'Nachträglich ergänzt'),
+    );
+    await screen.findByText(/Nachträglich ergänzt/);
+
+    // Edit existing note on green card
+    let greenCardContainer: HTMLElement | null = (await screen.findByText(/Alte Notiz/)).parentElement;
+    while (greenCardContainer && !greenCardContainer.textContent?.includes('Notiz ändern')) {
+      greenCardContainer = greenCardContainer.parentElement;
+    }
+    const greenEditButton = Array.from(greenCardContainer?.querySelectorAll('button') ?? []).find((btn) =>
+      /Notiz ändern/.test(btn.textContent ?? ''),
+    );
+    expect(greenEditButton).toBeTruthy();
+    await userEvent.click(greenEditButton!);
+    const editor2 = screen.getByLabelText('Kartennotiz bearbeiten');
+    await userEvent.clear(editor2);
+    await userEvent.type(editor2, 'Geänderte Notiz');
+    await userEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() =>
+      expect(api.updateCardNote).toHaveBeenCalledWith('card-green-2', 'Geänderte Notiz'),
+    );
+    await screen.findByText(/Geänderte Notiz/);
+  });
+
+  it('prevents clearing the reason on a red card and hides edit for non-issuer non-KV teachers', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.updateCardNote).mockClear();
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      {
+        id: 'card-red-own',
+        pupil_id: 1,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'red',
+        note: 'Vorfall',
+        created_at: '2026-11-17T08:00:00Z',
+      },
+      {
+        id: 'card-yellow-other',
+        pupil_id: 1,
+        class_id: CLASS_ID,
+        teacher_id: 999,
+        teacher_short: 'OTH',
+        teacher_name: 'Other',
+        card_type: 'yellow',
+        note: 'Fremde Notiz',
+        created_at: '2026-11-17T09:00:00Z',
+      },
+    ] as any);
+
+    renderSchulalltag([pupil(1, 'Anna Rechte')]);
+
+    const row = (await screen.findByText('Anna Rechte')).closest<HTMLElement>('div.cursor-pointer')!;
+    await userEvent.click(row);
+
+    // Only own red card shows edit button; other teacher's yellow card does not.
+    const editButtons = await screen.findAllByRole('button', { name: /Notiz ändern/ });
+    expect(editButtons).toHaveLength(1);
+
+    await userEvent.click(editButtons[0]!);
+    const editor = screen.getByLabelText('Kartennotiz bearbeiten');
+    await userEvent.clear(editor);
+    await userEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    expect(api.updateCardNote).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Begründung \/ Vorfallsbeschreibung zwingend erforderlich/i)).toBeInTheDocument();
   });
 });

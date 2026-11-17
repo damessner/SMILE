@@ -75,6 +75,7 @@ describe('useLiveSync event handling symmetry', () => {
     const SERVER_EMITTED_EVENTS = [
       'CARD_ISSUED',
       'CARD_REVOKED',
+      'CARD_NOTE_UPDATED',
       'BATCH_ITEMS_UPDATED',
       'BATCH_DEFAULTS_APPLIED',
       'PUPIL_RANKING_SUBMITTED',

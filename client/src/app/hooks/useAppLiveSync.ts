@@ -27,6 +27,7 @@ export function useAppLiveSync({
     if (
       data.type === 'CARD_ISSUED' ||
       data.type === 'CARD_REVOKED' ||
+      data.type === 'CARD_NOTE_UPDATED' ||
       data.type === 'BATCH_ITEMS_UPDATED' ||
       data.type === 'BATCH_DEFAULTS_APPLIED' ||
       data.type === 'PUPIL_RANKING_SUBMITTED' ||
@@ -41,6 +42,13 @@ export function useAppLiveSync({
       if (selectedClassId) loadClassData(selectedClassId);
       if (data.type === 'CARD_ISSUED' || data.type === 'CARD_REVOKED') {
         void refreshYellowCardAlerts();
+      }
+      if (
+        data.type === 'CARD_ISSUED' ||
+        data.type === 'CARD_REVOKED' ||
+        data.type === 'CARD_NOTE_UPDATED'
+      ) {
+        window.dispatchEvent(new CustomEvent('smile:cards-updated'));
       }
       if (data.type === 'TIMEOUT_ISSUED' || data.type === 'TIMEOUT_RESOLVED') {
         window.dispatchEvent(new CustomEvent('smile:timeouts-updated'));

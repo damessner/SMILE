@@ -169,6 +169,7 @@ export interface PupilBehaviorProfile {
     card_type: 'green' | 'yellow' | 'red' | 'cooldown';
     note?: string | null;
     created_at: string;
+    teacher_id?: number;
     teacher_short?: string;
     teacher_name?: string;
   }>;

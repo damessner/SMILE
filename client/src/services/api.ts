@@ -246,6 +246,14 @@ export async function revokeCard(cardId: string) {
   return unwrap(res);
 }
 
+export async function updateCardNote(cardId: string, note: string | null) {
+  const res = await apiFetch(`/cards/${cardId}/note`, {
+    method: 'PUT',
+    body: JSON.stringify({ note }),
+  });
+  return unwrap(res);
+}
+
 export async function getYellowCardAlerts() {
   const res = await apiFetch('/cards/alerts');
   return unwrap<any[]>(res);

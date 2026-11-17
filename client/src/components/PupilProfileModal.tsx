@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { BehaviorStage, PupilBehaviorProfile, PupilBehaviorAction, User } from '../types';
 import { BehaviorPyramid } from './BehaviorPyramid';
+import { CardNoteEditor, canEditCardNote } from './schulalltag/CardNoteEditor';
 import { getPupilBehaviorProfile, savePupilBehaviorAction, deletePupilBehaviorAction } from '../services/api';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmDialog';
@@ -27,6 +28,7 @@ import { Dialog } from './ui/Dialog';
 interface PupilProfileModalProps {
   pupilId: number;
   currentUser: User;
+  isKv?: boolean;
   onClose: () => void;
   onRefreshParent?: () => void;
 }
@@ -34,6 +36,7 @@ interface PupilProfileModalProps {
 export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
   pupilId,
   currentUser,
+  isKv,
   onClose,
   onRefreshParent,
 }) => {
@@ -44,6 +47,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
   const [profile, setProfile] = useState<PupilBehaviorProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'pyramid' | 'actions' | 'history'>('pyramid');
   const [selectedStage, setSelectedStage] = useState<BehaviorStage | null>(null);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
   // New action form state
   const [actionNotes, setActionNotes] = useState('');
@@ -497,15 +501,21 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                             </span>
                           </div>
 
-                          {c.note ? (
-                            <p className="text-xs text-slate-300 italic my-1 pl-2 border-l border-slate-700">
-                              &bdquo;{c.note}&ldquo;
-                            </p>
-                          ) : (
-                            <p className="text-[11px] text-slate-500 italic my-1">
-                              Ohne Zusatznotiz vergeben
-                            </p>
-                          )}
+                          <CardNoteEditor
+                            cardId={c.id}
+                            cardType={c.card_type}
+                            note={c.note}
+                            canEdit={canEditCardNote(c, currentUser, isKv)}
+                            isEditing={editingCardId === c.id}
+                            onStartEdit={() => setEditingCardId(c.id)}
+                            onCancelEdit={() => setEditingCardId(null)}
+                            onSaved={async () => {
+                              setEditingCardId(null);
+                              await loadProfile();
+                              onRefreshParent?.();
+                            }}
+                            emptyLabel="Ohne Zusatznotiz vergeben"
+                          />
                         </div>
 
                         <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">

@@ -23,8 +23,21 @@ import { queueClassEventNotification } from '../lib/notification-events.js';
 import { queueWebUntisClassregCorrection, queueWebUntisClassregEvent } from '../lib/webuntis/sync.js';
 
 const CARD_TYPES = new Set(['green', 'yellow', 'red']);
+const UUID_REGEX = /^[0-9a-f-]{36}$/i;
 
 type CardType = 'green' | 'yellow' | 'red';
+
+function canModifyCard(
+  user: ReturnType<typeof requireAuth>,
+  card: { teacherId: number },
+  access: Awaited<ReturnType<typeof getClassAccess>>,
+): { isIssuer: boolean; allowed: boolean } {
+  const isIssuer = user.teacherId != null && card.teacherId === user.teacherId;
+  return {
+    isIssuer,
+    allowed: isIssuer || access.isKv || access.isHeadmaster || access.isAdmin,
+  };
+}
 
 export const cardRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -216,6 +229,123 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /**
+   * PUT /api/cards/:id/note — add or amend the note on an existing active card.
+   *
+   * Restricted to the issuing teacher, the homeroom heads of that class, and the
+   * school administration. Red cards retain their mandatory reason invariant.
+   */
+  fastify.put(
+    '/:id/note',
+    {
+      preValidation: [fastify.authenticate],
+      schema: {
+        params: {
+          type: 'object',
+          required: ['id'],
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string', minLength: 1 },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['note'],
+          additionalProperties: false,
+          properties: {
+            note: { type: 'string', nullable: true, maxLength: 2000 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const user = requireAuth(request);
+      if (!assertPasswordCurrent(user, reply)) return;
+
+      const { id } = request.params as { id: string };
+      if (!id || !UUID_REGEX.test(id)) {
+        return badRequest(reply, 'Ungültige Karten-ID.');
+      }
+
+      const [existing] = await db
+        .select()
+        .from(behaviorCards)
+        .where(eq(behaviorCards.id, id))
+        .limit(1);
+      if (!existing) return reply.status(404).send({ error: 'Karte nicht gefunden' });
+      if (existing.revokedAt) {
+        return badRequest(reply, 'Eine zurückgezogene Karte kann nicht mehr bearbeitet werden.');
+      }
+
+      const access = await getClassAccess(user, existing.classId);
+      if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
+
+      const { isIssuer, allowed } = canModifyCard(user, existing, access);
+      if (!allowed) {
+        return reply.status(403).send({
+          error:
+            'Nur die ausstellende Lehrperson, der Klassenvorstand oder die Schulleitung kann die Notiz dieser Karte bearbeiten.',
+        });
+      }
+
+      const pupil = await findPupilInClass(existing.pupilId, existing.classId);
+      if (!pupil) {
+        return badRequest(reply, 'Dieser Schüler gehört nicht zu dieser Klasse.');
+      }
+
+      const { note } = (request.body ?? {}) as { note?: string | null };
+      const cleanNote = note?.trim() || null;
+      if (cleanNote && cleanNote.length > 2000) {
+        return badRequest(reply, 'Die Begründung ist zu lang.');
+      }
+      if (existing.cardType === 'red' && !cleanNote) {
+        return badRequest(
+          reply,
+          'Für eine Rote Karte (Rangverlust) ist eine Begründung / Vorfallsbeschreibung zwingend erforderlich',
+        );
+      }
+
+      if ((existing.note ?? null) === cleanNote) {
+        return reply.send({ success: true, card: existing });
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(behaviorCards)
+          .set({ note: cleanNote })
+          .where(and(eq(behaviorCards.id, id), isNull(behaviorCards.revokedAt)))
+          .returning();
+
+        if (!row) return null;
+
+        await tx.insert(auditLogs).values({
+          actorId: safeTeacherId(user.teacherId),
+          action: 'CARD_NOTE_UPDATED',
+          entity: 'pupil',
+          entityId: String(existing.pupilId),
+          payload: {
+            cardId: id,
+            classId: existing.classId,
+            cardType: existing.cardType,
+            previousNote: existing.note ?? null,
+            note: cleanNote,
+            wasIssuer: isIssuer,
+          },
+        });
+
+        return row;
+      });
+
+      if (!updated) {
+        return badRequest(reply, 'Diese Karte wurde soeben zurückgezogen.');
+      }
+
+      broadcastToClass(existing.classId, { type: 'CARD_NOTE_UPDATED', card: updated });
+
+      return reply.send({ success: true, card: updated });
+    },
+  );
+
+  /**
    * POST /api/cards/:id/revoke — withdraw a card.
    *
    * Restricted to the issuing teacher, the homeroom heads of that class and the
@@ -227,7 +357,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
     if (!assertPasswordCurrent(user, reply)) return;
 
     const { id } = request.params as { id: string };
-    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+    if (!id || !UUID_REGEX.test(id)) {
       return badRequest(reply, 'Ungültige Karten-ID.');
     }
 
@@ -236,8 +366,7 @@ export const cardRoutes: FastifyPluginAsync = async (fastify) => {
     if (existing.revokedAt) return badRequest(reply, 'Diese Karte wurde bereits zurückgezogen.');
 
     const access = await getClassAccess(user, existing.classId);
-    const isIssuer = user.teacherId != null && existing.teacherId === user.teacherId;
-    const mayRevoke = isIssuer || access.isKv || access.isHeadmaster || access.isAdmin;
+    const { isIssuer, allowed: mayRevoke } = canModifyCard(user, existing, access);
 
     if (!mayRevoke) {
       return reply.status(403).send({

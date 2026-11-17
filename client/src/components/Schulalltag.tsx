@@ -29,6 +29,7 @@ import { scoreSubject, type AssessmentRank } from '../lib/pupilItems';
 import { useToast } from './Toast';
 import { useConfirm } from './ConfirmDialog';
 import { PupilProfileModal } from './PupilProfileModal';
+import { CardNoteEditor, canEditCardNote } from './schulalltag/CardNoteEditor';
 import {
   SchulalltagActionSheets,
   localDateKey,
@@ -189,6 +190,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   // Quick inline note state per pupil
   const [inlineNotes, setInlineNotes] = useState<Record<number, string>>({});
   const [savingInlineNote, setSavingInlineNote] = useState<number | null>(null);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
   const toast = useToast();
   const confirm = useConfirm();
@@ -235,6 +237,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   };
 
   useEffect(() => {
+    setEditingCardId(null);
     if (currentClass?.id) {
       loadClassCards(currentClass.id);
     }
@@ -309,10 +312,17 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       if (classId) void loadClassCards(classId);
       if (allClassesViewRef.current) void loadAllClasses();
     };
+    const handleCardsUpdated = () => {
+      const classId = currentClassIdRef.current;
+      if (classId) void loadClassCards(classId);
+      if (allClassesViewRef.current) void loadAllClasses();
+    };
     window.addEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
+    window.addEventListener('smile:cards-updated', handleCardsUpdated);
     return () => {
       clearInterval(interval);
       window.removeEventListener('smile:timeouts-updated', handleTimeoutsUpdated);
+      window.removeEventListener('smile:cards-updated', handleCardsUpdated);
     };
   }, []);
 
@@ -1811,15 +1821,24 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                         von {c.teacher_short} · {new Date(c.created_at).toLocaleDateString('de-AT')} {new Date(c.created_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                                       </span>
                                     </div>
-                                    {c.note ? (
-                                      <p className="text-slate-300 text-xs italic mt-1">
-                                        &bdquo;{c.note}&ldquo;
-                                      </p>
-                                    ) : (
-                                      <p className="text-slate-500 text-[11px] italic mt-0.5">
-                                        (Keine Notiz)
-                                      </p>
-                                    )}
+                                    <CardNoteEditor
+                                      cardId={c.id}
+                                      cardType={c.card_type}
+                                      note={c.note}
+                                      canEdit={canEditCardNote(c, currentUser, currentClass?.isKv)}
+                                      isEditing={editingCardId === c.id}
+                                      onStartEdit={() => setEditingCardId(c.id)}
+                                      onCancelEdit={() => setEditingCardId(null)}
+                                      onSaved={async (updatedNote) => {
+                                        setCards((prev) =>
+                                          prev.map((item) =>
+                                            item.id === c.id ? { ...item, note: updatedNote } : item,
+                                          ),
+                                        );
+                                        setEditingCardId(null);
+                                        await loadClassCards(c.class_id);
+                                      }}
+                                    />
                                   </div>
 
                                   <button
@@ -1904,6 +1923,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         <PupilProfileModal
           pupilId={activeProfilePupilId}
           currentUser={currentUser}
+          isKv={currentClass?.isKv}
           onClose={() => setActiveProfilePupilId(null)}
           onRefreshParent={() => {
             if (currentClass) loadClassCards(currentClass.id);

@@ -105,6 +105,7 @@ export interface ErrorMessage {
 export const PASSTHROUGH_LIVE_SYNC_TYPES = [
   'CARD_ISSUED',
   'CARD_REVOKED',
+  'CARD_NOTE_UPDATED',
   'BATCH_ITEMS_UPDATED',
   'BATCH_DEFAULTS_APPLIED',
   'PUPIL_RANKING_SUBMITTED',
@@ -494,6 +495,7 @@ export function useLiveSync(
 
               case 'CARD_ISSUED':
               case 'CARD_REVOKED':
+              case 'CARD_NOTE_UPDATED':
               case 'BATCH_ITEMS_UPDATED':
               case 'BATCH_DEFAULTS_APPLIED':
               case 'PUPIL_RANKING_SUBMITTED':

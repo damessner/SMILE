@@ -66,6 +66,7 @@ const PROTECTED_ENDPOINTS: Array<{ method: 'GET' | 'POST' | 'PUT' | 'DELETE'; ur
   { method: 'PUT', url: '/api/pupils/1' },
   { method: 'DELETE', url: '/api/pupils/1' },
   { method: 'POST', url: '/api/cards' },
+  { method: 'PUT', url: '/api/cards/00000000-0000-0000-0000-000000000000/note' },
   { method: 'POST', url: '/api/cards/00000000-0000-0000-0000-000000000000/revoke' },
   { method: 'GET', url: '/api/cards/alerts' },
   { method: 'GET', url: '/api/cards/class/1' },
