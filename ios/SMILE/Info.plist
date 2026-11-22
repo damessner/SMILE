@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>SMILE verwendet Face ID / Touch ID für die schnelle und sichere Anmeldung im Schulalltag.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SMILE benötigt Zugriff auf das lokale Schulnetzwerk, um sich sicher mit dem schuleigenen SMILE-Server zu verbinden.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

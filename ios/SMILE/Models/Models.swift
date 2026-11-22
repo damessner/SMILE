@@ -32,11 +32,24 @@ struct TeacherInfo: Codable, Equatable {
 
 struct LoginResponse: Codable {
     let user: User
-    let expiresAt: Int?
+    let expiresAt: String?
 }
 
-struct MeResponse: Codable {
+struct MeResponse: Decodable {
     let user: User
+
+    private enum CodingKeys: String, CodingKey {
+        case user
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let wrapped = try container.decodeIfPresent(User.self, forKey: .user) {
+            self.user = wrapped
+        } else {
+            self.user = try User(from: decoder)
+        }
+    }
 }
 
 struct PasswordChangeResponse: Codable {

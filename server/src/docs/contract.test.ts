@@ -121,3 +121,21 @@ describe('directive documents: test-run hygiene', () => {
     expect(AGENTS).toMatch(/no root vitest config|do not run `npx vitest`/i);
   });
 });
+
+describe('iOS auth response contract', () => {
+  const iosModels = read('ios/SMILE/Models/Models.swift');
+  const iosApiClient = read('ios/SMILE/Services/APIClient.swift');
+
+  it('decodes LoginResponse.expiresAt as String? matching sessionExpiresAt() ISO string', () => {
+    expect(iosModels).toMatch(/struct\s+LoginResponse[\s\S]*?let\s+expiresAt:\s*String\?/);
+    expect(iosModels).not.toMatch(/struct\s+LoginResponse[\s\S]*?let\s+expiresAt:\s*Int\?/);
+  });
+
+  it('decodes flat User payloads from GET /api/auth/me', () => {
+    expect(iosModels).toMatch(/struct\s+MeResponse[\s\S]*?try\s+User\(from:\s*decoder\)/);
+  });
+
+  it('sets URLRequest.mainDocumentURL so iOS attaches SameSite=Strict session cookies', () => {
+    expect(iosApiClient).toMatch(/req\.mainDocumentURL\s*=\s*url/);
+  });
+});

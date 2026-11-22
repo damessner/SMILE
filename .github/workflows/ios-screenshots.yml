@@ -201,8 +201,8 @@ jobs:
           ]
 
           ROUTES = {
-              "/api/auth/me": {"user": DEMO_USER},
-              "/api/auth/login": {"user": DEMO_USER, "expiresAt": 1900000000},
+              "/api/auth/me": DEMO_USER,
+              "/api/auth/login": {"user": DEMO_USER, "expiresAt": "2026-12-31T12:00:00.000Z"},
               "/api/classes": CLASSES,
               "/api/timetable/current": {
                   "isTeacher": True,

@@ -7,6 +7,7 @@ enum APIError: LocalizedError {
     case passwordChangeRequired
     case serverError(status: Int, message: String, code: String?)
     case networkError(Error)
+    case decodingError(String)
 
     var errorDescription: String? {
         switch self {
@@ -19,7 +20,19 @@ enum APIError: LocalizedError {
         case .serverError(_, let msg, _):
             return msg
         case .networkError(let err):
+            if let urlErr = err as? URLError {
+                switch urlErr.code {
+                case .cannotConnectToHost, .timedOut, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
+                    return "SMILE-Server nicht erreichbar. Bitte Schul-WLAN und unter Einstellungen → SMILE „Lokales Netzwerk“ prüfen."
+                case .serverCertificateUntrusted, .serverCertificateHasUnknownRoot, .secureConnectionFailed, .clientCertificateRejected:
+                    return "TLS-Zertifikat des SMILE-Servers nicht vertrauenswürdig. Bitte Server-Adresse prüfen oder Admin kontaktieren."
+                default:
+                    break
+                }
+            }
             return "Netzwerkfehler: \(err.localizedDescription)"
+        case .decodingError(let detail):
+            return "Antwort des Servers konnte nicht verarbeitet werden (\(detail))."
         }
     }
 }
@@ -131,6 +144,7 @@ final class APIClient: ObservableObject {
     ) async throws -> Data {
         let url = try makeURL(path)
         var req = URLRequest(url: url)
+        req.mainDocumentURL = url
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -178,7 +192,11 @@ final class APIClient: ObservableObject {
         body: [String: Any]? = nil
     ) async throws -> T {
         let data = try await perform(path, method: method, body: body)
-        return try JSONDecoder().decode(T.self, from: data)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw APIError.decodingError(error.localizedDescription)
+        }
     }
 
     /// For write endpoints whose response body the app does not need.
