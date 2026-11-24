@@ -39,6 +39,7 @@ The message contains:
 - issuing teacher,
 - timestamp,
 - the note / task assignment entered by the teacher,
+- for leadership (`SLC`, `MED`, `admin`, or `LEADERSHIP_NOTIFICATION_EMAILS` addresses) subscribed to `Time-Out`: the total time-out count and complete chronological time-out history (date/time, teacher, task assignment),
 - a link to SMILE.
 
 No notes are sent for the weekly digest; it contains counts only.
@@ -66,8 +67,7 @@ reaches a 3/6/9/... time-out milestone. Configure their addresses in
 LEADERSHIP_NOTIFICATION_EMAILS="med@example.org,slc@example.org"
 ```
 
-This mail contains pupil, class, total time-out count, teacher and the current
-task assignment. Cool-Downs do not count toward the milestone.
+This mail contains pupil, class, total time-out count, the complete chronological time-out history (timestamps, issuing teachers, and task assignments), the current issuing teacher, and the current task assignment. Cool-Downs do not count toward the milestone.
 
 ## SMTP
 

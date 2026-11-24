@@ -295,6 +295,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       queueClassEventNotification({
         type: 'timeout',
         classId,
+        pupilId,
         pupilName: pupil.fullName,
         teacherId: actorId,
         note: storedTask,
@@ -321,6 +322,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
       queueClassEventNotification({
         type: 'cooldown',
         classId,
+        pupilId,
         pupilName: pupil.fullName,
         teacherId: actorId,
         note: cleanTask || null,
@@ -329,6 +331,7 @@ export const timeoutRoutes: FastifyPluginAsync = async (fastify) => {
     if (result.isEscalationTriggered) {
       queueTimeoutEscalationNotification({
         classId,
+        pupilId,
         pupilName: pupil.fullName,
         teacherId: actorId,
         totalTimeouts: result.totalTimeouts,
