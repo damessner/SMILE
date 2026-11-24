@@ -97,7 +97,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
           <div>
             <label
               htmlFor="cur"
-              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2"
+              className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2"
             >
               Bisheriges Passwort
             </label>
@@ -108,14 +108,14 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
               autoComplete="current-password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus-ring transition"
             />
           </div>
 
           <div>
             <label
               htmlFor="new"
-              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2"
+              className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2"
             >
               Neues Passwort
             </label>
@@ -126,9 +126,9 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus-ring transition"
             />
-            <p className="mt-1.5 text-xs text-slate-500">
+            <p className="mt-1.5 text-sm text-slate-500">
               Mindestens 12 Zeichen, davon Groß- und Kleinbuchstaben sowie eine Ziffer.
             </p>
           </div>
@@ -136,7 +136,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
           <div>
             <label
               htmlFor="conf"
-              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2"
+              className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2"
             >
               Neues Passwort bestätigen
             </label>
@@ -147,7 +147,7 @@ export const ForcePasswordChange: React.FC<Props> = ({ user, onChanged, onLogout
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 focus:outline-none focus:border-amber-400 focus-ring transition"
             />
           </div>
 

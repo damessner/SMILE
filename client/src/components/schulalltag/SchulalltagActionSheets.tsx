@@ -140,12 +140,12 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
             </button>
           </div>
 
-          <p className="text-xs text-slate-300 mb-3">
+          <p className="text-sm text-slate-300 mb-3">
             Für Schüler*in: <strong className="text-slate-50">{activeCardModal.pupilName}</strong> (Klasse {activeCardModal.className})
           </p>
 
           <div className="mb-4">
-            <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
+            <label className="text-2xs font-bold text-slate-400 uppercase block mb-1">
               Begründung / Notiz (optional)
             </label>
             <textarea
@@ -157,21 +157,21 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                   ? 'z.B. Vorbildliches Engagement, herausragende Mitarbeit...'
                   : 'z.B. Wiederholte Störung, Hausübung unvollständig...'
               }
-              className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+              className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
             />
           </div>
 
           <div className="flex items-center justify-end gap-2">
             <button
               onClick={onCloseCardModal}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition"
             >
               Abbrechen
             </button>
             <button
               onClick={onConfirmCard}
               disabled={submittingCard}
-              className={`px-4 py-2 rounded-xl text-slate-950 font-bold text-xs transition shadow-md ${
+              className={`px-4 py-2 rounded-xl text-slate-950 font-bold text-sm transition shadow-md ${
                 activeCardModal.cardType === 'green'
                   ? 'bg-emerald-500 hover:bg-emerald-400 shadow-sm'
                   : 'bg-amber-500 hover:bg-amber-400 shadow-sm'
@@ -214,7 +214,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
           {/* Step 1: Warning & Confirmation */}
           {redCardStep === 1 && (
             <div className="space-y-4">
-              <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-xs text-rose-200 space-y-2">
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 text-sm text-rose-200 space-y-2">
                 <p className="text-sm font-bold text-rose-300">
                   Möchten Sie dem Schüler {redCardTarget.pupilName} wirklich eine Rote Karte geben?
                 </p>
@@ -236,30 +236,30 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                   ))}
                 </div>
                 {redCardTarget.deductions.length === 0 && !redCardTarget.pendingNote && (
-                  <p className="text-slate-400 text-xs">
+                  <p className="text-slate-400 text-sm">
                     Die Rote Karte zählt als Rangverlust. Die betroffenen Fächer
                     werden beim Laden der Klasse berechnet.
                   </p>
                 )}
                 {redCardTarget.pendingNote && (
-                  <p className="text-slate-400 text-xs pt-1">{redCardTarget.pendingNote}</p>
+                  <p className="text-slate-400 text-sm pt-1">{redCardTarget.pendingNote}</p>
                 )}
               </div>
 
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Im nächsten Schritt müssen Sie zwingend beschreiben, was genau vorgefallen ist, bevor die Rote Karte im System gespeichert wird.
               </p>
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={onCloseRedCard}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition"
                 >
                   Abbrechen
                 </button>
                 <button
                   onClick={() => onRedCardStepChange(2)}
-                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-slate-50 font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5"
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-slate-50 font-bold text-sm transition shadow-lg shadow-sm flex items-center gap-1.5"
                 >
                   <span>Ja, weiter zur Vorfallsbeschreibung</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -271,7 +271,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
           {/* Step 2: Mandatory Incident Description */}
           {redCardStep === 2 && (
             <div className="space-y-4">
-              <div className="text-xs text-slate-300 space-y-1.5">
+              <div className="text-sm text-slate-300 space-y-1.5">
                 Schüler*in: <strong className="text-slate-50">{redCardTarget.pupilName}</strong> (Klasse {redCardTarget.className})
                 {redCardTarget.deductions.length > 0 && (
                   <>
@@ -291,7 +291,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
               </div>
 
               <div>
-                <label className="text-[11px] font-bold uppercase text-rose-300 block mb-1.5">
+                <label className="text-2xs font-bold uppercase text-rose-300 block mb-1.5">
                   Was ist passiert? Vorfallsbeschreibung (zwingend erforderlich):
                 </label>
                 <textarea
@@ -299,14 +299,14 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                   value={redCardNote}
                   onChange={(e) => onRedCardNoteChange(e.target.value)}
                   placeholder="Beschreiben Sie präzise und sachlich den Vorfall..."
-                  className="w-full p-3.5 rounded-2xl bg-slate-950 border border-rose-500/40 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-400"
+                  className="w-full p-3.5 rounded-2xl bg-slate-950 border border-rose-500/40 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-rose-400 focus-ring"
                 />
               </div>
 
               <div className="flex items-center justify-between pt-2">
                 <button
                   onClick={() => onRedCardStepChange(1)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition"
                 >
                   Zurück
                 </button>
@@ -314,14 +314,14 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={onCloseRedCard}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold transition"
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm font-bold transition"
                   >
                     Abbrechen
                   </button>
                   <button
                     onClick={onConfirmRedCard}
                     disabled={submittingRedCard || !redCardNote.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-slate-50 font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40"
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-slate-50 font-bold text-sm transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40"
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />
                     <span>{submittingRedCard ? 'Speichere...' : 'Rote Karte & Degradierung bestätigen'}</span>
@@ -367,7 +367,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
             </div>
 
             <div className="space-y-4">
-              <div className={`${isCooldown ? 'bg-sky-500/10 border-sky-500/30 text-sky-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'} border rounded-2xl p-3.5 text-xs`}>
+              <div className={`${isCooldown ? 'bg-sky-500/10 border-sky-500/30 text-sky-200' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'} border rounded-2xl p-3.5 text-sm`}>
                 <p className={`font-bold ${isCooldown ? 'text-sky-300' : 'text-amber-300'} mb-1`}>
                   {isCooldown ? (
                     <Snowflake className="w-5 h-5 inline align-text-bottom" aria-hidden="true" />
@@ -387,7 +387,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
 
               {!isCooldown && (
                 <div className="rounded-2xl border border-slate-700 bg-slate-950/40 p-3.5 space-y-3">
-                  <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-200">
                     <input
                       type="checkbox"
                       checked={timeoutRetroactive}
@@ -400,7 +400,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                     <>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="mb-1 block text-[11px] font-bold uppercase text-slate-400">
+                          <label className="mb-1 block text-2xs font-bold uppercase text-slate-400">
                             Datum
                           </label>
                           <input
@@ -410,18 +410,18 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                             min={earliestRetroactiveDateKey()}
                             max={localDateKey()}
                             onChange={(event) => onTimeoutRetroDateChange(event.target.value)}
-                            className="min-h-[42px] w-full rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs text-slate-50 focus:border-amber-400 focus:outline-none"
+                            className="min-h-[42px] w-full rounded-xl border border-slate-700 bg-slate-950 px-2 text-sm text-slate-50 focus:border-amber-400 focus:outline-none"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-[11px] font-bold uppercase text-slate-400">
+                          <label className="mb-1 block text-2xs font-bold uppercase text-slate-400">
                             Schulstunde
                           </label>
                           <select
                             aria-label="Schulstunde"
                             value={timeoutRetroPeriod}
                             onChange={(event) => onTimeoutRetroPeriodChange(Number(event.target.value))}
-                            className="min-h-[42px] w-full rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs text-slate-50 focus:border-amber-400 focus:outline-none"
+                            className="min-h-[42px] w-full rounded-xl border border-slate-700 bg-slate-950 px-2 text-sm text-slate-50 focus:border-amber-400 focus:outline-none"
                           >
                             {Array.from({ length: 10 }, (_, index) => index + 1).map((period) => (
                               <option key={period} value={period}>
@@ -431,7 +431,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                           </select>
                         </div>
                       </div>
-                      <p className="text-[11px] leading-relaxed text-slate-400">
+                      <p className="text-2xs leading-relaxed text-slate-400">
                         Nur die letzten {RETROACTIVE_TIMEOUT_DAYS} Tage. Der Eintrag wird als
                         bereits beendet gespeichert und erscheint nicht als aktiver
                         Lernwerkstatt-Aufenthalt.
@@ -442,7 +442,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
               )}
 
               <div>
-                <label className={`text-[11px] font-bold uppercase ${isCooldown ? 'text-sky-300' : 'text-amber-300'} block mb-1.5`}>
+                <label className={`text-2xs font-bold uppercase ${isCooldown ? 'text-sky-300' : 'text-amber-300'} block mb-1.5`}>
                   {isCooldown
                     ? 'Notiz / Beobachtung (optional):'
                     : 'Arbeitsauftrag für das Time-Out (zwingend erforderlich):'}
@@ -456,10 +456,10 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                       ? 'z.B. Kurze Auszeit zur Beruhigung, kurze Beobachtung...'
                       : 'Geben Sie hier die Aufgaben oder Arbeitsblätter an, die der Schüler in der Lernwerkstatt bearbeiten muss...'
                   }
-                  className={`w-full p-3.5 rounded-2xl bg-slate-950 border ${isCooldown ? 'border-sky-500/40 focus:border-sky-400 focus:ring-sky-400' : 'border-amber-500/40 focus:border-amber-400 focus:ring-amber-400'} text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-1`}
+                  className={`w-full p-3.5 rounded-2xl bg-slate-950 border ${isCooldown ? 'border-sky-500/40 focus:border-sky-400 ' : 'border-amber-500/40 focus:border-amber-400 '} text-sm text-slate-50 placeholder-slate-500 focus-ring`}
                 />
                 {!isCooldown && timeoutTask.trim().length === 0 && (
-                  <span className="text-[11px] text-amber-400 mt-1 block">
+                  <span className="text-2xs text-amber-400 mt-1 block">
                     * Ein konkreter Arbeitsauftrag ist zwingend erforderlich.
                   </span>
                 )}
@@ -468,7 +468,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   onClick={onCloseTimeout}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition"
                 >
                   Abbrechen
                 </button>
@@ -479,7 +479,7 @@ export const SchulalltagActionSheets: React.FC<SchulalltagActionSheetsProps> = (
                     (!isCooldown && !timeoutTask.trim()) ||
                     (!isCooldown && timeoutRetroactive && (!timeoutRetroDate || !timeoutRetroPeriod))
                   }
-                  className={`px-5 py-2.5 rounded-xl ${isCooldown ? 'bg-sky-500 hover:bg-sky-400 text-slate-950' : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950'} font-bold text-xs transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40`}
+                  className={`px-5 py-2.5 rounded-xl ${isCooldown ? 'bg-sky-500 hover:bg-sky-400 text-slate-950' : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950'} font-bold text-sm transition shadow-lg shadow-sm flex items-center gap-1.5 disabled:opacity-40`}
                 >
                   {isCooldown ? <Snowflake className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                   <span>

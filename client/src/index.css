@@ -6,8 +6,16 @@
    Targets iPadOS: SF-family type, a restrained radius scale, materials
    instead of borders, and continuous (squircle) corners where supported.
 
-   Everything here is a token. Components should consume tokens rather than
-   re-deriving values, so the whole app can be re-themed from this file.
+   Token architecture (three layers, StyleX-style):
+     1. primitives  — raw values (colors, radii, shadows, motion) in @theme
+     2. semantic    — surface/hairline/accent/positive/... derived from primitives
+     3. component   — --btn-*, --chip-*, --field-*, --ring: per-component vars
+                       that derive from the semantic layer, so a theme override
+                       at the root re-themes every component automatically.
+
+   Components consume tokens (ui/Button.tsx, ui/Chip.tsx, the @layer
+   primitives below) rather than re-deriving values, so the whole app can be
+   re-themed from this file. Guardrails live in client/scripts/lint-design.mjs.
    ========================================================================== */
 
 @theme {
@@ -22,18 +30,12 @@
     ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
   /*
-    Font sizes.
-
-    The previous UI used `text-xs` (12px) for 232 occurrences and `text-[10px]`
-    for another 64 — well below the legibility floor for a tablet held at arm's
-    length during a lesson.
-
-    Note: `text-xs` is a stock Tailwind utility and is NOT redefined here. It is
-    deliberately left at 12px so existing markup does not silently shift, while
-    the steps below (`text-sm`, `text-base`, `text-lg`, ...) are set to the larger
-    iPad-appropriate sizes. Migrating the 232 `text-xs` call sites to the scale is
-    a follow-up task, not something to change underneath them.
+    Font sizes. --text-2xs (11px) is the legibility floor for a tablet held at
+    arm's length during a lesson; anything smaller is banned by lint:design.
+    The old text-xs (12px) step has been retired: call sites were migrated to
+    text-sm (13px) and text-2xs is used for dense labels.
   */
+  --text-2xs: 0.6875rem;   /* 11px — legibility floor: dense labels, chips */
   --text-sm: 0.8125rem;    /* 13px — dense labels */
   --text-base: 0.9375rem;  /* 15px — body copy */
   --text-lg: 1.0625rem;    /* 17px — pupil names, card titles */
@@ -53,7 +55,7 @@
 
   /* --- Material --------------------------------------------------------
      Four elevation levels, expressed as surface + border + shadow rather
-     than 145 ad-hoc border-slate-8xx declarations. */
+     than ad-hoc border-slate-8xx declarations. */
   --color-surface-0: #080b12;   /* app background */
   --color-surface-1: #0e1320;   /* cards, rows */
   --color-surface-2: #161d2e;   /* raised: expanded row, inputs */
@@ -71,12 +73,115 @@
   --color-caution: #fbbf24;
   --color-critical: #fb7185;
   --color-info: #60a5fa;
+  --color-warning: #fb923c;
+
+  /* --- Component tokens: buttons ---------------------------------------
+     Derived from the semantic layer where possible; the foreground colors
+     need per-theme overrides because the accent flips light/dark. */
+  --btn-primary-bg: var(--color-accent);
+  --btn-primary-bg-hover: color-mix(in srgb, var(--color-accent) 78%, white);
+  --btn-primary-fg: #17130a;
+  --btn-secondary-bg: var(--color-surface-2);
+  --btn-secondary-bg-hover: var(--color-surface-3);
+  --btn-secondary-fg: var(--color-slate-200);
+  --btn-secondary-border: var(--color-hairline-strong);
+  --btn-ghost-bg-hover: var(--color-surface-2);
+  --btn-danger-bg: #e11d48;
+  --btn-danger-bg-hover: #f43f5e;
+  --btn-danger-fg: #fff1f2;
+  --btn-success-bg: #10b981;
+  --btn-success-bg-hover: #34d399;
+  --btn-success-fg: #052e22;
+  --btn-info-bg: #0284c7;
+  --btn-info-bg-hover: #0ea5e9;
+  --btn-info-fg: #f0f9ff;
+
+  /* --- Component tokens: chips -----------------------------------------
+     fg is the semantic color itself (readable on both themes); bg/border are
+     translucent mixes so the pill works on any surface. */
+  --chip-neutral-bg: var(--color-surface-2);
+  --chip-neutral-border: var(--color-hairline-strong);
+  --chip-neutral-fg: var(--color-slate-300);
+  --chip-muted-bg: var(--color-surface-1);
+  --chip-muted-border: var(--color-hairline);
+  --chip-muted-fg: var(--color-slate-400);
+  --chip-green-bg: color-mix(in srgb, var(--color-positive) 15%, transparent);
+  --chip-green-border: color-mix(in srgb, var(--color-positive) 35%, transparent);
+  --chip-green-fg: var(--color-positive);
+  --chip-amber-bg: color-mix(in srgb, var(--color-caution) 15%, transparent);
+  --chip-amber-border: color-mix(in srgb, var(--color-caution) 35%, transparent);
+  --chip-amber-fg: var(--color-caution);
+  --chip-rose-bg: color-mix(in srgb, var(--color-critical) 15%, transparent);
+  --chip-rose-border: color-mix(in srgb, var(--color-critical) 35%, transparent);
+  --chip-rose-fg: var(--color-critical);
+  --chip-sky-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --chip-sky-border: color-mix(in srgb, var(--color-info) 35%, transparent);
+  --chip-sky-fg: var(--color-info);
+  --chip-orange-bg: color-mix(in srgb, var(--color-warning) 15%, transparent);
+  --chip-orange-border: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  --chip-orange-fg: var(--color-warning);
+
+  /* --- Component tokens: form fields & focus ---------------------------- */
+  --field-bg: var(--color-surface-2);
+  --field-border: var(--color-hairline-strong);
+  --field-border-focus: var(--color-accent);
+  --field-fg: var(--color-slate-100);
+  --field-placeholder: var(--color-slate-500);
+  --ring: 2px solid var(--color-accent);
 
   /* --- Motion ----------------------------------------------------------
-     Apple-style easing. The default Tailwind transition is fine but linear-ish
-     in feel; these give movement a slight settle. */
+     Apple-style easing. Registered as --animate-* tokens so components use
+     animate-* utilities instead of hand-written animation classes. */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --animate-toast-in: toast-in 240ms var(--ease-out-quint) both;
+  --animate-modal-in: modal-in 220ms var(--ease-spring) both;
+  --animate-fade-in: fade-in 180ms ease-out both;
+  --animate-row-reveal: row-reveal 200ms var(--ease-out-quint) both;
+  --animate-loading-bar: loading-bar 1100ms var(--ease-out-quint) infinite;
+  --animate-softlock-pulse: softlock-pulse 1.6s ease-in-out infinite;
+  --animate-shimmer: shimmer 1400ms ease-in-out infinite;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(0.75rem) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes loading-bar {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(400%); }
+  }
+  @keyframes softlock-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 70%, transparent),
+                  0 0 10px color-mix(in srgb, var(--color-accent) 40%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 3px var(--color-accent),
+                  0 0 16px color-mix(in srgb, var(--color-accent) 70%, transparent);
+    }
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes row-reveal {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+  }
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.45);
@@ -85,7 +190,9 @@
 }
 
 @layer base {
+
   html, body {
+
     overscroll-behavior-y: none;
     -webkit-tap-highlight-color: transparent;
     background-color: var(--color-surface-0);
@@ -101,6 +208,7 @@
 
   /* Content that should be selectable, e.g. pupil names, notes, comments. */
   .selectable {
+
     -webkit-user-select: text;
     user-select: text;
   }
@@ -111,12 +219,17 @@
     staff a sudden animation is uncomfortable.
   */
   @media (prefers-reduced-motion: reduce) {
+
     *, *::before, *::after {
+
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+    /* View transitions are motion too: skip them entirely. */
+    ::view-transition-old(root),
+    ::view-transition-new(root) { animation: none !important; }
   }
 
   /*
@@ -129,6 +242,7 @@
 
   /* Firefox / older Safari: graceful fallback when env() is unsupported. */
   @supports not (padding: env(safe-area-inset-top)) {
+
     .safe-top    { padding-top: 12px; }
     .safe-bottom { padding-bottom: 12px; }
   }
@@ -142,15 +256,15 @@
 
     Tailwind v4 resolves every colour utility through a CSS variable
     (`.bg-slate-900 { background-color: var(--color-slate-900) }`). That means the
-    entire palette can be remapped under one attribute selector and all ~1,300
-    colour declarations in the UI follow, with no component changes.
+    entire palette can be remapped under one attribute selector and all colour
+    declarations in the UI follow, with no component changes.
 
     The remapping is semantic rather than a mechanical inversion: in the dark
     theme a high slate number means "darker, closer to the background", so in the
     light theme a high number must mean "lighter, closer to the background".
 
     Muted text is the constraint that matters. text-slate-400 is the most-used
-    colour in the app (123 uses), so it maps to #64748b, which is 4.76:1 on white
+    colour in the app, so it maps to #64748b, which is 4.76:1 on white
     and clears WCAG AA for normal text. The dimmer shades deliberately fall below
     that and are used only for decorative counts and separators.
     ==========================================================================
@@ -158,7 +272,9 @@
 }
 
 @layer base {
-  [data-theme='light'] {
+
+  [data-theme='light']:not([data-force-dark]):not([data-mode='beamer']) {
+
     color-scheme: light;
 
     /* --- Neutral ramp -------------------------------------------------- */
@@ -191,6 +307,21 @@
     --color-caution: #b45309;
     --color-critical: #be123c;
     --color-info: #1d4ed8;
+    --color-warning: #c2410c;
+
+    /* --- Component tokens that need a real light value ----------------- */
+    --btn-primary-bg: var(--color-accent);
+    --btn-primary-bg-hover: #d97706;
+    --btn-primary-fg: #ffffff;
+    --btn-danger-bg: #be123c;
+    --btn-danger-bg-hover: #e11d48;
+    --btn-danger-fg: #fff1f2;
+    --btn-success-bg: #059669;
+    --btn-success-bg-hover: #10b981;
+    --btn-success-fg: #ecfdf5;
+    --btn-info-bg: #1d4ed8;
+    --btn-info-bg-hover: #2563eb;
+    --btn-info-fg: #eff6ff;
 
     /* Shadows read far too heavy on a light background. */
     --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
@@ -203,8 +334,13 @@
     Projection contexts must stay dark regardless of the user's preference: a
     conference view is shown on a beamer in a darkened room, and washed-out
     colours on a projector are harder to read, not easier.
+
+    data-force-dark and data-mode='beamer' share the dark palette; beamer mode
+    additionally scales the type up for projector legibility.
   */
-  [data-force-dark] {
+  [data-force-dark],
+  [data-mode='beamer'] {
+
     color-scheme: dark;
 
     --color-slate-50: #f8fafc;
@@ -231,6 +367,20 @@
     --color-caution: #fbbf24;
     --color-critical: #fb7185;
     --color-info: #60a5fa;
+    --color-warning: #fb923c;
+
+    --btn-primary-bg: var(--color-accent);
+    --btn-primary-bg-hover: color-mix(in srgb, var(--color-accent) 78%, white);
+    --btn-primary-fg: #17130a;
+    --btn-danger-bg: #e11d48;
+    --btn-danger-bg-hover: #f43f5e;
+    --btn-danger-fg: #fff1f2;
+    --btn-success-bg: #10b981;
+    --btn-success-bg-hover: #34d399;
+    --btn-success-fg: #052e22;
+    --btn-info-bg: #0284c7;
+    --btn-info-bg-hover: #0ea5e9;
+    --btn-info-fg: #f0f9ff;
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
     --shadow-md: 0 2px 8px -2px rgb(0 0 0 / 0.45);
@@ -238,12 +388,25 @@
     --shadow-xl: 0 20px 48px -12px rgb(0 0 0 / 0.65);
   }
 
+  /* Beamer mode: larger type scale for projection. */
+  [data-mode='beamer'] {
+
+    --text-2xs: 0.875rem;   /* 14px */
+    --text-sm: 1rem;        /* 16px */
+    --text-base: 1.125rem;  /* 18px */
+    --text-lg: 1.3125rem;   /* 21px */
+    --text-xl: 1.625rem;    /* 26px */
+    --text-2xl: 2.125rem;   /* 34px */
+    --text-3xl: 3rem;       /* 48px */
+  }
+
   /*
     Coloured accent shades. The 200/300 shades are tuned for a dark background;
     on white they would be nearly invisible (emerald-300 on white is ~1.6:1), so
     they are shifted two steps darker in the light theme.
   */
-  [data-theme='light'] {
+  [data-theme='light']:not([data-force-dark]):not([data-mode='beamer']) {
+
     --color-emerald-200: #065f46;
     --color-emerald-300: #047857;
     --color-emerald-400: #059669;
@@ -256,6 +419,9 @@
     --color-sky-200: #075985;
     --color-sky-300: #0369a1;
     --color-sky-400: #0284c7;
+    --color-orange-200: #9a3412;
+    --color-orange-300: #c2410c;
+    --color-orange-400: #ea580c;
   }
 
   /* Numeric columns should not jitter as digits change (vote counters, counts). */
@@ -267,22 +433,26 @@
    ========================================================================== */
 
 @layer components {
+
   /*
     Materials rather than borders. A card reads as a distinct plane because of
     a surface shift plus a hairline plus a soft shadow, not a 1px grey outline —
     which is how iOS separates surfaces.
   */
   .surface-1 {
+
     background-color: var(--color-surface-1);
     border: 1px solid var(--color-hairline);
   }
 
   .surface-2 {
+
     background-color: var(--color-surface-2);
     border: 1px solid var(--color-hairline);
   }
 
   .surface-3 {
+
     background-color: var(--color-surface-3);
     border: 1px solid var(--color-hairline-strong);
     box-shadow: var(--shadow-xl);
@@ -290,97 +460,269 @@
 
   /*
     Modal scrim. Deliberately dark in both themes: a white overlay in light mode
-    washes the dialog out and hides the focus state. The previous markup used
-    bg-slate-950/*, which the light theme remaps to near-white (#f4f7fb) — the
-    backdrop became lighter than the app and the dialog lost its separation.
+    washes the dialog out and hides the focus state.
   */
   .scrim {
+
     background-color: rgb(2 6 23 / 0.8);
   }
 
-  /* Translucent bar behind scrolling content. */
+  /*
+    Translucent bar behind scrolling content.
+    Fallback chain (firstThatWorks-style): a solid surface first, then the
+    translucent color-mix + blur on top — browsers without backdrop-filter
+    keep the solid bar, browsers without color-mix keep the solid color.
+  */
   .material-bar {
+
+    background-color: var(--color-surface-0);
     background-color: color-mix(in srgb, var(--color-surface-0) 82%, transparent);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     border-bottom: 1px solid var(--color-hairline);
   }
+  @supports not (backdrop-filter: blur(1px)) {
 
-  /*
-    Pressable control. Combines the 44px touch target with the slight inset
-    that iOS uses to indicate a press.
-  */
-  .pressable {
-    transition:
-      transform 140ms var(--ease-out-quint),
-      background-color 140ms var(--ease-out-quint),
-      opacity 140ms var(--ease-out-quint);
-    will-change: transform;
+    .material-bar { background-color: var(--color-surface-0); }
   }
-  .pressable:active:not(:disabled) { transform: scale(0.96); }
 
-  /* Focus ring for keyboard users. iPadOS with a trackpad needs this. */
-  .focus-ring:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+  /* --- Form field -------------------------------------------------------
+     One field look for every input/textarea/select in the app. */
+  .field {
+
+    background-color: var(--field-bg);
+    border: 1px solid var(--field-border);
+    color: var(--field-fg);
+    border-radius: var(--radius-xl);
+  }
+  .field::placeholder { color: var(--field-placeholder); }
+  .field:focus {
+
+    outline: none;
+    border-color: var(--field-border-focus);
+  }
+
+  /* --- Header controls -------------------------------------------------- */
+
+  /* iOS-style segmented control: track + items. Active state is driven by
+     aria-current so no extra class juggling is needed at the call site. */
+  .segmented {
+
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: var(--radius-lg);
+    background-color: color-mix(in srgb, var(--color-surface-2) 60%, transparent);
+    border: 1px solid var(--color-hairline);
+  }
+  .segmented-item {
+
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 40px;
+    padding: 0.375rem 0.75rem;
     border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--color-slate-400);
+    transition:
+      background-color 140ms var(--ease-out-quint),
+      color 140ms var(--ease-out-quint);
   }
+  .segmented-item:hover { color: var(--color-slate-100); }
+  .segmented-item[aria-current='true'] {
+
+    background-color: var(--color-accent);
+    color: #131313;
+    font-weight: 700;
+    box-shadow: var(--shadow-sm);
+  }
+  [data-theme='light']:not([data-force-dark]):not([data-mode='beamer']) .segmented-item[aria-current='true'] { color: #ffffff; }
+
+  /* Square icon-only button in the header (44px target). */
+  .icon-button {
+
+    min-height: 40px;
+    min-width: 40px;
+    padding: 0.5rem;
+    border-radius: var(--radius-xl);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--btn-secondary-bg);
+    border: 1px solid var(--btn-secondary-border);
+    color: var(--btn-secondary-fg);
+    transition:
+      background-color 140ms var(--ease-out-quint),
+      color 140ms var(--ease-out-quint);
+  }
+  .icon-button:hover {
+
+    background-color: var(--btn-secondary-bg-hover);
+    color: var(--color-slate-50);
+  }
+
+  /* One row of a dropdown menu (AppHeader user menu). */
+  .menu-item {
+
+    width: 100%;
+    padding: 0.5rem 0.875rem;
+    text-align: left;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-slate-200);
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    transition: background-color 140ms var(--ease-out-quint);
+  }
+  .menu-item:hover { background-color: var(--color-surface-2); }
+  .menu-item[data-tone='danger'] { color: var(--color-critical); }
+  .menu-item[data-tone='danger']:hover {
+
+    background-color: color-mix(in srgb, var(--color-critical) 10%, transparent);
+  }
+
+  /* --- Meter (progress / distribution bars) ------------------------------
+     The fill reads its size from the --meter-value custom property, so the
+     only inline style in the app is a var assignment (lint:design allows
+     exactly that pattern). */
+  .meter-track {
+
+    background-color: var(--color-surface-2);
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+  .meter-fill {
+
+    width: var(--meter-value, 100%);
+    height: 100%;
+    transition: width 300ms var(--ease-out-quint), height 300ms var(--ease-out-quint);
+  }
+  .meter-fill-vertical {
+
+    width: 100%;
+    height: var(--meter-value, 100%);
+  }
+
+  /* --- Skeleton ----------------------------------------------------------
+     Shimmer instead of opacity pulse: reads as "loading" without flashing. */
+  .skeleton {
+
+    background: linear-gradient(
+      90deg,
+      var(--color-surface-2) 25%,
+      var(--color-surface-3) 37%,
+      var(--color-surface-2) 63%
+    );
+    background-size: 400% 100%;
+    animation: var(--animate-shimmer);
+  }
+
+  /* --- Onboarding tour spotlight -----------------------------------------
+     Geometry arrives as custom properties (px values measured in JS). */
+  .tour-spot {
+
+    top: var(--spot-top);
+    left: var(--spot-left);
+    width: var(--spot-w);
+    height: var(--spot-h);
+    box-shadow: 0 0 0 9999px rgb(2 6 23 / 0.82);
+  }
+
+  /* Width-only bar for elements that keep their own height (pyramid levels):
+     size comes from the --meter-value custom property. */
+  .bar-w { width: var(--meter-value, 100%); }
 }
 
 /* ==========================================================================
-   Animations
+   Interaction-state primitives (unlayered on purpose)
+
+   These must beat utility classes such as `focus:outline-none` or
+   `transition`, so they are NOT inside @layer components — unlayered CSS
+   wins over every Tailwind layer.
    ========================================================================== */
 
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(0.75rem) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+/*
+  Pressable control. Combines the 44px touch target with the slight inset
+  that iOS uses to indicate a press.
+*/
+.pressable {
+
+  transition:
+    transform 140ms var(--ease-out-quint),
+    background-color 140ms var(--ease-out-quint),
+    opacity 140ms var(--ease-out-quint);
+  will-change: transform;
+}
+.pressable:active:not(:disabled) { transform: scale(0.96); }
+
+/* Focus ring for keyboard users. iPadOS with a trackpad needs this. */
+.focus-ring:focus-visible {
+
+  outline: var(--ring);
+  outline-offset: 2px;
 }
 
-/* Indeterminate refresh bar above a grid that is being re-fetched in place. */
-@keyframes loading-bar {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(400%); }
-}
-.animate-loading-bar { animation: loading-bar 1100ms var(--ease-out-quint) infinite; }
-
-/* Soft-lock pulse: another teacher is editing this cell. */
-@keyframes softlock-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 2px rgb(245 158 11 / 0.7), 0 0 10px rgb(245 158 11 / 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 3px rgb(245 158 11 / 1), 0 0 16px rgb(245 158 11 / 0.7);
-  }
-}
-
-.cell-softlocked { animation: softlock-pulse 1.6s ease-in-out infinite; }
-
-/* Modal entry. Slight overshoot reads as "materialised" rather than "faded in". */
-@keyframes modal-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-.animate-modal-in { animation: modal-in 220ms var(--ease-spring) both; }
-
-/* Backdrop fade. */
-@keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.animate-fade-in { animation: fade-in 180ms ease-out both; }
-
-/* Row expansion. Uses a grid-template-rows trick so it animates to auto height. */
-@keyframes row-reveal {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.animate-row-reveal { animation: row-reveal 200ms var(--ease-out-quint) both; }
+/* ==========================================================================
+   Layout-adaptive rules
+   ========================================================================== */
 
 /*
-   Continuous ("squircle") corner smoothing, matching iOS. Falls back silently
-   on browsers without support.
+   Container-query shell for the BeobachtungsGrid. Cells adapt to the grid's
+   own width (split-screen iPad included), not just the viewport.
 */
+.grid-shell { container-type: inline-size; }
+
+/* Compact density: tighter cells when the shell is narrow or when an explicit
+   data-density="compact" is set on the shell. */
+@container (max-width: 640px) {
+
+  .crit-cell { padding: 0.5rem; }
+  .crit-cell .crit-desc { font-size: var(--text-2xs); }
+}
+[data-density='compact'] .crit-cell { padding: 0.5rem; }
+[data-density='compact'] .crit-cell .crit-desc { font-size: var(--text-2xs); }
+
+/* ==========================================================================
+   View transitions
+   ========================================================================== */
+
+/*
+   Named region for the main panel: tab switches cross-fade through the View
+   Transitions API (wrapped in withViewTransition, which no-ops where the API
+   or the user's reduce-motion preference forbids it).
+*/
+.vt-panel { view-transition-name: main-panel; }
+
+::view-transition-old(main-panel),
+::view-transition-new(main-panel) {
+
+  animation-duration: 240ms;
+  animation-timing-function: var(--ease-out-quint);
+}
+/* Whole-page cross-fade (theme toggle): short and subtle. */
+::view-transition-old(root),
+::view-transition-new(root) {
+
+  animation-duration: 200ms;
+  animation-timing-function: var(--ease-out-quint);
+}
+
+/*
+   Continuous ("squircle") corner smoothing, matching iOS. The border-radius
+   is declared first as the fallback chain: browsers without corner-shape drop
+   that one declaration and keep the radius.
+*/
+.continuous {
+
+  border-radius: var(--radius-xl);
+}
 @supports (corner-shape: squircle) {
+
   .continuous { corner-shape: squircle; }
 }
 
@@ -390,6 +732,7 @@
    changing the compact desktop density.
 */
 @media (pointer: coarse) {
+
   input, select, textarea { font-size: max(16px, 1em); }
 }
 
@@ -398,8 +741,10 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
 @media print {
+
   @page { size: A4; margin: 12mm; }
   html, body {
+
     background: #fff !important;
     color: #000 !important;
     /* Rank chips and card colours must survive the print pipeline. */
@@ -409,6 +754,7 @@
   header, nav, .no-print { display: none !important; }
   /* A dialog printed on demand (class report, KEL) needs its content, not its scrim. */
   .scrim {
+
     background: transparent !important;
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;

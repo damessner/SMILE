@@ -45,25 +45,25 @@ export class ErrorBoundary extends Component<Props, State> {
               <AlertTriangle className="w-7 h-7" />
             </div>
             <h1 className="text-xl font-bold text-slate-50">Anwendungsfehler aufgetreten</h1>
-            <p className="text-xs text-slate-400">
+            <p className="text-sm text-slate-400">
               Es ist ein unerwarteter Rendering-Fehler aufgetreten.
             </p>
             {this.state.error && (
-              <pre className="text-[11px] bg-slate-950 p-3 rounded-xl text-rose-300 font-mono text-left overflow-auto max-h-36 border border-slate-800">
+              <pre className="text-2xs bg-slate-950 p-3 rounded-xl text-rose-300 font-mono text-left overflow-auto max-h-36 border border-slate-800">
                 {this.state.error.message || String(this.state.error)}
               </pre>
             )}
             <div className="pt-2 flex flex-col gap-2">
               <button
                 onClick={() => window.location.reload()}
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition flex items-center justify-center gap-2"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Seite neu laden</span>
               </button>
               <button
                 onClick={this.handleReset}
-                className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition"
+                className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm transition"
               >
                 Sitzung zurücksetzen (Abmelden & Neu laden)
               </button>

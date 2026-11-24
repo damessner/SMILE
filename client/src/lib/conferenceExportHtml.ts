@@ -6,6 +6,8 @@
  * dedicated stylesheet instead: one A4 page per class, print-ready without the app.
  */
 
+import { exportPalette } from './exportPalette';
+
 export interface ConferenceExportPupil {
   index: number;
   name: string;
@@ -177,6 +179,7 @@ function classPage(cls: ConferenceExportClass, filterLabel: string, generatedAt:
 
 export function buildConferenceExportHtml(options: ConferenceExportOptions): string {
   const { classes, filterLabel, generatedAt } = options;
+  const p = exportPalette;
   const pages = classes.map((cls) => classPage(cls, filterLabel, generatedAt)).join('');
 
   return `<!doctype html>
@@ -190,7 +193,7 @@ export function buildConferenceExportHtml(options: ConferenceExportOptions): str
   body {
     margin: 0;
     font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    color: #0f172a;
+    color: ${p.ink};
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
@@ -205,12 +208,12 @@ export function buildConferenceExportHtml(options: ConferenceExportOptions): str
     padding: 4mm 0;
   }
   .page:last-child { page-break-after: auto; break-after: auto; }
-  .muted { color: #64748b; font-weight: 400; }
+  .muted { color: ${p.muted}; font-weight: 400; }
   .head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    border-bottom: 2px solid #0f172a;
+    border-bottom: 2px solid ${p.ink};
     padding-bottom: 6px;
     margin-bottom: 8px;
   }
@@ -219,11 +222,11 @@ export function buildConferenceExportHtml(options: ConferenceExportOptions): str
   .chip {
     font-size: 10.5px;
     padding: 1px 7px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid ${p.border};
     border-radius: 4px;
-    background: #f1f5f9;
+    background: ${p.surface};
     font-weight: 700;
-    color: #334155;
+    color: ${p.body};
   }
   .classline { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
   h1 { font-size: 17px; margin: 0; text-transform: uppercase; letter-spacing: -0.02em; }
@@ -232,14 +235,14 @@ export function buildConferenceExportHtml(options: ConferenceExportOptions): str
     padding: 2px 8px;
     border-radius: 6px;
     font-weight: 700;
-    background: #fef3c7;
-    color: #78350f;
-    border: 1px solid #fcd34d;
+    background: ${p.badgeBg};
+    color: ${p.badgeFg};
+    border: 1px solid ${p.badgeBorder};
   }
-  .meta { text-align: right; font-size: 10.5px; color: #475569; line-height: 1.45; }
+  .meta { text-align: right; font-size: 10.5px; color: ${p.faint}; line-height: 1.45; }
   .stats {
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
+    background: ${p.surfaceAlt};
+    border: 1px solid ${p.border};
     border-radius: 10px;
     padding: 6px 8px;
     margin-bottom: 8px;
@@ -249,35 +252,35 @@ export function buildConferenceExportHtml(options: ConferenceExportOptions): str
   .statgrid { display: flex; gap: 6px; margin-bottom: 5px; }
   .stat {
     flex: 1;
-    border: 1px solid #cbd5e1;
+    border: 1px solid ${p.border};
     border-radius: 6px;
     padding: 3px 6px;
     display: flex;
     justify-content: space-between;
   }
-  .rose-bg { background: #fff1f2; }
-  .blue-bg { background: #eff6ff; }
-  .amber-bg { background: #fffbeb; }
+  .rose-bg { background: ${p.roseBg}; }
+  .blue-bg { background: ${p.blueBg}; }
+  .amber-bg { background: ${p.amberBg}; }
   .bar, .votebar {
     display: flex;
     height: 6px;
     border-radius: 3px;
     overflow: hidden;
-    background: #e2e8f0;
+    background: ${p.track};
   }
   .votebar { height: 5px; margin-bottom: 2px; }
   .bar span, .votebar span { display: block; height: 100%; }
-  .rose { background: #f43f5e; }
-  .blue { background: #3b82f6; }
-  .amber { background: #fbbf24; }
+  .rose { background: ${p.rose}; }
+  .blue { background: ${p.blue}; }
+  .amber { background: ${p.amber}; }
   table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
-  th, td { border: 1px solid #cbd5e1; padding: 3px 5px; text-align: left; vertical-align: top; }
-  th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; letter-spacing: 0.02em; }
+  th, td { border: 1px solid ${p.border}; padding: 3px 5px; text-align: left; vertical-align: top; }
+  th { background: ${p.surface}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.02em; }
   .num { width: 4%; text-align: center; }
   .name { font-weight: 700; }
   .votes { width: 17%; }
-  .votecounts { font-size: 9.5px; color: #475569; }
-  .note { font-size: 9.5px; color: #475569; margin-top: 2px; }
+  .votecounts { font-size: 9.5px; color: ${p.faint}; }
+  .note { font-size: 9.5px; color: ${p.faint}; margin-top: 2px; }
   .card {
     display: inline-block;
     font-size: 9px;
@@ -286,15 +289,15 @@ export function buildConferenceExportHtml(options: ConferenceExportOptions): str
     font-weight: 700;
     margin-right: 3px;
   }
-  .card.red { background: #ffe4e6; color: #9f1239; border: 1px solid #fda4af; }
-  .card.yellow { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+  .card.red { background: ${p.roseCardBg}; color: ${p.roseCardFg}; border: 1px solid ${p.roseCardBorder}; }
+  .card.yellow { background: ${p.amberCardBg}; color: ${p.amberCardFg}; border: 1px solid ${p.amberCardBorder}; }
   .sign {
     display: flex;
     justify-content: space-between;
-    border-top: 1px solid #cbd5e1;
+    border-top: 1px solid ${p.border};
     padding-top: 5px;
     font-size: 10px;
-    color: #475569;
+    color: ${p.faint};
   }
 </style>
 </head>

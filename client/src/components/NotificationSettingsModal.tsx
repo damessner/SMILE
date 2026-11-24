@@ -110,7 +110,7 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-50">E-Mail-Benachrichtigungen</h2>
-              <p className="mt-0.5 text-xs text-slate-400">
+              <p className="mt-0.5 text-sm text-slate-400">
                 Eigene Meldungen pro Klasse zusammenstellen. Die Adresse wird ohne Bestätigung
                 gespeichert.
               </p>
@@ -126,7 +126,7 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <label className="mb-1.5 block text-2xs font-bold uppercase tracking-wide text-slate-400">
             Empfängeradresse
           </label>
           <div className="relative max-w-xl">
@@ -140,13 +140,13 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
               autoComplete="email"
             />
           </div>
-          <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-amber-300/90">
+          <p className="mt-2 max-w-2xl text-2xs leading-relaxed text-amber-300/90">
             Die Mails enthalten Schülernamen, Klasse und die Notiz der Lehrkraft. Nur für
             Schulpersonal bestimmt. Bitte die Adresse sorgfältig eingeben.
           </p>
 
           {error ? (
-            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
               {error}
             </div>
           ) : null}
@@ -155,8 +155,8 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
             <div className="py-12 text-center text-sm text-slate-500">Lade Klassen…</div>
           ) : (
             <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-800">
-              <table className="w-full min-w-[720px] border-collapse text-left text-xs">
-                <thead className="sticky top-0 z-10 bg-slate-950/95 text-[11px] uppercase tracking-wider text-slate-400">
+              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-950/95 text-2xs uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="px-3 py-2.5 font-bold">Klasse</th>
                     {FLAGS.map((flag) => (
@@ -168,7 +168,7 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
                           title={`${flag.label}: alle Klassen ein-/ausschalten`}
                         >
                           <span>{flag.short}</span>
-                          <span className="text-[11px] font-normal normal-case text-slate-600">
+                          <span className="text-2xs font-normal normal-case text-slate-600">
                             alle
                           </span>
                         </button>
@@ -205,26 +205,26 @@ export function NotificationSettingsModal({ onClose }: NotificationSettingsModal
         </div>
 
         <div className="flex flex-col gap-3 border-t border-slate-800 bg-slate-950/60 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-sm text-slate-400">
             <CalendarDays className="h-4 w-4 text-violet-400" />
             <span>
               Wochenübersicht: montags ab 07:00 für die Vorwoche, pro ausgewählter Klasse.
             </span>
           </div>
           <div className="flex items-center justify-end gap-2">
-            <span className="mr-2 text-xs text-slate-500">
+            <span className="mr-2 text-sm text-slate-500">
               {selectedCount} Klasse(n) aktiv
             </span>
             <button
               onClick={onClose}
-              className="min-h-[44px] rounded-xl bg-slate-800 px-4 text-xs font-bold text-slate-300 transition hover:bg-slate-700"
+              className="min-h-[44px] rounded-xl bg-slate-800 px-4 text-sm font-bold text-slate-300 transition hover:bg-slate-700"
             >
               Abbrechen
             </button>
             <button
               onClick={handleSave}
               disabled={saving || loading}
-              className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 text-xs font-bold text-slate-950 shadow-lg transition hover:from-amber-400 hover:to-amber-500 disabled:opacity-50"
+              className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 text-sm font-bold text-slate-950 shadow-lg transition hover:from-amber-400 hover:to-amber-500 disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
               {saving ? 'Speichere…' : 'Speichern'}

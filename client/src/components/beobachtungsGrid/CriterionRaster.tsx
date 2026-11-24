@@ -29,7 +29,9 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
   onItemBlur,
 }) => {
   return (
-    <div className="space-y-3">
+    /* grid-shell makes the raster a CSS container: cells adapt to the grid's
+       own width (split-screen iPad included), not just the viewport. */
+    <div className="grid-shell space-y-3">
       {criteria.map((crit) => (
         <div
           key={crit.id}
@@ -44,7 +46,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
 
             {/* Category Quick Fill Buttons */}
             <div className="flex items-center gap-1 bg-slate-900 border border-slate-800/90 p-0.5 rounded-lg">
-              <span className="text-[11px] text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
+              <span className="text-2xs text-slate-500 uppercase font-bold px-1 hidden sm:inline">Alle:</span>
               <button
                 type="button"
                 disabled={writeBlocked}
@@ -59,7 +61,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'smile')}
                 title="Alle Merkmale dieser Kategorie mit Gut (😊) füllen" aria-label="Alle Merkmale dieser Kategorie mit Gut füllen"
-                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 text-sm flex items-center justify-center transition disabled:opacity-30"
               >
                 😊
               </button>
@@ -68,7 +70,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'struggle')}
                 title="Alle Merkmale dieser Kategorie mit Mühe (😖) füllen" aria-label="Alle Merkmale dieser Kategorie mit Mühe füllen"
-                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 text-sm flex items-center justify-center transition disabled:opacity-30"
               >
                 😖
               </button>
@@ -77,7 +79,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'sad')}
                 title="Alle Merkmale dieser Kategorie mit Traurig (😢) füllen" aria-label="Alle Merkmale dieser Kategorie mit Traurig füllen"
-                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 text-sm flex items-center justify-center transition disabled:opacity-30"
               >
                 😢
               </button>
@@ -86,7 +88,7 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, 'newstart')}
                 title="Alle Merkmale dieser Kategorie mit Neustart (🔄) füllen" aria-label="Alle Merkmale dieser Kategorie mit Neustart füllen"
-                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 text-sm flex items-center justify-center transition disabled:opacity-30"
               >
                 🔄
               </button>
@@ -95,14 +97,14 @@ export const CriterionRaster: React.FC<CriterionRasterProps> = ({
                 disabled={writeBlocked}
                 onClick={() => onQuickFill(crit, '')}
                 title="Kategorie leeren" aria-label="Kategorie leeren"
-                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs flex items-center justify-center transition disabled:opacity-30"
+                className="w-7 h-7 pointer-coarse:w-10 pointer-coarse:h-10 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 text-sm flex items-center justify-center transition disabled:opacity-30"
               >
                 ✕
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-2.5">
+          <div className="grid grid-cols-1 @xl:grid-cols-2 @5xl:grid-cols-3 gap-2 @xl:gap-2.5">
             {crit.items.map((it) => {
               // The rating shown here comes from the merged view of the subjects in scope, but
               // a write must carry the version of the subject it targets. In Gesamt mode each

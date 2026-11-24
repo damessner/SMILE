@@ -100,7 +100,7 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
           <div>
             <h3 id="pupil-manager-modal-title" className="text-xl font-bold text-slate-50">Schülerverwaltung</h3>
-            <p className="text-xs text-slate-400">Klasse {currentClass.name} · Schüler hinzufügen, bearbeiten oder archivieren</p>
+            <p className="text-sm text-slate-400">Klasse {currentClass.name} · Schüler hinzufügen, bearbeiten oder archivieren</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-slate-50 transition">
             <X className="w-5 h-5" />
@@ -120,7 +120,7 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow"
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm flex items-center gap-1.5 transition shadow"
           >
             <UserPlus className="w-4 h-4" />
             <span>Hinzufügen</span>
@@ -143,12 +143,12 @@ export const PupilManagerModal: React.FC<PupilManagerModalProps> = ({
                       type="text"
                       value={editingPupil.fullName}
                       onChange={(e) => setEditingPupil({ ...editingPupil, fullName: e.target.value })}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-slate-50 text-xs"
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-slate-50 text-sm"
                     />
                     <select
                       value={editingPupil.classId}
                       onChange={(e) => setEditingPupil({ ...editingPupil, classId: parseInt(e.target.value, 10) })}
-                      className="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-slate-50 text-xs"
+                      className="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-slate-50 text-sm"
                     >
                       {classes.map((c) => (
                         <option key={c.id} value={c.id}>

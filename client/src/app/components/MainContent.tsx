@@ -77,14 +77,14 @@ export function MainContent({
 
   if (activeTab === 'statistics') {
     return (
-      <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Statistik wird geladen...</div>}>
+      <Suspense fallback={<div className="p-8 text-center text-sm text-slate-400">Statistik wird geladen...</div>}>
         <SchoolStatistics currentUser={currentUser} />
       </Suspense>
     );
   }
   if (activeTab === 'webuntis') {
     return (
-      <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">WebUntis wird geladen...</div>}>
+      <Suspense fallback={<div className="p-8 text-center text-sm text-slate-400">WebUntis wird geladen...</div>}>
         <WebUntisView
           currentClass={currentClass}
           classes={classes}
@@ -200,7 +200,7 @@ export function MainContent({
         {classLoadError && (
           <div
             role="alert"
-            className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center justify-between gap-3"
+            className="mb-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 flex items-center justify-between gap-3"
           >
             <span>{classLoadError}</span>
             <button

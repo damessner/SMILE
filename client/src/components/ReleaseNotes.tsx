@@ -24,14 +24,14 @@ const ReleaseNoteList: React.FC<{ release: Release; dense?: boolean }> = ({ rele
       return (
         <li key={`${release.version}-${index}`} className="flex items-start gap-2.5">
           <span
-            className={`mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.className}`}
+            className={`mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide ${meta.className}`}
           >
             {meta.label}
           </span>
           <div className="min-w-0">
             <p className="text-sm font-bold leading-snug text-slate-100">{note.title}</p>
             {note.text && (
-              <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{note.text}</p>
+              <p className="mt-0.5 text-sm leading-relaxed text-slate-400">{note.text}</p>
             )}
           </div>
         </li>
@@ -75,7 +75,7 @@ export const WhatsNewDialog: React.FC<WhatsNewDialogProps> = ({
             <h2 id="whats-new-title" className="text-lg font-black leading-tight text-slate-50">
               Was ist neu in SMILE?
             </h2>
-            <p className="mt-0.5 text-xs font-semibold text-slate-400">
+            <p className="mt-0.5 text-sm font-semibold text-slate-400">
               Version {release.version} · {formatReleaseDate(release.date)}
             </p>
           </div>
@@ -96,7 +96,7 @@ export const WhatsNewDialog: React.FC<WhatsNewDialogProps> = ({
         </p>
         <p className="text-sm leading-relaxed text-slate-300">{release.summary}</p>
         <ReleaseNoteList release={release} />
-        <p className="text-[11px] leading-relaxed text-slate-500">
+        <p className="text-2xs leading-relaxed text-slate-500">
           Dieser Hinweis erscheint nur einmal pro Update. Den vollständigen Versionsverlauf findest
           du jederzeit über das Fragezeichen (?) in der Kopfzeile.
         </p>
@@ -106,7 +106,7 @@ export const WhatsNewDialog: React.FC<WhatsNewDialogProps> = ({
         <button
           type="button"
           onClick={onOpenHistory}
-          className="pressable focus-ring inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700"
+          className="pressable focus-ring inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3.5 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
         >
           <History className="h-4 w-4" aria-hidden="true" />
           <span>Alle Änderungen ansehen</span>
@@ -151,7 +151,7 @@ export const ReleaseHistoryModal: React.FC<ReleaseHistoryModalProps> = ({
           <h2 id="release-history-title" className="text-lg font-black leading-tight text-slate-50">
             Hilfe &amp; Versionsverlauf
           </h2>
-          <p className="mt-0.5 text-xs font-semibold text-slate-400">
+          <p className="mt-0.5 text-sm font-semibold text-slate-400">
             Alle Releases im Überblick · aktuell Version {LATEST_RELEASE.version}
           </p>
         </div>
@@ -167,7 +167,7 @@ export const ReleaseHistoryModal: React.FC<ReleaseHistoryModalProps> = ({
     </div>
 
     <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-      <p className="rounded-2xl border border-sky-500/25 bg-sky-500/10 px-3.5 py-2.5 text-xs leading-relaxed text-sky-200">
+      <p className="rounded-2xl border border-sky-500/25 bg-sky-500/10 px-3.5 py-2.5 text-sm leading-relaxed text-sky-200">
         Tipp: Das Fragezeichen (?) oben rechts öffnet diesen Verlauf jederzeit. Die Einführungstour
         startest du unten.
       </p>
@@ -184,7 +184,7 @@ export const ReleaseHistoryModal: React.FC<ReleaseHistoryModalProps> = ({
         >
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span
-              className={`rounded-lg border px-2 py-0.5 text-xs font-black ${
+              className={`rounded-lg border px-2 py-0.5 text-sm font-black ${
                 index === 0
                   ? 'border-amber-500/40 bg-amber-500/15 text-amber-300'
                   : 'border-slate-700 bg-slate-800 text-slate-300'
@@ -192,17 +192,17 @@ export const ReleaseHistoryModal: React.FC<ReleaseHistoryModalProps> = ({
             >
               v{release.version}
             </span>
-            <span className="text-xs font-bold text-slate-400">
+            <span className="text-sm font-bold text-slate-400">
               {formatReleaseDate(release.date)}
             </span>
             {index === 0 && (
-              <span className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
+              <span className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-emerald-300">
                 Aktuell
               </span>
             )}
           </div>
           <h3 className="text-base font-bold leading-tight text-slate-50">{release.title}</h3>
-          <p className="mb-3 mt-1 text-xs leading-relaxed text-slate-400">{release.summary}</p>
+          <p className="mb-3 mt-1 text-sm leading-relaxed text-slate-400">{release.summary}</p>
           <ReleaseNoteList release={release} dense />
         </section>
       ))}
@@ -212,7 +212,7 @@ export const ReleaseHistoryModal: React.FC<ReleaseHistoryModalProps> = ({
       <button
         type="button"
         onClick={onStartTour}
-        className="pressable focus-ring inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700"
+        className="pressable focus-ring inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3.5 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
       >
         <GraduationCap className="h-4 w-4" aria-hidden="true" />
         <span>Einführung &amp; Tour starten</span>

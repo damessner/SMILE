@@ -67,7 +67,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
                 return (
                   <span
                     key={s.code}
-                    className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${color}`}
+                    className={`px-2.5 py-0.5 rounded-lg text-sm font-bold uppercase tracking-wider border shrink-0 ${color}`}
                   >
                     {s.code}: {sRank}
                   </span>
@@ -75,28 +75,28 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
               })}
             </div>
           ) : (
-            <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border shrink-0 ${rankColor}`}>
+            <span className={`px-2.5 py-0.5 rounded-lg text-sm font-bold uppercase tracking-wider border shrink-0 ${rankColor}`}>
               {rank ?? 'Ausstehend'}
             </span>
           )}
 
           {isSubmitted && (
             <div className="flex items-center gap-1.5 shrink-0">
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-2xs font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                 <span>Eingereicht</span>
               </span>
               {showReopen && (
                 <button
                   onClick={onReopen}
-                  className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1"
+                  className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 border border-slate-700 text-2xs font-bold transition flex items-center gap-1"
                   title="Einreichung zurücknehmen und Bewertung weiter bearbeiten"
                 >
                   <RotateCcw className="w-3 h-3 text-amber-400" />
                   <span>Wieder öffnen</span>
                 </button>
               )}
-              <span className="text-[11px] text-slate-400">Erst zurücknehmen, um zu ändern.</span>
+              <span className="text-2xs text-slate-400">Erst zurücknehmen, um zu ändern.</span>
             </div>
           )}
         </div>
@@ -107,7 +107,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
             onClick={onSubmit}
             disabled={!canWrite || isLockedByConference || isPastDeadline}
             title="Ranking einreichen und zum nächsten Schüler wechseln"
-            className={`px-3.5 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition active:scale-95 disabled:opacity-40 shrink-0 ${
+            className={`px-3.5 py-1.5 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow-md transition active:scale-95 disabled:opacity-40 shrink-0 ${
               isSubmitted
                 ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                 : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 shadow-sm'
@@ -120,12 +120,12 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
       </div>
 
       {/* Row 2: Metadata Chips & Instant-Rank Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         {/* Metadata Chips */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Prominent Subject Badge */}
           <div
-            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border shadow-sm ${
+            className={`px-2.5 py-0.5 rounded-lg text-sm font-bold flex items-center gap-1.5 border shadow-sm ${
               isAllSubjectsMode
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                 : mySubject.isCoreSmile
@@ -140,18 +140,18 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
           >
             {isAllSubjectsMode ? <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <BookOpen className="w-3.5 h-3.5 opacity-80 shrink-0" />}
             <span>{isAllSubjectsMode ? '🌟 Gesamtbewertung' : mySubject.name}</span>
-            <span className="font-mono text-[11px] opacity-75">
+            <span className="font-mono text-2xs opacity-75">
               [{isAllSubjectsMode ? mySubjects.map((s) => s.code).join(' + ') : mySubject.code}]
             </span>
           </div>
 
           {/* Autosave Status Badge */}
           <div
-            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-950/70 border border-slate-800 text-xs shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-950/70 border border-slate-800 text-sm shadow-sm transition-all"
             title="Automatisches Speichern: Alle Bewertungen und Eingaben werden sofort gesichert."
           >
             {ratingSaveError ? (
-              <span role="alert" className="text-rose-300 font-medium text-[11px]">
+              <span role="alert" className="text-rose-300 font-medium text-2xs">
                 Speichern fehlgeschlagen: {ratingSaveError}
               </span>
             ) : isSaving ? (
@@ -160,19 +160,19 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                 </span>
-                <span className="text-amber-300 font-medium text-[11px]">Wird gesichert...</span>
+                <span className="text-amber-300 font-medium text-2xs">Wird gesichert...</span>
               </>
             ) : lastSavedTime ? (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-emerald-300 font-medium text-[11px]">
+                <span className="text-emerald-300 font-medium text-2xs">
                   Gesichert ({lastSavedTime.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
                 </span>
               </>
             ) : (
               <>
                 <span className="w-2 h-2 rounded-full bg-emerald-400/80 shrink-0" />
-                <span className="text-slate-400 text-[11px]">Auto-Save aktiv</span>
+                <span className="text-slate-400 text-2xs">Auto-Save aktiv</span>
               </>
             )}
           </div>
@@ -180,7 +180,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
           {/* Weekly Lessons & Voting Weight Infochip */}
           {currentHoursInfo && (
             <div
-              className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-950/70 border border-slate-800 text-slate-300 flex items-center gap-1.5 shadow-sm"
+              className="px-2.5 py-0.5 rounded-lg text-sm font-semibold bg-slate-950/70 border border-slate-800 text-slate-300 flex items-center gap-1.5 shadow-sm"
               title={`Wochenstunden: ${currentHoursInfo.hours}h · Stimmgewicht in Konferenz: ${currentHoursInfo.weight}${currentHoursInfo.isTeamTeaching ? ' (Team-Teaching Kernfach x2)' : ''}`}
             >
               <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -188,7 +188,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
               <span className="text-slate-600">·</span>
               <span className="text-amber-300 font-bold">Gewicht: {currentHoursInfo.weight}</span>
               {currentHoursInfo.isTeamTeaching && (
-                <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
+                <span className="text-2xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold">
                   Team-Teaching (x2)
                 </span>
               )}
@@ -202,7 +202,7 @@ export const PupilHeader: React.FC<PupilHeaderProps> = ({
           onClick={onReset}
           disabled={!canWrite || isLockedByConference || isPastDeadline || isSubmitted}
           title="Alle 18 Bewertungen leeren / zurücksetzen"
-          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-xs font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
+          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-50 border border-slate-700 text-sm font-bold transition active:scale-95 flex items-center gap-1 disabled:opacity-40"
         >
           <RotateCcw className="w-3 h-3 text-amber-400" />
           <span>Reset</span>

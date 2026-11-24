@@ -166,7 +166,7 @@ export function App() {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-surface-0 text-slate-200">
       {currentUser.viewAs && (
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-400 px-4 py-2 text-xs font-bold text-amber-950 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-400 px-4 py-2 text-sm font-bold text-amber-950 shadow-sm">
           <span>
             👁 Ansicht als <strong>{currentUser.username}</strong> — schreibgeschützt
           </span>
@@ -229,7 +229,7 @@ export function App() {
 
       {/* Main Body */}
       {/* safe-bottom keeps content clear of the home indicator in a Home Screen app. */}
-      <main className="flex-1 px-4 md:px-6 py-4 md:py-6 max-w-[1600px] w-full mx-auto safe-bottom">
+      <main className="vt-panel flex-1 px-4 md:px-6 py-4 md:py-6 max-w-[1600px] w-full mx-auto safe-bottom">
         <MainContent
           activeTab={activeTab}
           loadingClass={loadingClass}

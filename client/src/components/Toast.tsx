@@ -216,7 +216,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) 
       )}
 
       {seconds > 0 && (
-        <span className="shrink-0 text-[11px] tabular-nums opacity-60 pt-1 w-6 text-right">
+        <span className="shrink-0 text-2xs tabular-nums opacity-60 pt-1 w-6 text-right">
           {seconds}
         </span>
       )}

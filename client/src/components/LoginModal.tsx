@@ -62,7 +62,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
           <div>
             <label
               htmlFor="username"
-              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2"
+              className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2"
             >
               Benutzername / Lehrerkürzel
             </label>
@@ -74,14 +74,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="z.B. ofj, zia, brt oder admin"
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus-ring transition"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2"
+              className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2"
             >
               Passwort
             </label>
@@ -92,7 +92,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition"
+              className="w-full px-4 py-3.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus-ring transition"
             />
           </div>
 
@@ -118,11 +118,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
           password and must change it at first login.
         */}
         <div className="mt-8 pt-6 border-t border-slate-800/80 text-center space-y-1">
-          <p className="text-xs text-slate-500">
+          <p className="text-sm text-slate-500">
             Zugangsdaten erhalten Sie von der Schulleitung. Das Startpasswort muss beim
             ersten Anmelden geändert werden.
           </p>
-          <p className="text-xs text-slate-600">
+          <p className="text-sm text-slate-600">
             Passwort vergessen? Bitte die Schulleitung kontaktieren.
           </p>
         </div>

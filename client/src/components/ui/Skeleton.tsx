@@ -6,7 +6,7 @@ interface SkeletonProps {
 
 /** One loading placeholder block; compose several for a card/list skeleton. */
 export const Skeleton: React.FC<SkeletonProps> = ({ className = 'h-4 w-full' }) => (
-  <div aria-hidden="true" className={`animate-pulse rounded-xl bg-slate-800/60 ${className}`} />
+  <div aria-hidden="true" className={`skeleton rounded-xl ${className}`} />
 );
 
 /** A stack of text lines, last one short — reads as a paragraph placeholder. */
@@ -18,9 +18,7 @@ export const SkeletonText: React.FC<{ lines?: number; className?: string }> = ({
     {Array.from({ length: lines }).map((_, index) => (
       <div
         key={index}
-        className={`h-3.5 animate-pulse rounded-lg bg-slate-800/60 ${
-          index === lines - 1 ? 'w-2/3' : 'w-full'
-        }`}
+        className={`skeleton h-3.5 rounded-lg ${index === lines - 1 ? 'w-2/3' : 'w-full'}`}
       />
     ))}
   </div>

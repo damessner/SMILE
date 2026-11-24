@@ -13,6 +13,7 @@ import { getStatistics } from '../services/api';
 import { PupilProfileModal } from './PupilProfileModal';
 import { Skeleton } from './ui';
 import type { User } from '../types';
+import { Meter } from './ui';
 
 export interface CardsSummaryTotals {
   green: number;
@@ -187,7 +188,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400 gap-2">
         <span className="font-bold text-rose-300">Statistik nicht verfügbar</span>
-        <p className="text-xs text-center max-w-md">{loadError}</p>
+        <p className="text-sm text-center max-w-md">{loadError}</p>
         <button
           type="button"
           onClick={() => void fetchData(selectedClassId)}
@@ -248,7 +249,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         </div>
       )}
       {loadError && (
-        <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 flex items-center justify-between gap-3">
+        <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 flex items-center justify-between gap-3">
           <span>{loadError}</span>
           <button
             type="button"
@@ -269,7 +270,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-50 leading-tight">Schulstatistik</h1>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-2xs text-slate-400">
                 Fakten &amp; Kennzahlen zur Verteilung von Karten und Vorfällen
               </p>
             </div>
@@ -278,7 +279,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => void fetchData(selectedClassId)}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 border border-slate-700 text-sm font-bold flex items-center gap-1.5 transition"
               title="Aktualisieren"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${loading ? 'animate-spin' : ''}`} />
@@ -286,7 +287,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </button>
             <button
               onClick={handlePrint}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-50 border border-slate-700 text-sm font-bold flex items-center gap-1.5 transition"
             >
               <Printer className="w-3.5 h-3.5 text-sky-400" />
               <span>Drucken / PDF</span>
@@ -298,7 +299,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         <div className="pt-3 flex items-center gap-1.5 overflow-x-auto pb-1">
           <button
             onClick={() => setSelectedClassId('all')}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex-shrink-0 ${
+            className={`px-3 py-1.5 rounded-xl font-bold text-sm transition flex-shrink-0 ${
               selectedClassId === 'all'
                 ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
@@ -310,7 +311,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             <button
               key={c.id}
               onClick={() => setSelectedClassId(String(c.id))}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition flex-shrink-0 ${
+              className={`px-3 py-1.5 rounded-xl font-bold text-sm transition flex-shrink-0 ${
                 selectedClassId === String(c.id)
                   ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                   : 'bg-slate-800/80 text-slate-400 hover:text-slate-50 hover:bg-slate-700'
@@ -325,57 +326,57 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
       {/* KPI Cards: Pure Factual Numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-3 shadow-md">
-          <div className="flex items-center justify-between text-emerald-400 text-xs font-bold mb-1">
+          <div className="flex items-center justify-between text-emerald-400 text-sm font-bold mb-1">
             <span>🟢 Grün</span>
-            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">Anerkennung</span>
+            <span className="text-2xs uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">Anerkennung</span>
           </div>
           <div className="text-2xl font-black text-emerald-300">{totals.green}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Grüne Karten</p>
+          <p className="text-2xs text-slate-400 mt-0.5">Grüne Karten</p>
         </div>
 
         <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-3 shadow-md">
-          <div className="flex items-center justify-between text-amber-400 text-xs font-bold mb-1">
+          <div className="flex items-center justify-between text-amber-400 text-sm font-bold mb-1">
             <span>🟡 Gelb</span>
-            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">Verwarnung</span>
+            <span className="text-2xs uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">Verwarnung</span>
           </div>
           <div className="text-2xl font-black text-amber-300">{totals.yellow}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Gelbe Karten</p>
+          <p className="text-2xs text-slate-400 mt-0.5">Gelbe Karten</p>
         </div>
 
         <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-3 shadow-md">
-          <div className="flex items-center justify-between text-rose-400 text-xs font-bold mb-1">
+          <div className="flex items-center justify-between text-rose-400 text-sm font-bold mb-1">
             <span>🔴 Rot</span>
-            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-rose-500/10 border border-rose-500/20">Disziplinar</span>
+            <span className="text-2xs uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-rose-500/10 border border-rose-500/20">Disziplinar</span>
           </div>
           <div className="text-2xl font-black text-rose-300">{totals.red}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Rote Karten</p>
+          <p className="text-2xs text-slate-400 mt-0.5">Rote Karten</p>
         </div>
 
         <div className="bg-slate-900 border border-orange-500/30 rounded-2xl p-3 shadow-md">
-          <div className="flex items-center justify-between text-orange-400 text-xs font-bold mb-1">
+          <div className="flex items-center justify-between text-orange-400 text-sm font-bold mb-1">
             <span>⏱️ Time-Out</span>
-            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-orange-500/10 border border-orange-500/20">Lernwerkstatt</span>
+            <span className="text-2xs uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-orange-500/10 border border-orange-500/20">Lernwerkstatt</span>
           </div>
           <div className="text-2xl font-black text-orange-300">{totals.timeout}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Time-Out Vorfälle</p>
+          <p className="text-2xs text-slate-400 mt-0.5">Time-Out Vorfälle</p>
         </div>
 
         <div className="bg-slate-900 border border-sky-500/30 rounded-2xl p-3 shadow-md">
-          <div className="flex items-center justify-between text-sky-400 text-xs font-bold mb-1">
+          <div className="flex items-center justify-between text-sky-400 text-sm font-bold mb-1">
             <span>❄️ Cool-Down</span>
-            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-sky-500/10 border border-sky-500/20">Auszeit</span>
+            <span className="text-2xs uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-sky-500/10 border border-sky-500/20">Auszeit</span>
           </div>
           <div className="text-2xl font-black text-sky-300">{totals.cooldown}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Beruhigungsphasen</p>
+          <p className="text-2xs text-slate-400 mt-0.5">Beruhigungsphasen</p>
         </div>
 
         <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-3 shadow-md">
-          <div className="flex items-center justify-between text-slate-300 text-xs font-bold mb-1">
+          <div className="flex items-center justify-between text-slate-300 text-sm font-bold mb-1">
             <span>📊 Gesamt</span>
-            <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700">Total</span>
+            <span className="text-2xs uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700">Total</span>
           </div>
           <div className="text-2xl font-black text-slate-100">{totals.total}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Einträge gesamt</p>
+          <p className="text-2xs text-slate-400 mt-0.5">Einträge gesamt</p>
         </div>
       </div>
 
@@ -384,15 +385,15 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-amber-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">
               Gesamte Farb- &amp; Vorfallsverteilung
             </h3>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-2xs text-slate-400">
               ({totals.total} Einträge)
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] flex-wrap">
+          <div className="flex items-center gap-2 text-2xs flex-wrap">
             <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Grün: {totals.green}
             </span>
@@ -415,17 +416,17 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         <div className="w-full h-7 bg-slate-950 rounded-xl overflow-hidden flex p-0.5 gap-0.5 border border-slate-800 shadow-inner">
           {globalSegments.length > 0 ? (
             globalSegments.map((seg) => (
-              <div
+              <Meter
                 key={seg.key}
-                style={{ width: `${seg.pct}%` }}
-                className={`${seg.colorClass} rounded-lg flex items-center justify-center text-slate-950 text-[11px] font-black transition-all duration-300 hover:brightness-110 cursor-pointer`}
+                 value={(seg.pct)}
+                className={`${seg.colorClass} rounded-lg flex items-center justify-center text-slate-950 text-2xs font-black transition-all duration-300 hover:brightness-110 cursor-pointer`}
                 title={`${seg.label}: ${seg.count} (${seg.pct}%)`}
               >
                 {seg.pct >= 8 && `${seg.pct}%`}
-              </div>
+              </Meter>
             ))
           ) : (
-            <div className="w-full flex items-center justify-center text-xs text-slate-500">
+            <div className="w-full flex items-center justify-center text-sm text-slate-500">
               Keine Karten oder Vorfälle erfasst
             </div>
           )}
@@ -437,19 +438,19 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-amber-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">
               Klassenübersicht (Karten &amp; Vorfälle)
             </h3>
           </div>
-          <span className="text-[11px] text-slate-500 hidden sm:inline">
+          <span className="text-2xs text-slate-500 hidden sm:inline">
             Fahren Sie über die Farbstreifen für Details
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-slate-950/60 border-b border-slate-800 text-[11px] font-bold text-slate-400">
+              <tr className="bg-slate-950/60 border-b border-slate-800 text-2xs font-bold text-slate-400">
                 <th className="py-2.5 px-3">Klasse</th>
                 <th className="py-2.5 px-3 text-center">Schüler</th>
                 <th className="py-2.5 px-3 text-center text-emerald-400">🟢 Grün</th>
@@ -483,10 +484,10 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                       className="hover:bg-slate-800/40 cursor-pointer transition"
                     >
                       <td className="py-2 px-3 font-bold text-slate-100 flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[11px] text-amber-400">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-2xs text-amber-400">
                           {cb.className}
                         </span>
-                        <span className="text-slate-400 text-[11px]">{cb.grade}. Schulstufe</span>
+                        <span className="text-slate-400 text-2xs">{cb.grade}. Schulstufe</span>
                       </td>
                       <td className="py-2 px-3 text-center text-slate-400">{cb.pupilCount}</td>
                       <td className="py-2 px-3 text-center font-bold text-emerald-400">{cb.green}</td>
@@ -504,14 +505,14 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                         >
                           {segments.length > 0 ? (
                             segments.map((seg) => (
-                              <div
+                              <Meter
                                 key={seg.key}
-                                style={{ width: `${seg.pct}%` }}
+                                 value={(seg.pct)}
                                 className={`${seg.colorClass} rounded-sm`}
                               />
                             ))
                           ) : (
-                            <div className="w-full text-center text-[11px] text-slate-600">—</div>
+                            <div className="w-full text-center text-2xs text-slate-600">—</div>
                           )}
                         </div>
                       </td>
@@ -537,11 +538,11 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-400" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">
                 Vorfälle nach Wochentag
               </h3>
             </div>
-            <span className="text-[11px] text-slate-500">Montag – Freitag</span>
+            <span className="text-2xs text-slate-500">Montag – Freitag</span>
           </div>
 
           <div className="grid grid-cols-5 gap-2 pt-2">
@@ -555,16 +556,16 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
               return (
                 <div key={d.day} className="flex flex-col items-center">
                   <div className="w-full h-24 bg-slate-950/60 rounded-xl p-1 flex items-end justify-center border border-slate-800">
-                    <div
-                      style={{ height: `${Math.max(8, barHeightPct)}%` }}
-                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-[11px] font-bold ${
+                    <Meter
+                       vertical value={(Math.max(8, barHeightPct))}
+                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-2xs font-bold ${
                         d.count > 0 ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-slate-800 text-slate-500'
                       }`}
                     >
                       {d.count > 0 ? d.count : 0}
-                    </div>
+                    </Meter>
                   </div>
-                  <span className="text-xs font-bold text-slate-300 mt-2">{d.dayName}</span>
+                  <span className="text-sm font-bold text-slate-300 mt-2">{d.dayName}</span>
                 </div>
               );
             })}
@@ -576,11 +577,11 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-orange-400" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">
                 Vorfälle nach Unterrichtsstunde
               </h3>
             </div>
-            <span className="text-[11px] text-slate-500">1. bis 6. Stunde</span>
+            <span className="text-2xs text-slate-500">1. bis 6. Stunde</span>
           </div>
 
           <div className="grid grid-cols-6 gap-2 pt-2">
@@ -594,17 +595,17 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
               return (
                 <div key={p.period} className="flex flex-col items-center" title={`${p.label} (${p.time}): ${p.count} Vorfälle`}>
                   <div className="w-full h-24 bg-slate-950/60 rounded-xl p-1 flex items-end justify-center border border-slate-800">
-                    <div
-                      style={{ height: `${Math.max(8, barHeightPct)}%` }}
-                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-[11px] font-bold ${
+                    <Meter
+                       vertical value={(Math.max(8, barHeightPct))}
+                      className={`w-full rounded-lg transition-all duration-500 flex items-center justify-center text-2xs font-bold ${
                         p.count > 0 ? 'bg-orange-500 text-slate-950 shadow-sm' : 'bg-slate-800 text-slate-500'
                       }`}
                     >
                       {p.count > 0 ? p.count : 0}
-                    </div>
+                    </Meter>
                   </div>
-                  <span className="text-xs font-bold text-slate-300 mt-2">{p.period}. Std</span>
-                  <span className="text-[11px] text-slate-500 truncate max-w-full">{p.time.split(' - ')[0]}</span>
+                  <span className="text-sm font-bold text-slate-300 mt-2">{p.period}. Std</span>
+                  <span className="text-2xs text-slate-500 truncate max-w-full">{p.time.split(' - ')[0]}</span>
                 </div>
               );
             })}
@@ -622,14 +623,14 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Schüler nach Name suchen..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
             />
           </div>
 
           <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-0.5">
             <button
               onClick={() => setPupilFilter('all')}
-              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+              className={`px-2.5 py-1 rounded-xl font-bold text-sm transition ${
                 pupilFilter === 'all'
                   ? 'bg-slate-700 text-slate-50'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-50'
@@ -639,7 +640,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </button>
             <button
               onClick={() => setPupilFilter('has_cards')}
-              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+              className={`px-2.5 py-1 rounded-xl font-bold text-sm transition ${
                 pupilFilter === 'has_cards'
                   ? 'bg-amber-500 text-slate-950 font-bold'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-50'
@@ -649,7 +650,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </button>
             <button
               onClick={() => setPupilFilter('green')}
-              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+              className={`px-2.5 py-1 rounded-xl font-bold text-sm transition ${
                 pupilFilter === 'green'
                   ? 'bg-emerald-500 text-slate-950 font-bold'
                   : 'bg-slate-800 text-emerald-400 hover:text-slate-50'
@@ -659,7 +660,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </button>
             <button
               onClick={() => setPupilFilter('yellow')}
-              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+              className={`px-2.5 py-1 rounded-xl font-bold text-sm transition ${
                 pupilFilter === 'yellow'
                   ? 'bg-amber-400 text-slate-950 font-bold'
                   : 'bg-slate-800 text-amber-400 hover:text-slate-50'
@@ -669,7 +670,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </button>
             <button
               onClick={() => setPupilFilter('red')}
-              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+              className={`px-2.5 py-1 rounded-xl font-bold text-sm transition ${
                 pupilFilter === 'red'
                   ? 'bg-rose-500 text-slate-50'
                   : 'bg-slate-800 text-rose-400 hover:text-slate-50'
@@ -679,7 +680,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
             </button>
             <button
               onClick={() => setPupilFilter('timeout')}
-              className={`px-2.5 py-1 rounded-xl font-bold text-xs transition ${
+              className={`px-2.5 py-1 rounded-xl font-bold text-sm transition ${
                 pupilFilter === 'timeout'
                   ? 'bg-orange-500 text-slate-50'
                   : 'bg-slate-800 text-orange-400 hover:text-slate-50'
@@ -691,9 +692,9 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-slate-950/60 border-b border-slate-800 text-[11px] font-bold text-slate-400">
+              <tr className="bg-slate-950/60 border-b border-slate-800 text-2xs font-bold text-slate-400">
                 <th className="py-2.5 px-3">Klasse</th>
                 <th className="py-2.5 px-3">Schüler</th>
                 <th className="py-2.5 px-3 text-center text-emerald-400">🟢 Grün</th>
@@ -724,7 +725,7 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                   return (
                     <tr key={p.id} className="hover:bg-slate-800/30 transition">
                       <td className="py-2 px-3">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[11px] text-amber-400 font-bold">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-2xs text-amber-400 font-bold">
                           {p.className}
                         </span>
                       </td>
@@ -742,14 +743,14 @@ export const SchoolStatistics: React.FC<SchoolStatisticsProps> = ({
                         >
                           {segments.length > 0 ? (
                             segments.map((seg) => (
-                              <div
+                              <Meter
                                 key={seg.key}
-                                style={{ width: `${seg.pct}%` }}
+                                 value={(seg.pct)}
                                 className={`${seg.colorClass} rounded-sm`}
                               />
                             ))
                           ) : (
-                            <div className="w-full text-center text-[11px] text-slate-600">—</div>
+                            <div className="w-full text-center text-2xs text-slate-600">—</div>
                           )}
                         </div>
                       </td>

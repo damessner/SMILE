@@ -19,6 +19,7 @@ import { getConferenceSummary, getAllClasses } from '../services/api';
 import { formatConfirmationTimestamp } from '../lib/confirmationTime';
 import { type SubjectEvidenceItem } from '../lib/conferenceEvidence';
 import { buildConferenceExportHtml, formatParticipation, type ConferenceExportClass } from '../lib/conferenceExportHtml';
+import { Meter } from './ui';
 
 interface TeacherVote {
   teacherId: number;
@@ -390,11 +391,11 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
             <div>
               <h3 className="font-bold text-slate-50 text-sm flex items-center gap-2">
                 <span>Gesamtexport Konferenz (Alle Klassen)</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                <span className="text-sm px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
                   {targetClasses.length} Klassen
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 1 A4-Seite pro Klasse · Statistiken &amp; visualisierte Voten je Schüler*in
               </p>
             </div>
@@ -402,7 +403,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
 
           <div className="flex items-center gap-2">
             {/* Filter Toggle */}
-            <div className="flex items-center p-1 rounded-xl bg-slate-800 border border-slate-700 text-xs font-semibold">
+            <div className="flex items-center p-1 rounded-xl bg-slate-800 border border-slate-700 text-sm font-semibold">
               <button
                 onClick={() => setExportFilter('all')}
                 className={`px-3 py-1.5 rounded-lg transition ${
@@ -440,7 +441,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
             <button
               onClick={handlePrint}
               disabled={loadingAll || hasLoadErrors}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-md"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-sm flex items-center gap-1.5 transition shadow-md"
             >
               <Printer className="w-4 h-4" />
               <span>Drucken / Als PDF speichern</span>
@@ -448,7 +449,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
             <button
               onClick={handleDownloadHtml}
               disabled={loadingAll || hasLoadErrors}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-100 font-bold text-xs flex items-center gap-1.5 transition border border-slate-700"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-100 font-bold text-sm flex items-center gap-1.5 transition border border-slate-700"
               title="Druckfertige HTML-Datei (1 Seite pro Klasse) herunterladen"
             >
               <Download className="w-4 h-4" />
@@ -474,7 +475,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
         )}
 
         {hasLoadErrors && (
-          <div role="alert" className="m-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 no-print">
+          <div role="alert" className="m-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200 no-print">
             <div className="font-bold mb-1">Export gesperrt: nicht alle Klassen konnten geladen werden.</div>
             <ul className="list-disc pl-5 space-y-0.5">
               {loadErrors.map((entry) => (
@@ -513,12 +514,11 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
             return (
               <div
                 key={cls.id}
-                className="print-class-page bg-white rounded-2xl p-5 mb-8 last:mb-0 shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:rounded-none print:p-0"
-                style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
+                className="print-class-page bg-white rounded-2xl p-5 mb-8 last:mb-0 shadow-lg border border-slate-200 text-slate-900 print:shadow-none print:border-none print:rounded-none print:p-0 font-sans"
               >
                 <div>
                   {classEntry?.error && (
-                    <div className="mb-3 rounded border border-rose-300 bg-rose-50 p-2 text-xs text-rose-800 print:hidden">
+                    <div className="mb-3 rounded border border-rose-300 bg-rose-50 p-2 text-sm text-rose-800 print:hidden">
                       Klasse {cls.name} konnte nicht geladen werden: {classEntry.error}
                     </div>
                   )}
@@ -527,21 +527,21 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-base tracking-tight text-slate-950">SMILE</span>
-                        <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-bold text-slate-700">
+                        <span className="text-2xs px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-bold text-slate-700">
                           MS Weissenbach
                         </span>
-                        <span className="text-[11px] text-slate-500 font-medium">· Schuljahr 2026/27</span>
+                        <span className="text-2xs text-slate-500 font-medium">· Schuljahr 2026/27</span>
                       </div>
                       <div className="flex items-center gap-2.5 mt-1">
                         <h1 className="text-lg font-black uppercase tracking-tight text-slate-950">
                           Klasse {cls.name}
                         </h1>
-                        <span className="text-xs px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                        <span className="text-sm px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-900 border border-amber-300">
                           {filterLabel}
                         </span>
                       </div>
                     </div>
-                    <div className="text-right text-[11px] text-slate-600 leading-tight">
+                    <div className="text-right text-2xs text-slate-600 leading-tight">
                       <div><strong>Klassenvorstand:</strong> {kvInfo}</div>
                       <div><strong>Schülerzahl:</strong> {totalPupils} · <strong>Lehrkräfte:</strong> {totalClassTeachers}</div>
                       <div><strong>Stichtag:</strong> 30.10.2026 · <strong>Konferenz:</strong> 03.11.2026</div>
@@ -549,62 +549,62 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                   </div>
 
                   {/* Summary Statistics Card */}
-                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-2 mb-2.5 text-[11px]">
+                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-2 mb-2.5 text-2xs">
                     <div className="flex items-center justify-between font-bold mb-1.5 text-slate-800">
                       <span>
                         Klassenstatistik ({totalPupils} Schüler*innen · {confirmedCount} Beschlüsse bestätigt, {openDecisionCount} offen)
                       </span>
-                      <span className="text-slate-600 font-normal text-[11px]">
+                      <span className="text-slate-600 font-normal text-2xs">
                         Stand: {currentDateStr}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 text-center mb-1.5">
                       <div className="bg-white border border-rose-200 rounded-lg p-1 shadow-2xs">
-                        <span className="text-[11px] uppercase font-bold text-rose-700 block">
+                        <span className="text-2xs uppercase font-bold text-rose-700 block">
                           <span className="inline-block w-2 h-2 rounded-full bg-rose-500 mr-1 align-middle" />
                           Lehrling
                         </span>
                         <strong className="text-sm font-extrabold text-slate-900">{lehrlingCount}</strong>
-                        <span className="text-[11px] text-slate-500 ml-1">({pctLehrling}%)</span>
+                        <span className="text-2xs text-slate-500 ml-1">({pctLehrling}%)</span>
                       </div>
 
                       <div className="bg-white border border-blue-200 rounded-lg p-1 shadow-2xs">
-                        <span className="text-[11px] uppercase font-bold text-blue-700 block">
+                        <span className="text-2xs uppercase font-bold text-blue-700 block">
                           <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1 align-middle" />
                           Geselle
                         </span>
                         <strong className="text-sm font-extrabold text-slate-900">{geselleCount}</strong>
-                        <span className="text-[11px] text-slate-500 ml-1">({pctGeselle}%)</span>
+                        <span className="text-2xs text-slate-500 ml-1">({pctGeselle}%)</span>
                       </div>
 
                       <div className="bg-white border border-amber-200 rounded-lg p-1 shadow-2xs">
-                        <span className="text-[11px] uppercase font-bold text-amber-700 block">
+                        <span className="text-2xs uppercase font-bold text-amber-700 block">
                           <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1 align-middle" />
                           Meister
                         </span>
                         <strong className="text-sm font-extrabold text-slate-900">{meisterCount}</strong>
-                        <span className="text-[11px] text-slate-500 ml-1">({pctMeister}%)</span>
+                        <span className="text-2xs text-slate-500 ml-1">({pctMeister}%)</span>
                       </div>
                     </div>
 
                     {/* Progress Bar */}
                     <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden flex border border-slate-300">
-                      {pctLehrling > 0 && <div style={{ width: `${pctLehrling}%` }} className="bg-rose-500 h-full" />}
-                      {pctGeselle > 0 && <div style={{ width: `${pctGeselle}%` }} className="bg-blue-500 h-full" />}
-                      {pctMeister > 0 && <div style={{ width: `${pctMeister}%` }} className="bg-amber-400 h-full" />}
+                      {pctLehrling > 0 && <Meter value={(pctLehrling)} className="bg-rose-500 h-full" />}
+                      {pctGeselle > 0 && <Meter value={(pctGeselle)} className="bg-blue-500 h-full" />}
+                      {pctMeister > 0 && <Meter value={(pctMeister)} className="bg-amber-400 h-full" />}
                     </div>
                   </div>
 
                   {/* Pupil Table with Visualized Votes */}
                   {summary.length === 0 ? (
-                    <div className="py-8 text-center text-slate-400 text-xs italic">
+                    <div className="py-8 text-center text-slate-400 text-sm italic">
                       Keine Schüler*innen in dieser Klasse eingetragen.
                     </div>
                   ) : (
-                    <table className="w-full text-left text-[11px] border-collapse border border-slate-300">
+                    <table className="w-full text-left text-2xs border-collapse border border-slate-300">
                       <thead>
-                        <tr className="bg-slate-100 text-slate-800 text-[9.5px] uppercase border-b border-slate-300 font-bold">
+                        <tr className="bg-slate-100 text-slate-800 text-2xs uppercase border-b border-slate-300 font-bold">
                           <th className="py-1 px-1.5 border-r border-slate-300 w-6 text-center">Nr.</th>
                           <th className="py-1 px-1.5 border-r border-slate-300 font-bold">Schüler*in</th>
                           <th className="py-1 px-1.5 border-r border-slate-300 w-24 text-center font-bold">Beteiligung</th>
@@ -644,13 +644,13 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                                 pIdx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
                               }`}
                             >
-                              <td className="py-1 px-1.5 border-r border-slate-200 text-center text-slate-500 text-[11px]">
+                              <td className="py-1 px-1.5 border-r border-slate-200 text-center text-slate-500 text-2xs">
                                 {pIdx + 1}
                               </td>
                               <td className="py-1 px-1.5 border-r border-slate-200 font-bold text-slate-900 truncate max-w-[130px]">
                                 {p.fullName}
                               </td>
-                              <td className="py-1 px-1.5 border-r border-slate-200 text-center font-semibold text-[11px]">
+                              <td className="py-1 px-1.5 border-r border-slate-200 text-center font-semibold text-2xs">
                                 {participationLabel(p, totalClassTeachers)}
                               </td>
                               {/* Visualized Votes per Category per Pupil */}
@@ -659,12 +659,12 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                                   <div className="flex flex-col gap-0.5">
                                     {/* Mini visual distribution bar */}
                                     <div className="w-full h-2 rounded bg-slate-200 overflow-hidden flex border border-slate-300">
-                                      {pctL > 0 && <div style={{ width: `${pctL}%` }} className="bg-rose-500 h-full" title={`Lehrling: ${vStats.Lehrling} (${pctL}%)`} />}
-                                      {pctG > 0 && <div style={{ width: `${pctG}%` }} className="bg-blue-500 h-full" title={`Geselle: ${vStats.Geselle} (${pctG}%)`} />}
-                                      {pctM > 0 && <div style={{ width: `${pctM}%` }} className="bg-amber-400 h-full" title={`Meister: ${vStats.Meister} (${pctM}%)`} />}
+                                      {pctL > 0 && <Meter value={(pctL)} className="bg-rose-500 h-full" title={`Lehrling: ${vStats.Lehrling} (${pctL}%)`} />}
+                                      {pctG > 0 && <Meter value={(pctG)} className="bg-blue-500 h-full" title={`Geselle: ${vStats.Geselle} (${pctG}%)`} />}
+                                      {pctM > 0 && <Meter value={(pctM)} className="bg-amber-400 h-full" title={`Meister: ${vStats.Meister} (${pctM}%)`} />}
                                     </div>
                                     {/* Vote counts & % label */}
-                                    <div className="flex items-center justify-between text-[8.5px] font-bold text-slate-600">
+                                    <div className="flex items-center justify-between text-2xs font-bold text-slate-600">
                                       <span className={vStats.Lehrling > 0 ? 'text-rose-700' : 'text-slate-400'}>
                                         {vStats.Lehrling} L {pctL > 0 ? `(${pctL}%)` : ''}
                                       </span>
@@ -677,18 +677,18 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                                     </div>
                                   </div>
                                 ) : (
-                                  <span className="text-[9.5px] text-slate-400 italic block text-center">
+                                  <span className="text-2xs text-slate-400 italic block text-center">
                                     Keine Voten
                                   </span>
                                 )}
                               </td>
                               {/* Suggested Rank */}
                               <td className="py-1 px-1.5 border-r border-slate-200 text-center">
-                                <span className="text-[11px] font-semibold text-slate-700">
+                                <span className="text-2xs font-semibold text-slate-700">
                                   {suggested}
                                 </span>
                                 {p.hasRedCardDemotion && (
-                                  <span className="block text-[8px] font-bold text-rose-600">
+                                  <span className="block text-2xs font-bold text-rose-600">
                                     (Rangabzug Karten)
                                   </span>
                                 )}
@@ -697,26 +697,26 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                               <td className="py-1 px-1.5 border-r border-slate-200 text-center">
                                 {p.isConfirmed ? (
                                   <div className="inline-flex items-center gap-1">
-                                    <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border uppercase ${rankBadgeClass}`}>
+                                    <span className={`px-1.5 py-0.2 rounded text-2xs font-bold border uppercase ${rankBadgeClass}`}>
                                       ✓ {p.finalRank}
                                     </span>
                                   </div>
                                 ) : (
-                                  <span className="text-[9.5px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                  <span className="text-2xs font-medium text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                                     ○ Ausstehend
                                   </span>
                                 )}
                               </td>
                               {/* Cards & Notes */}
-                              <td className="py-1 px-1.5 text-[9.5px] text-slate-600">
+                              <td className="py-1 px-1.5 text-2xs text-slate-600">
                                 <div className="flex items-center gap-1">
                                   {p.cards.red.length > 0 && (
-                                    <span className="px-1 rounded bg-rose-600 text-white font-bold text-[8.5px]">
+                                    <span className="px-1 rounded bg-rose-600 text-white font-bold text-2xs">
                                       {p.cards.red.length} Rot
                                     </span>
                                   )}
                                   {p.cards.yellow.length > 0 && (
-                                    <span className="px-1 rounded bg-amber-500 text-white font-bold text-[8.5px]">
+                                    <span className="px-1 rounded bg-amber-500 text-white font-bold text-2xs">
                                       {p.cards.yellow.length} Gelb
                                     </span>
                                   )}
@@ -734,7 +734,7 @@ export const AllClassesConferenceExportModal: React.FC<AllClassesConferenceExpor
                 </div>
 
                 {/* Class Page Signature Footer */}
-                <div className="mt-3 pt-2 border-t border-slate-300 flex items-center justify-between text-[9.5px] text-slate-600">
+                <div className="mt-3 pt-2 border-t border-slate-300 flex items-center justify-between text-2xs text-slate-600">
                   <div>
                     <span>Erstellt am: {currentDateStr} um {currentTimeStr} Uhr · SMILE Konferenzprotokoll</span>
                   </div>

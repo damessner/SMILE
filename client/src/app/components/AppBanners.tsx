@@ -20,7 +20,7 @@ export function AppBanners({ yellowAlertError, onRetryAlerts, isLockedByConferen
       {yellowAlertError && (
         <div
           role="alert"
-          className="bg-rose-500/15 border-b border-rose-500/30 px-6 py-2 text-xs text-rose-200 flex items-center justify-between gap-3"
+          className="bg-rose-500/15 border-b border-rose-500/30 px-6 py-2 text-sm text-rose-200 flex items-center justify-between gap-3"
         >
           <span>Gelbe-Karten-Alarm konnte nicht geladen werden: {yellowAlertError}</span>
           <button
@@ -35,7 +35,7 @@ export function AppBanners({ yellowAlertError, onRetryAlerts, isLockedByConferen
 
       {/* Conference Locked Banner */}
       {isLockedByConference && (
-        <div className="bg-red-500/20 border-b border-red-500/40 px-6 py-2 text-xs text-red-300 text-center font-bold">
+        <div className="bg-red-500/20 border-b border-red-500/40 px-6 py-2 text-sm text-red-300 text-center font-bold">
           🔒 Die Notenabstimmung für diese Klasse ist durch die Konferenzleitung gesperrt. Änderungen sind deaktiviert.
         </div>
       )}

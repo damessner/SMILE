@@ -146,11 +146,11 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                 <p className="mt-2 font-mono text-xl tracking-wider text-amber-100 select-all">
                   {issued.password}
                 </p>
-                <p className="mt-2 text-xs text-amber-200/80">{issued.notice}</p>
+                <p className="mt-2 text-sm text-amber-200/80">{issued.notice}</p>
                 <button
                   type="button"
                   onClick={() => setIssued(null)}
-                  className="mt-3 rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-amber-400"
+                  className="mt-3 rounded-xl bg-amber-500 px-3 py-1.5 text-sm font-bold text-slate-950 transition hover:bg-amber-400"
                 >
                   Notiert — schließen
                 </button>
@@ -160,7 +160,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
         )}
 
         <div className="flex items-center justify-between px-6 pt-4">
-          <p className="text-xs text-slate-400">
+          <p className="text-sm text-slate-400">
             Konten mit <span className="text-amber-400">„Passwort offen“</span> haben ihre
             Zugangsdaten noch nicht selbst gewählt.
           </p>
@@ -196,12 +196,12 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                     <p className="flex items-center gap-2 font-bold">
                       <span className="truncate">{account.username}</span>
                       {account.mustChangePassword && (
-                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-300">
+                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-amber-300">
                           Passwort offen
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-sm text-slate-400">
                       {ROLE_LABEL[account.role]}
                       {account.teacherShort ? ` · ${account.teacherShort}` : ''}
                     </p>
@@ -214,7 +214,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                         onClick={() => void handleViewAs(account.username)}
                         disabled={busyUsername === account.username}
                         title="App schreibgeschützt aus Sicht dieses Kontos ansehen"
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-sky-500 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3 py-1.5 text-sm font-bold text-white transition hover:bg-sky-500 disabled:opacity-50"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Ansehen als
@@ -224,7 +224,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                       type="button"
                       onClick={() => void handleIssue(account.username)}
                       disabled={busyUsername === account.username}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:opacity-90 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-sm font-bold text-slate-950 transition hover:opacity-90 disabled:opacity-50"
                     >
                       <KeyRound className="h-3.5 w-3.5" />
                       Einmal-Passwort
@@ -238,7 +238,7 @@ export const AdminAccountsModal: React.FC<Props> = ({ onClose }) => {
                           ? 'Sitzungen beenden und beim nächsten Anmelden zum Wechsel zwingen'
                           : 'Das Konto hat bereits ein eigenes Passwort gesetzt'
                       }
-                      className="rounded-xl bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-xl bg-slate-700 px-3 py-1.5 text-sm font-bold text-slate-200 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Passwortwechsel erzwingen
                     </button>

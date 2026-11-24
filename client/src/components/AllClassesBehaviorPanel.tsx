@@ -212,7 +212,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-2 text-slate-400">
                 <Users className="w-4 h-4" aria-hidden="true" />
-                <span className="text-[11px] font-bold uppercase tracking-wider">Klasse auswählen</span>
+                <span className="text-2xs font-bold uppercase tracking-wider">Klasse auswählen</span>
               </div>
               <div
                 role="group"
@@ -223,7 +223,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                   type="button"
                   onClick={() => setClassFilter('all')}
                   aria-pressed={classFilter === 'all'}
-                  className={`pressable focus-ring min-h-[40px] px-3 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                  className={`pressable focus-ring min-h-[40px] px-3 rounded-xl text-sm font-bold transition inline-flex items-center gap-1.5 ${
                     classFilter === 'all'
                       ? 'bg-sky-500 text-slate-950 shadow-md'
                       : 'bg-slate-800/80 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-slate-50'
@@ -231,7 +231,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                 >
                   <span>Alle</span>
                   <span
-                    className={`text-[11px] tabular ${classFilter === 'all' ? 'text-slate-900/70' : 'text-slate-500'}`}
+                    className={`text-2xs tabular ${classFilter === 'all' ? 'text-slate-900/70' : 'text-slate-500'}`}
                   >
                     {data?.pupils.length ?? 0}
                   </span>
@@ -246,7 +246,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                       aria-pressed={active}
                       aria-label={`Klasse ${cls.name} auswählen`}
                       title={`Klasse ${cls.name}: ${classCounts.get(cls.id) ?? 0} Schüler*innen`}
-                      className={`pressable focus-ring min-h-[40px] px-3 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                      className={`pressable focus-ring min-h-[40px] px-3 rounded-xl text-sm font-bold transition inline-flex items-center gap-1.5 ${
                         active
                           ? 'bg-sky-500 text-slate-950 shadow-md'
                           : 'bg-slate-800/80 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-slate-50'
@@ -254,7 +254,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                     >
                       <span>{cls.name}</span>
                       <span
-                        className={`text-[11px] tabular ${active ? 'text-slate-900/70' : 'text-slate-500'}`}
+                        className={`text-2xs tabular ${active ? 'text-slate-900/70' : 'text-slate-500'}`}
                       >
                         {classCounts.get(cls.id) ?? 0}
                       </span>
@@ -262,7 +262,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                   );
                 })}
               </div>
-              <p className="mt-2 text-[11px] text-slate-400 truncate">
+              <p className="mt-2 text-2xs text-slate-400 truncate">
                 {statusText}
                 {updatedAt && !loading && (
                   <span className="text-slate-500">
@@ -316,14 +316,14 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                     key={tile.key}
                     className={`rounded-xl border bg-slate-900/50 px-3 py-2.5 ${tone.ring}`}
                   >
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wider text-slate-400">
                       <span className={`w-1.5 h-1.5 rounded-full ${tone.dot}`} aria-hidden="true" />
                       <span className="truncate">{tile.label}</span>
                     </div>
                     <div className={`mt-0.5 text-2xl font-black tabular leading-none ${tone.value}`}>
                       {tile.value}
                     </div>
-                    <div className="mt-1 h-3 text-[11px] font-semibold text-slate-500 truncate">
+                    <div className="mt-1 h-3 text-2xs font-semibold text-slate-500 truncate">
                       {tile.hint ?? ''}
                     </div>
                   </div>
@@ -377,11 +377,11 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
           <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/60 border-b border-hairline">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-extrabold text-slate-50">Klasse {group.name}</span>
-              <span className="text-[11px] font-bold text-slate-400">
+              <span className="text-2xs font-bold text-slate-400">
                 {group.pupils.length} Schüler*innen
               </span>
             </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-2xs font-bold uppercase tracking-wider text-slate-500">
               Status · Aktionen
             </span>
           </div>
@@ -396,14 +396,14 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-base font-extrabold text-slate-50 truncate">{pupil.fullName}</span>
                     <span
-                      className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold uppercase tracking-wide ${rankClass(pupil.rank)}`}
+                      className={`px-2 py-0.5 rounded-lg border text-2xs font-bold uppercase tracking-wide ${rankClass(pupil.rank)}`}
                       title="Bestätigter Konferenzrang (falls vorhanden)"
                     >
                       {pupil.rank ?? 'Ausstehend'}
                     </span>
                     {pupil.stage && (
                       <span
-                        className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold ${stageClass(pupil.stage.level)}`}
+                        className={`px-2 py-0.5 rounded-lg border text-2xs font-bold ${stageClass(pupil.stage.level)}`}
                         title={`${pupil.stage.title} · Verhaltensnote: ${pupil.stage.behaviorGrade}`}
                       >
                         Stufe {pupil.stage.level > 0 ? `+${pupil.stage.level}` : pupil.stage.level}
@@ -411,7 +411,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                     )}
                     {pupil.activeIncident && (
                       <span
-                        className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold ${
+                        className={`px-2 py-0.5 rounded-lg border text-2xs font-bold ${
                           pupil.activeIncident.kind === 'cooldown'
                             ? 'bg-sky-500/15 text-sky-300 border-sky-500/40'
                             : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
@@ -422,7 +422,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-400">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs font-semibold text-slate-400">
                     <span className="inline-flex items-center gap-1" title="Grüne Karten">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true" />{pupil.counts.green} Grün
                     </span>
@@ -450,7 +450,7 @@ export const AllClassesBehaviorPanel: React.FC<AllClassesBehaviorPanelProps> = (
                       disabled={!pupil.canRecord}
                       title={pupil.canRecord ? style.title : 'Keine Berechtigung für diese Klasse'}
                       aria-label={`${style.title} für ${pupil.fullName}`}
-                      className={`pressable focus-ring min-h-[48px] min-w-[56px] rounded-xl border px-1.5 py-1.5 text-[11px] font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed ${style.className}`}
+                      className={`pressable focus-ring min-h-[48px] min-w-[56px] rounded-xl border px-1.5 py-1.5 text-2xs font-bold leading-none transition flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed ${style.className}`}
                     >
                       {style.icon}
                       <span>{style.label}</span>

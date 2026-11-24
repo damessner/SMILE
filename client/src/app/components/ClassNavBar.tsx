@@ -17,7 +17,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
           className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 md:px-6 py-2.5 flex items-center justify-between gap-3 shadow-xs"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1 overflow-x-auto py-0.5 no-scrollbar">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 hidden sm:inline">
+            <span className="text-sm font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1 hidden sm:inline">
               Klassen:
             </span>
             {classes.map((cls) => {
@@ -28,7 +28,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
                   key={cls.id}
                   onClick={() => onSelectClass(cls.id)}
                   aria-current={isSelected ? 'true' : undefined}
-                  className={`min-h-[40px] px-3.5 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-2 shrink-0 ${
+                  className={`min-h-[40px] px-3.5 py-1.5 rounded-xl font-bold text-sm transition flex items-center gap-2 shrink-0 ${
                     isSelected
                       ? 'bg-amber-500 text-slate-950 font-bold shadow-md ring-2 ring-amber-400/50'
                       : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60'
@@ -41,7 +41,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
                         <span
                           key={s.code}
                           title={s.name}
-                          className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
+                          className={`text-2xs px-1.5 py-0.5 rounded-md font-bold tracking-wide transition ${
                             isSelected
                               ? 'bg-slate-950/20 text-slate-950'
                               : s.isCoreSmile
@@ -55,7 +55,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
                     </div>
                   ) : cls.isKv ? (
                     <span
-                      className={`text-[11px] px-1.5 py-0.5 rounded-md font-bold ${
+                      className={`text-2xs px-1.5 py-0.5 rounded-md font-bold ${
                         isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-purple-500/20 text-purple-300'
                       }`}
                     >
@@ -68,7 +68,7 @@ export function ClassNavBar({ classes, selectedClassId, currentClass, pupilCount
           </div>
           {currentClass && (
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-slate-400 font-medium">
+              <span className="text-sm text-slate-400 font-medium">
                 {pupilCount} Schüler*innen
               </span>
             </div>

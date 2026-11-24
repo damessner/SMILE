@@ -103,10 +103,10 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
         {/* Undo Toast */}
         {undoCardId && undoCountdown !== null && (
           <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-between animate-pulse">
-            <span className="text-xs font-semibold">Karte gespeichert ({undoCountdown}s)</span>
+            <span className="text-sm font-semibold">Karte gespeichert ({undoCountdown}s)</span>
             <button
               onClick={handleUndo}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow"
+              className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm flex items-center gap-1.5 shadow"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Rückgängig</span>
@@ -115,7 +115,7 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
         )}
 
         <div className="mb-4">
-          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          <label className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Notiz (optional)
           </label>
           <input
@@ -134,7 +134,7 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
             className="h-16 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 font-bold flex flex-col items-center justify-center gap-1 active:scale-[0.98] transition disabled:opacity-50"
           >
             <Award className="w-6 h-6 text-emerald-400" />
-            <span className="text-xs">Grüne Karte (Lob)</span>
+            <span className="text-sm">Grüne Karte (Lob)</span>
           </button>
 
           <button
@@ -143,7 +143,7 @@ export const CardDrawer: React.FC<CardDrawerProps> = ({
             className="h-16 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-400 font-bold flex flex-col items-center justify-center gap-1 active:scale-[0.98] transition disabled:opacity-50"
           >
             <AlertTriangle className="w-6 h-6 text-amber-400" />
-            <span className="text-xs">Gelbe Karte (Mahnung)</span>
+            <span className="text-sm">Gelbe Karte (Mahnung)</span>
           </button>
         </div>
     </Dialog>

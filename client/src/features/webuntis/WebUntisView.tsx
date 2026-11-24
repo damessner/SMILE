@@ -689,7 +689,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 <h1 className="text-xl font-bold text-slate-100">WebUntis-Integration</h1>
                 {!loadingStatus && status && (
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+                    className={`px-2.5 py-0.5 rounded-full text-sm font-semibold flex items-center gap-1.5 ${
                       status.connected
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                         : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -706,7 +706,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Stundenplan, Wochenübersicht, Lehrstoff eintragen, Abwesenheiten & Klassenbuch-Synchronisierung.
               </p>
             </div>
@@ -716,7 +716,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-2 shadow-sm ${
+              className={`px-3 py-1.5 rounded-xl text-sm font-bold border transition flex items-center gap-2 shadow-sm ${
                 accountStatus?.connected
                   ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                   : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 border-transparent shadow-sky-500/20 font-extrabold'
@@ -754,11 +754,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
         {/* Filter Bar: Class Selector & Week/Date Navigation */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400">Filter:</span>
+            <span className="text-sm font-semibold text-slate-400">Filter:</span>
             <select
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-100 focus:outline-none focus:border-sky-500"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-sm font-bold text-slate-100 focus:outline-none focus:border-sky-500"
             >
               <option value="all">Alle meine Klassen & Stunden</option>
               {classes.map((c) => (
@@ -780,7 +780,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <span className="text-xs font-bold text-slate-200 px-2 py-0.5 whitespace-nowrap">
+              <span className="text-sm font-bold text-slate-200 px-2 py-0.5 whitespace-nowrap">
                 {schoolWeek.label}
               </span>
 
@@ -794,7 +794,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
               <button
                 onClick={handleResetToCurrentWeek}
-                className="ml-1 px-2.5 py-1 rounded-md bg-sky-500/20 text-sky-300 text-[11px] font-bold hover:bg-sky-500/30 transition"
+                className="ml-1 px-2.5 py-1 rounded-md bg-sky-500/20 text-sky-300 text-2xs font-bold hover:bg-sky-500/30 transition"
               >
                 Aktuelle Woche
               </button>
@@ -813,7 +813,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-200 px-2 py-0.5 focus:outline-none cursor-pointer"
+                className="bg-transparent text-sm font-bold text-slate-200 px-2 py-0.5 focus:outline-none cursor-pointer"
               />
 
               <button
@@ -827,7 +827,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
               {!isToday && (
                 <button
                   onClick={() => setSelectedDate(formatLocalDateIso(new Date()))}
-                  className="ml-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-[11px] font-bold hover:bg-sky-500/30 transition"
+                  className="ml-1 px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 text-2xs font-bold hover:bg-sky-500/30 transition"
                 >
                   Heute
                 </button>
@@ -839,7 +839,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
       {/* Load / write errors are stated, not rendered as an empty day. */}
       {dataError && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs flex items-center justify-between gap-3">
+        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-sm flex items-center justify-between gap-3">
           <span className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{dataError}</span>
@@ -854,7 +854,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
       )}
 
       {saveError && (
-        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-2">
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
           <span>{saveError}</span>
         </div>
@@ -870,18 +870,18 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <span>Eigenes WebUntis-Konto noch nicht verknüpft</span>
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <span className="px-2 py-0.5 rounded text-2xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   Empfohlen
                 </span>
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-sm text-slate-400 mt-0.5">
                 Verbinden Sie Ihren persönlichen WebUntis-Account, um Ihren individuellen Wochenplan, fehlenden Lehrstoff und offene Anwesenheiten direkt zu sehen.
               </p>
             </div>
           </div>
           <button
             onClick={() => setIsConnectModalOpen(true)}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-2 shrink-0 shadow-md transition"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-sm flex items-center gap-2 shrink-0 shadow-md transition"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Jetzt verknüpfen</span>
@@ -892,7 +892,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
       {/* Outbox queue banner (pending/failed SMILE -> WebUntis class-register mirrors) */}
       {outbox && (outbox.failedCount > 0 || outbox.pendingCount > 0) && (
         <div
-          className={`p-3 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-3 ${
+          className={`p-3 rounded-xl border text-sm flex flex-wrap items-center justify-between gap-3 ${
             outbox.failedCount > 0
               ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
               : 'bg-sky-500/10 border-sky-500/30 text-sky-200'
@@ -908,7 +908,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
               </span>
             </p>
             {outbox.items.find((i) => i.status === 'failed' && i.lastError)?.lastError && (
-              <p className="text-[11px] opacity-80">
+              <p className="text-2xs opacity-80">
                 Letzter Fehler: {outbox.items.find((i) => i.status === 'failed' && i.lastError)?.lastError}
               </p>
             )}
@@ -932,7 +932,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveSubTab('timetable')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition ${
               activeSubTab === 'timetable'
                 ? 'bg-sky-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -942,7 +942,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <span>Stundenplan & Lehrstoff</span>
             {filteredLessons.length > 0 && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[11px] ${
+                className={`px-1.5 py-0.2 rounded-full text-2xs ${
                   activeSubTab === 'timetable' ? 'bg-slate-950 text-sky-400' : 'bg-slate-800 text-slate-400'
                 }`}
               >
@@ -953,7 +953,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
           <button
             onClick={() => setActiveSubTab('absences')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition ${
               activeSubTab === 'absences'
                 ? 'bg-sky-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -963,7 +963,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <span>Abwesenheiten</span>
             {absences.length > 0 && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[11px] ${
+                className={`px-1.5 py-0.2 rounded-full text-2xs ${
                   activeSubTab === 'absences' ? 'bg-slate-950 text-sky-400' : 'bg-slate-800 text-slate-400'
                 }`}
               >
@@ -974,7 +974,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
           <button
             onClick={() => setActiveSubTab('events')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition ${
               activeSubTab === 'events'
                 ? 'bg-sky-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -984,7 +984,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <span>Klassenbuch & Disziplinar</span>
             {events.length > 0 && (
               <span
-                className={`px-1.5 py-0.2 rounded-full text-[11px] ${
+                className={`px-1.5 py-0.2 rounded-full text-2xs ${
                   activeSubTab === 'events' ? 'bg-slate-950 text-sky-400' : 'bg-slate-800 text-slate-400'
                 }`}
               >
@@ -999,7 +999,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
             <button
               onClick={() => setTimetableMode('calendar')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+              className={`px-2.5 py-1 rounded-lg text-sm font-bold flex items-center gap-1.5 transition ${
                 timetableMode === 'calendar'
                   ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                   : 'text-slate-400 hover:text-slate-200'
@@ -1010,7 +1010,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             </button>
             <button
               onClick={() => setTimetableMode('list')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+              className={`px-2.5 py-1 rounded-lg text-sm font-bold flex items-center gap-1.5 transition ${
                 timetableMode === 'list'
                   ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                   : 'text-slate-400 hover:text-slate-200'
@@ -1036,7 +1036,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     : `Unterrichtsstunden & Lehrstoff am ${selectedDate} (${filteredLessons.length})`}
                 </span>
               </h2>
-              <span className="text-xs text-slate-400">
+              <span className="text-sm text-slate-400">
                 Stundenplan nach Schulwoche. Tragen Sie hier direkt den Lehrstoff ein und prüfen Sie offene Anwesenheiten.
               </span>
             </div>
@@ -1044,12 +1044,12 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             {/* Timetable status chips */}
             <div className="flex flex-wrap items-center gap-2">
               {missingLehrstoffCount > 0 ? (
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-full text-sm font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
                   {missingLehrstoffCount}x Lehrstoff fehlt
                 </span>
               ) : filteredLessons.some((l) => l.hasTeachingContent) ? (
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-full text-sm font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                   Lehrstoff vollständig
                 </span>
@@ -1058,14 +1058,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
               {missingAttendanceCount > 0 ? (
                 <button
                   onClick={() => setActiveSubTab('absences')}
-                  className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-full text-sm font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 transition cursor-pointer"
                   title="Zur Abwesenheitsliste wechseln"
                 >
                   <UserX className="w-3.5 h-3.5 text-rose-400" />
                   {missingAttendanceCount}x Anwesenheit fehlt
                 </button>
               ) : filteredLessons.some((l) => l.attendanceChecked === true) ? (
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-full text-sm font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                   <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
                   Anwesenheiten geprüft
                 </span>
@@ -1085,7 +1085,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 {dataError ? 'Stundenplan konnte nicht geladen werden.' : 'Keine Stunden für diesen Zeitraum gefunden.'}
               </p>
               {!dataError && (
-                <p className="text-xs text-slate-500">
+                <p className="text-sm text-slate-500">
                   Wählen Sie eine andere Schulwoche oder überprüfen Sie Ihre verknüpften Kontodaten.
                 </p>
               )}
@@ -1117,17 +1117,17 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     >
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-xs">{day.dayName}</span>
+                          <span className="font-extrabold text-sm">{day.dayName}</span>
                           {day.isToday && (
-                            <span className="px-1.5 py-0.2 rounded text-[11px] font-bold bg-sky-500 text-slate-950">
+                            <span className="px-1.5 py-0.2 rounded text-2xs font-bold bg-sky-500 text-slate-950">
                               Heute
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] text-slate-400 font-mono">{day.formattedDate}</span>
+                        <span className="text-2xs text-slate-400 font-mono">{day.formattedDate}</span>
                       </div>
 
-                      <div className="flex items-center gap-1 text-[11px] font-bold">
+                      <div className="flex items-center gap-1 text-2xs font-bold">
                         <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                           {dayLessons.length}
                         </span>
@@ -1149,7 +1149,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     {/* Day Column Lessons */}
                     <div className="p-2.5 flex-1 space-y-2.5">
                       {dayLessons.length === 0 ? (
-                        <div className="py-10 text-center text-[11px] text-slate-600 border border-dashed border-slate-800/60 rounded-xl">
+                        <div className="py-10 text-center text-2xs text-slate-600 border border-dashed border-slate-800/60 rounded-xl">
                           Keine Stunden
                         </div>
                       ) : (
@@ -1181,53 +1181,53 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {dutyBadge ? (
                                     <span
-                                      className={`px-2 py-0.5 rounded-md font-bold text-xs border flex items-center gap-1.5 ${dutyBadge.bg} ${dutyBadge.text} ${dutyBadge.border}`}
+                                      className={`px-2 py-0.5 rounded-md font-bold text-sm border flex items-center gap-1.5 ${dutyBadge.bg} ${dutyBadge.text} ${dutyBadge.border}`}
                                     >
                                       <span>{dutyBadge.icon}</span>
                                       <span>{dutyBadge.label}</span>
                                     </span>
                                   ) : (
-                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 font-bold text-xs border border-sky-500/30">
+                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 font-bold text-sm border border-sky-500/30">
                                       {subject}
                                     </span>
                                   )}
                                   {classesStr && (
-                                    <span className="text-[11px] font-bold text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded">
+                                    <span className="text-2xs font-bold text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded">
                                       {classesStr}
                                     </span>
                                   )}
                                   {room && (
-                                    <span className="text-[11px] text-slate-400 bg-slate-800/40 px-1 py-0.5 rounded">
+                                    <span className="text-2xs text-slate-400 bg-slate-800/40 px-1 py-0.5 rounded">
                                       {room}
                                     </span>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                              <div className="flex items-center justify-between text-2xs text-slate-400 font-mono">
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-3 h-3 text-slate-500" />
                                   {timeLabel}
                                 </span>
-                                {teacher && <span className="text-[11px] text-slate-500">{teacher}</span>}
+                                {teacher && <span className="text-2xs text-slate-500">{teacher}</span>}
                               </div>
 
                               {/* Status Badges */}
                               {dutyBadge ? (
                                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
+                                  <span className="px-2 py-0.5 rounded-full text-2xs font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
                                     Dienst / Betreuung • kein Lehrstoff
                                   </span>
                                 </div>
                               ) : (
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                                   {lesson.missingTeachingContent ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-2xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                                       <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
                                       Lehrstoff fehlt
                                     </span>
                                   ) : lesson.hasTeachingContent ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-2xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                                       <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
                                       Lehrstoff erfasst
                                     </span>
@@ -1236,14 +1236,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                   {lesson.missingAttendance ? (
                                     <button
                                       onClick={() => handleInspectAbsences(day.dateStr)}
-                                      className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
+                                      className="px-2 py-0.5 rounded-full text-2xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
                                       title="Anwesenheitsliste für diese Stunde prüfen"
                                     >
                                       <UserX className="w-3 h-3 text-rose-400 shrink-0" />
                                       Anwesenheit fehlt
                                     </button>
                                   ) : lesson.attendanceChecked ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-2xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                                       <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
                                       Anwesenheit erfasst
                                     </span>
@@ -1254,7 +1254,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                               {/* Lehrstoff Inline Editor (only for teaching lessons, not duty slots) */}
                               {!dutyBadge && (
                                 <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
-                                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
+                                  <div className="flex items-center justify-between text-2xs text-slate-400 font-semibold">
                                     <span>Lehrstoff:</span>
                                     {isSaved && (
                                       <span className="text-emerald-400 flex items-center gap-1 font-bold">
@@ -1270,7 +1270,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                                         setLessonEdits((prev) => ({ ...prev, [lesson.id]: e.target.value }))
                                       }
                                       placeholder="Thema / Lehrstoff..."
-                                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-2xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                                     />
                                     <button
                                       onClick={() => handleSaveTeachingContent(lesson)}
@@ -1326,52 +1326,52 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                       <div className="flex flex-wrap items-center gap-2">
                         {dutyBadge ? (
                           <span
-                            className={`px-2.5 py-1 rounded-lg font-bold text-xs border flex items-center gap-1.5 ${dutyBadge.bg} ${dutyBadge.text} ${dutyBadge.border}`}
+                            className={`px-2.5 py-1 rounded-lg font-bold text-sm border flex items-center gap-1.5 ${dutyBadge.bg} ${dutyBadge.text} ${dutyBadge.border}`}
                           >
                             <span>{dutyBadge.icon}</span>
                             <span>{dutyBadge.label}</span>
                           </span>
                         ) : (
-                          <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 font-bold text-xs border border-sky-500/20">
+                          <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 font-bold text-sm border border-sky-500/20">
                             {subject}
                           </span>
                         )}
                         {classesStr && (
-                          <span className="text-xs font-semibold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
+                          <span className="text-sm font-semibold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
                             {classesStr}
                           </span>
                         )}
                         {room && (
-                          <span className="text-[11px] text-slate-400 bg-slate-800/50 px-1.5 py-0.5 rounded">
+                          <span className="text-2xs text-slate-400 bg-slate-800/50 px-1.5 py-0.5 rounded">
                             {room}
                           </span>
                         )}
                       </div>
                       <div className="text-right">
-                        <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
+                        <span className="text-sm font-semibold text-slate-400 flex items-center gap-1">
                           <Clock className="w-3 h-3 text-slate-500" />
                           {timeLabel}
                         </span>
-                        <span className="text-[11px] text-slate-500">{teacher}</span>
+                        <span className="text-2xs text-slate-500">{teacher}</span>
                       </div>
                     </div>
 
                     {/* Status Badges: Lehrstoff fehlt / Anwesenheit fehlt */}
                     {dutyBadge ? (
                       <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
+                        <span className="px-2 py-0.5 rounded-full text-2xs font-medium bg-slate-800/60 border border-slate-700/60 text-slate-400">
                           Dienst / Betreuung • kein Lehrstoff erforderlich
                         </span>
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2 pt-0.5">
                         {lesson.missingTeachingContent ? (
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-2xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                             <AlertCircle className="w-3 h-3 text-amber-400" />
                             Lehrstoff fehlt
                           </span>
                         ) : lesson.hasTeachingContent ? (
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-2xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                             Lehrstoff erfasst
                           </span>
@@ -1380,14 +1380,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                         {lesson.missingAttendance ? (
                           <button
                             onClick={() => setActiveSubTab('absences')}
-                            className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
+                            className="px-2 py-0.5 rounded-full text-2xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition cursor-pointer"
                             title="Anwesenheitsliste für diese Stunde prüfen"
                           >
                             <UserX className="w-3 h-3 text-rose-400" />
                             Anwesenheit fehlt
                           </button>
                         ) : lesson.attendanceChecked ? (
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-2xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
                             <UserCheck className="w-3 h-3 text-emerald-400" />
                             Anwesenheit erfasst
                           </span>
@@ -1398,10 +1398,10 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     {/* Lehrstoff Input (only for teaching lessons, not duty slots) */}
                     {!dutyBadge && (
                       <div className="space-y-1.5">
-                        <label className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                        <label className="text-2xs font-semibold text-slate-400 flex items-center justify-between">
                           <span>Lehrstoff (Was wurde gemacht?):</span>
                           {isSaved && (
-                            <span className="text-emerald-400 flex items-center gap-1 font-bold text-[11px]">
+                            <span className="text-emerald-400 flex items-center gap-1 font-bold text-2xs">
                               <CheckCircle2 className="w-3 h-3" /> In WebUntis gespeichert
                             </span>
                           )}
@@ -1414,12 +1414,12 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                               setLessonEdits((prev) => ({ ...prev, [lesson.id]: e.target.value }))
                             }
                             placeholder="z.B. Grammatik Seite 42, Leseverständnis..."
-                            className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                            className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                           />
                           <button
                             onClick={() => handleSaveTeachingContent(lesson)}
                             disabled={isSaving || !lessonEdits[lesson.id]?.trim()}
-                            className="px-3 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shrink-0"
+                            className="px-3 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-40 text-slate-950 font-bold text-sm flex items-center gap-1.5 transition shrink-0"
                             title="Lehrstoff in WebUntis speichern"
                           >
                             {isSaving ? (
@@ -1446,11 +1446,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
           {/* Explanation banner for Attendance Check & WebUntis direct jump */}
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
             <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
                 <Info className="w-4 h-4 text-sky-400 shrink-0" />
                 <span>Anwesenheitskontrolle & Absenzen erfassen</span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Die Anwesenheitskontrolle (Abhaken der Stunde) wird im offiziellen WebUntis-Klassenbuch oder in der Untis Mobile App durchgeführt. SMILE überwacht den Status in Echtzeit und signalisiert, falls eine Stunde noch nicht abgehakt wurde.
               </p>
             </div>
@@ -1458,7 +1458,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
               href={`https://${accountStatus?.account?.server || status?.server || 'arche.webuntis.com'}/WebUntis/?school=${encodeURIComponent(accountStatus?.account?.school || status?.school || 'ms-telfs')}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 font-bold text-xs flex items-center gap-1.5 transition shrink-0"
+              className="px-3.5 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 font-bold text-sm flex items-center gap-1.5 transition shrink-0"
               title="WebUntis im neuen Tab öffnen"
             >
               <ExternalLink className="w-3.5 h-3.5" />
@@ -1480,7 +1480,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 value={absenceSearch}
                 onChange={(e) => setAbsenceSearch(e.target.value)}
                 placeholder="Schüler / Klasse suchen..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
               />
             </div>
           </div>
@@ -1496,11 +1496,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
               <p className="font-semibold text-slate-300">
                 {dataError ? 'Abwesenheiten konnten nicht geladen werden.' : 'Keine Abwesenheiten verzeichnet.'}
               </p>
-              {!dataError && <p className="text-xs text-slate-500 mt-1">Alle Schüler sind anwesend.</p>}
+              {!dataError && <p className="text-sm text-slate-500 mt-1">Alle Schüler sind anwesend.</p>}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/40">
                     <th className="py-2.5 px-4 font-semibold">Schüler*in</th>
@@ -1527,7 +1527,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                       </td>
                       <td className="py-2.5 px-4 text-right">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          className={`px-2 py-0.5 rounded-full text-2xs font-bold ${
                             absence.excused
                               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -1554,7 +1554,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 <ShieldAlert className="w-4 h-4 text-amber-400" />
                 <span>Klassenbucheinträge & Disziplinar ({filteredEvents.length})</span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Gelbe Karten, Rote Karten und Time-Outs aus SMILE werden automatisch als Klassenbucheintrag synchronisiert.
               </p>
             </div>
@@ -1568,14 +1568,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                   value={eventSearch}
                   onChange={(e) => setEventSearch(e.target.value)}
                   placeholder="Eintrag suchen..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
                 />
               </div>
 
               {/* Action: Neuer Klassenbucheintrag */}
               <button
                 onClick={() => setIsNewEventModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow transition"
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-sm flex items-center gap-1.5 shadow transition"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Neuer Eintrag</span>
@@ -1595,7 +1595,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 {dataError ? 'Klassenbucheinträge konnten nicht geladen werden.' : 'Keine Vorfälle im Klassenbuch verzeichnet.'}
               </p>
               {!dataError && (
-                <p className="text-xs text-slate-500 mt-1">Keine aktuellen Einträge in den letzten 14 Tagen.</p>
+                <p className="text-sm text-slate-500 mt-1">Keine aktuellen Einträge in den letzten 14 Tagen.</p>
               )}
             </div>
           ) : (
@@ -1619,44 +1619,44 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         {isYellow && (
-                          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[11px] font-bold border border-amber-500/30">
+                          <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-2xs font-bold border border-amber-500/30">
                             🟨 Gelbe Karte (SMILE)
                           </span>
                         )}
                         {isRed && (
-                          <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[11px] font-bold border border-rose-500/30">
+                          <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-2xs font-bold border border-rose-500/30">
                             🟥 Rote Karte (SMILE)
                           </span>
                         )}
                         {isTimeout && (
-                          <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[11px] font-bold border border-indigo-500/30">
+                          <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-2xs font-bold border border-indigo-500/30">
                             ⏱️ Time-Out (SMILE)
                           </span>
                         )}
                         {!isYellow && !isRed && !isTimeout && (
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-semibold">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-2xs font-semibold">
                             {event.categoryName || 'Klassenbuch'}
                           </span>
                         )}
 
-                        <span className="text-xs font-bold text-slate-200">
+                        <span className="text-sm font-bold text-slate-200">
                           {event.studentName || `Schüler #${event.studentId}`}
                         </span>
 
                         {event.className && (
-                          <span className="text-[11px] text-slate-400 bg-slate-800/60 px-1.5 py-0.2 rounded">
+                          <span className="text-2xs text-slate-400 bg-slate-800/60 px-1.5 py-0.2 rounded">
                             {event.className}
                           </span>
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-300 leading-relaxed">{event.text}</p>
+                      <p className="text-sm text-slate-300 leading-relaxed">{event.text}</p>
                     </div>
 
                     <div className="text-left sm:text-right shrink-0">
-                      <span className="text-xs font-mono text-slate-400 block">{formattedDate}</span>
+                      <span className="text-sm font-mono text-slate-400 block">{formattedDate}</span>
                       {event.teacherName && (
-                        <span className="text-[11px] text-slate-500">{event.teacherName}</span>
+                        <span className="text-2xs text-slate-500">{event.teacherName}</span>
                       )}
                     </div>
                   </div>
@@ -1706,7 +1706,7 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             </div>
 
             {eventError && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs">
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm">
                 {eventError}
               </div>
             )}
@@ -1714,14 +1714,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
             <form onSubmit={handleCreateEvent} className="space-y-4">
               {/* Pupil Selector */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400">
+                <label className="text-sm font-semibold text-slate-400">
                   Schüler*in{eventTargetClass ? ` (${eventTargetClass.name})` : ''}:
                 </label>
                 <select
                   value={modalPupilId}
                   onChange={(e) => setModalPupilId(Number(e.target.value))}
                   disabled={loadingModalPupils}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-60"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-60"
                 >
                   <option value={0}>
                     {loadingModalPupils ? '-- Schüler*innen werden geladen... --' : '-- Schüler*in auswählen --'}
@@ -1736,11 +1736,11 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
               {/* Category */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400">Kategorie:</label>
+                <label className="text-sm font-semibold text-slate-400">Kategorie:</label>
                 <select
                   value={modalCategoryId}
                   onChange={(e) => setModalCategoryId(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-200 focus:outline-none focus:border-sky-500"
                 >
                   <option value={2}>Verhalten (Disziplinar)</option>
                   <option value={3}>Sonstiges</option>
@@ -1749,13 +1749,13 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
 
               {/* Text */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400">Beschreibung / Vorfall:</label>
+                <label className="text-sm font-semibold text-slate-400">Beschreibung / Vorfall:</label>
                 <textarea
                   rows={4}
                   value={modalText}
                   onChange={(e) => setModalText(e.target.value)}
                   placeholder="Beschreibung des Vorfalls im Unterricht..."
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                 />
               </div>
 
@@ -1763,14 +1763,14 @@ export function WebUntisView({ currentClass, classes, currentUser, pupils }: Web
                 <button
                   type="button"
                   onClick={() => setIsNewEventModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
                 >
                   Abbrechen
                 </button>
                 <button
                   type="submit"
                   disabled={submittingEvent}
-                  className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow transition"
+                  className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-bold text-sm flex items-center gap-1.5 shadow transition"
                 >
                   {submittingEvent ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />

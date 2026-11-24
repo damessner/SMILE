@@ -126,7 +126,7 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
               <h2 id="connect-modal-title" className="text-base font-bold text-slate-100">
                 Eigenes WebUntis-Konto verknüpfen
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Stundenplan, fehlender Lehrstoff & Anwesenheitskontrolle
               </p>
             </div>
@@ -144,14 +144,14 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
         <div className="p-6 overflow-y-auto space-y-5">
           {/* Active Connection Notice (if connected) */}
           {accountStatus?.connected && (
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs">
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 <div>
                   <p className="font-bold text-emerald-300">
                     Aktuell verbunden als Lehrkraft: {currentTeacherShort || currentUsername}
                   </p>
-                  <p className="text-emerald-400/80 mt-0.5 text-[11px]">
+                  <p className="text-emerald-400/80 mt-0.5 text-2xs">
                     Benutzer: <span className="font-mono">{currentUsername}</span> ({currentSchool})
                   </p>
                 </div>
@@ -169,7 +169,7 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
           )}
 
           {/* Intro Explanation */}
-          <p className="text-xs text-slate-300 leading-relaxed">
+          <p className="text-sm text-slate-300 leading-relaxed">
             Verbinden Sie Ihren persönlichen WebUntis-Zugang, damit SMILE automatisch Ihre Stunden abgleicht,
             Sie an fehlenden Lehrstoff und nicht geprüfte Anwesenheiten erinnert und Vorfälle direkt in Ihrem Namen erfasst.
           </p>
@@ -177,15 +177,15 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
           <form onSubmit={handleConnect} className="space-y-4">
             {/* Server & School Preset Chips */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 flex items-center justify-between">
+              <label className="text-sm font-semibold text-slate-400 flex items-center justify-between">
                 <span>Schul-Server</span>
-                <span className="text-[11px] text-slate-500">Schnellauswahl:</span>
+                <span className="text-2xs text-slate-500">Schnellauswahl:</span>
               </label>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('telfs')}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border transition flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-semibold border transition flex items-center justify-center gap-1.5 ${
                     school === 'ms-telfs'
                       ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                       : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
@@ -197,7 +197,7 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('playground')}
-                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border transition flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-semibold border transition flex items-center justify-center gap-1.5 ${
                     school !== 'ms-telfs'
                       ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                       : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
@@ -212,24 +212,24 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
             {/* Server Host & School Identifier */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">Server Host</label>
+                <label className="block text-2xs font-semibold text-slate-400 mb-1">Server Host</label>
                 <input
                   type="text"
                   value={server}
                   onChange={(e) => setServer(e.target.value)}
                   placeholder="ms-telfs.webuntis.com"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
                   required
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">Schulname / ID</label>
+                <label className="block text-2xs font-semibold text-slate-400 mb-1">Schulname / ID</label>
                 <input
                   type="text"
                   value={school}
                   onChange={(e) => setSchool(e.target.value)}
                   placeholder="ms-telfs"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
                   required
                 />
               </div>
@@ -238,7 +238,7 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
             {/* Username & Secret */}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-sm font-semibold text-slate-300 mb-1">
                   WebUntis Benutzername
                 </label>
                 <input
@@ -246,14 +246,14 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="z. B. dames oder Lehrkraft-Kürzel"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
                   required
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-sm font-semibold text-slate-300 mb-1">
                   WebUntis Passwort
                 </label>
                 <input
@@ -261,7 +261,7 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
                   value={secret}
                   onChange={(e) => setSecret(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-sky-500"
                   required
                 />
               </div>
@@ -269,21 +269,21 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
 
             {/* Error & Success Feedback */}
             {error && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             {successInfo && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>{successInfo}</span>
               </div>
             )}
 
             {/* Privacy Note */}
-            <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
+            <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-800 text-2xs text-slate-400 flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
               <span>
                 Ihre Anmeldedaten werden mit AES-256-GCM verschlüsselt auf dem Server gespeichert und dienen ausschließlich der
@@ -296,14 +296,14 @@ export const WebUntisConnectModal: React.FC<WebUntisConnectModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition"
               >
                 Abbrechen
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-sky-500 hover:bg-sky-400 text-slate-950 transition flex items-center gap-2 shadow-md shadow-sky-500/20 disabled:opacity-50"
+                className="px-5 py-2 rounded-xl text-sm font-bold bg-sky-500 hover:bg-sky-400 text-slate-950 transition flex items-center gap-2 shadow-md shadow-sky-500/20 disabled:opacity-50"
               >
                 {loading ? (
                   <>

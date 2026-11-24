@@ -73,7 +73,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
       <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-slate-800 mb-3">
         <button
           onClick={() => onSelectFolder('offen')}
-          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+          className={`py-2 px-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 transition ${
             folderTab === 'offen'
               ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
               : 'text-slate-400 hover:text-slate-50'
@@ -82,7 +82,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           <Folder className="w-3.5 h-3.5" />
           <span>Offen</span>
           <span
-            className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+            className={`text-2xs px-1.5 py-0.5 rounded-full font-bold ${
               folderTab === 'offen' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
             }`}
           >
@@ -92,7 +92,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
 
         <button
           onClick={() => onSelectFolder('bewertet')}
-          className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+          className={`py-2 px-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 transition ${
             folderTab === 'bewertet'
               ? 'bg-emerald-500 text-slate-950 shadow-md font-bold'
               : 'text-slate-400 hover:text-slate-50'
@@ -101,7 +101,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           <FolderCheck className="w-3.5 h-3.5" />
           <span>Bewertet</span>
           <span
-            className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+            className={`text-2xs px-1.5 py-0.5 rounded-full font-bold ${
               folderTab === 'bewertet' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
             }`}
           >
@@ -116,7 +116,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           <button
             type="button"
             onClick={() => onToggleGroupFilter?.('my_pupils')}
-            className={`py-1.5 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+            className={`py-1.5 px-2 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 transition ${
               groupFilterMode === 'my_pupils'
                 ? 'bg-sky-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-100'
@@ -125,7 +125,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
             <Users className="w-3.5 h-3.5" />
             <span>Meine Schüler</span>
             <span
-              className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+              className={`text-2xs px-1.5 py-0.5 rounded-full font-bold ${
                 groupFilterMode === 'my_pupils' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -135,7 +135,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           <button
             type="button"
             onClick={() => onToggleGroupFilter?.('all')}
-            className={`py-1.5 px-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+            className={`py-1.5 px-2 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 transition ${
               groupFilterMode === 'all'
                 ? 'bg-sky-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-100'
@@ -143,7 +143,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
           >
             <span>Ganze Klasse</span>
             <span
-              className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+              className={`text-2xs px-1.5 py-0.5 rounded-full font-bold ${
                 groupFilterMode === 'all' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
               }`}
             >
@@ -163,7 +163,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Schüler*in filtern..."
             aria-label="Schüler*in filtern"
-            className="w-full pl-8 pr-8 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+            className="w-full pl-8 pr-8 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
           />
           {searchQuery && (
             <button
@@ -186,7 +186,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
         className="flex-1 overflow-y-auto space-y-1.5 pr-1"
       >
         {filteredList.length === 0 ? (
-          <div className="py-12 text-center text-slate-500 text-xs px-2">
+          <div className="py-12 text-center text-slate-500 text-sm px-2">
             {currentList.length > 0 ? (
               <div>
                 <strong className="text-slate-50 block mb-1">Keine Treffer</strong>
@@ -231,17 +231,17 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
                   </div>
                   <div className="flex items-center flex-wrap gap-1.5 mt-1">
                     {activeSubjectCode && p.assignedGroups?.[activeSubjectCode] && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-300 font-mono">
+                      <span className="text-2xs px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-300 font-mono">
                         {p.assignedGroups[activeSubjectCode]}
                       </span>
                     )}
                     {p.greenCardCount > 0 && (
-                      <span className="text-[11px] text-emerald-400 font-bold">
+                      <span className="text-2xs text-emerald-400 font-bold">
                         ★ {p.greenCardCount}
                       </span>
                     )}
                     {p.yellowCardCount > 0 && (
-                      <span className="text-[11px] text-amber-400 font-bold">
+                      <span className="text-2xs text-amber-400 font-bold">
                         ▲ {p.yellowCardCount}
                       </span>
                     )}
@@ -250,7 +250,7 @@ export const PupilSelector: React.FC<PupilSelectorProps> = ({
 
                 {!isAllSubjectsMode && (
                   <span
-                    className={`px-2 py-0.5 rounded-lg text-[11px] font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
+                    className={`px-2 py-0.5 rounded-lg text-2xs font-bold uppercase tracking-wider border flex-shrink-0 ${pRank.color}`}
                   >
                     {pRank.rank ?? 'Ausstehend'}
                   </span>

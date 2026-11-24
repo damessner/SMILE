@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import type { AppTab } from '../app/types';
+import { Meter } from './ui';
 
 interface OnboardingTourProps {
   isOpen: boolean;
@@ -387,25 +388,24 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 animate-fadeIn">
+    <div className="fixed inset-0 z-50 animate-fade-in">
       {/* 1. Backdrop or Spotlight Cutout */}
       {cutout ? (
         <>
           {/* Spotlight highlight box with box-shadow dark overlay */}
           <div
-            className="fixed z-50 pointer-events-none transition-all duration-300 ease-out rounded-2xl border-2 border-amber-400 ring-4 ring-amber-400/40"
+            className="tour-spot fixed z-50 pointer-events-none transition-all duration-300 ease-out rounded-2xl border-2 border-amber-400 ring-4 ring-amber-400/40"
             style={{
-              top: `${cutout.top}px`,
-              left: `${cutout.left}px`,
-              width: `${cutout.width}px`,
-              height: `${cutout.height}px`,
-              boxShadow: '0 0 0 9999px rgba(2, 6, 23, 0.82)',
-            }}
+              '--spot-top': `${cutout.top}px`,
+              '--spot-left': `${cutout.left}px`,
+              '--spot-w': `${cutout.width}px`,
+              '--spot-h': `${cutout.height}px`,
+            } as React.CSSProperties}
           >
             {/* Visual Pointer Arrow & Badge anchored on the highlight box */}
             {step.pointerText && (
               <div
-                className={`absolute pointer-events-none flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs shadow-2xl shadow-amber-400/50 whitespace-nowrap animate-bounce z-50 ${
+                className={`absolute pointer-events-none flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-400 text-slate-950 font-black text-sm shadow-2xl shadow-amber-400/50 whitespace-nowrap animate-bounce z-50 ${
                   placement === 'bottom'
                     ? '-bottom-10 left-1/2 -translate-x-1/2'
                     : placement === 'top'
@@ -458,7 +458,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
                 <GraduationCap className="w-4.5 h-4.5" />
               </div>
               <div>
-                <span className="text-xs font-bold text-slate-400 block leading-none">
+                <span className="text-sm font-bold text-slate-400 block leading-none">
                   SMILE Tour & Hilfestellung
                 </span>
                 <span className="text-sm font-bold text-slate-100">
@@ -478,9 +478,9 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
 
           {/* Progress Bar */}
           <div className="w-full h-1 bg-slate-800">
-            <div
+            <Meter
               className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-300"
-              style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
+               value={(((currentStep + 1) / steps.length) * 100)}
             />
           </div>
 
@@ -490,12 +490,12 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <span
-                  className={`inline-block px-3 py-1 rounded-xl text-xs font-bold border ${step.badgeColor}`}
+                  className={`inline-block px-3 py-1 rounded-xl text-sm font-bold border ${step.badgeColor}`}
                 >
                   {step.badge}
                 </span>
                 {cutout && (
-                  <span className="px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold flex items-center gap-1 animate-pulse">
+                  <span className="px-2 py-0.5 rounded-lg bg-amber-400/20 text-amber-300 border border-amber-400/30 text-2xs font-bold flex items-center gap-1 animate-pulse">
                     <MousePointerClick className="w-3 h-3" />
                     <span>Hervorgehobener Bereich</span>
                   </span>
@@ -504,10 +504,10 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               <h2 className="text-xl sm:text-2xl font-black text-slate-50 tracking-tight leading-tight">
                 {step.title}
               </h2>
-              <p className="text-xs font-semibold text-amber-400 mt-0.5">{step.subtitle}</p>
+              <p className="text-sm font-semibold text-amber-400 mt-0.5">{step.subtitle}</p>
             </div>
 
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{step.description}</p>
+            <p className="text-sm sm:text-sm text-slate-300 leading-relaxed">{step.description}</p>
 
             {/* Highlights */}
             <div className="space-y-2.5 pt-0.5">
@@ -518,8 +518,8 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
                 >
                   <div className="text-lg flex-shrink-0 mt-0.5">{h.icon}</div>
                   <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-100">{h.title}</h4>
-                    <p className="text-xs text-slate-300/90 mt-0.5 leading-relaxed">{h.text}</p>
+                    <h4 className="text-sm sm:text-sm font-bold text-slate-100">{h.title}</h4>
+                    <p className="text-sm text-slate-300/90 mt-0.5 leading-relaxed">{h.text}</p>
                   </div>
                 </div>
               ))}
@@ -547,7 +547,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               {currentStep > 0 && (
                 <button
                   onClick={() => setCurrentStep((s) => s - 1)}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-100 font-bold text-xs flex items-center gap-1 transition"
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-100 font-bold text-sm flex items-center gap-1 transition"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   <span>Zurück</span>
@@ -557,7 +557,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               {currentStep < steps.length - 1 ? (
                 <button
                   onClick={() => setCurrentStep((s) => s + 1)}
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition active:scale-95"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition active:scale-95"
                 >
                   <span>Weiter</span>
                   <ChevronRight className="w-4 h-4" />
@@ -565,7 +565,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               ) : (
                 <button
                   onClick={handleFinish}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition active:scale-95"
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition active:scale-95"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>SMILE starten</span>

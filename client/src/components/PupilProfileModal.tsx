@@ -154,14 +154,14 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                 <h2 id="pupil-profile-modal-title" className="text-xl font-bold text-slate-50 print:text-black">
                   {pupil.fullName}
                 </h2>
-                <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-xs font-semibold">
+                <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-sm font-semibold">
                   Klasse {pupil.className}
                 </span>
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold">
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-sm font-semibold">
                   Rang: {pupil.currentRank}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 print:text-gray-600 mt-0.5">
+              <p className="text-sm text-slate-400 print:text-gray-600 mt-0.5">
                 Pädagogisches Verhaltensprofil &amp; Stufenpyramide (Österreichisches Schulmodell)
               </p>
             </div>
@@ -170,7 +170,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
           {/* Action Buttons & Grade Badge */}
           <div className="flex items-center gap-2">
             <span
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl font-bold text-sm flex items-center gap-1.5 ${
                 grade === 'Sehr gut'
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 ring-1 ring-emerald-400/30'
                   : grade === 'Gut'
@@ -206,7 +206,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
         <div className="bg-slate-900/60 px-6 py-2 border-b border-slate-800/80 flex items-center gap-2 overflow-x-auto print:hidden">
           <button
             onClick={() => setActiveTab('pyramid')}
-            className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
               activeTab === 'pyramid'
                 ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -218,7 +218,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
           <button
             onClick={() => setActiveTab('actions')}
-            className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
               activeTab === 'actions'
                 ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -230,7 +230,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
           <button
             onClick={() => setActiveTab('history')}
-            className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            className={`min-h-[40px] px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
               activeTab === 'history'
                 ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -271,7 +271,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                     <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold ${
                             selectedStage.type === 'green'
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
                               : selectedStage.type === 'neutral'
@@ -285,9 +285,9 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="space-y-3 text-xs">
+                    <div className="space-y-3 text-sm">
                       <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px] block">
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-2xs block">
                           Pädagogische Beschreibung:
                         </span>
                         <p className="text-slate-300 mt-0.5 leading-relaxed">
@@ -296,13 +296,13 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                       </div>
 
                       <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center justify-between text-2xs">
                           <span className="text-slate-400">Auslöser / Richtwert:</span>
                           <span className="font-bold text-amber-300">
                             {selectedStage.thresholdLabel}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between text-[11px]">
+                        <div className="flex items-center justify-between text-2xs">
                           <span className="text-slate-400">Verhaltensnote:</span>
                           <span className="font-bold text-slate-200">
                             {selectedStage.defaultGrade}
@@ -312,7 +312,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
 
                       {/* Action recording box */}
                       <div className="pt-3 border-t border-slate-800 space-y-2">
-                        <label className="text-slate-300 font-bold text-[11px] block">
+                        <label className="text-slate-300 font-bold text-2xs block">
                           Maßnahme zu dieser Stufe dokumentieren:
                         </label>
                         <textarea
@@ -320,12 +320,12 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                           onChange={(e) => setActionNotes(e.target.value)}
                           placeholder={`Notiz/Protokoll für „${selectedStage.title}“ (optional)...`}
                           rows={2}
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
                         />
                         <button
                           onClick={() => handleRecordAction(selectedStage)}
                           disabled={submittingAction}
-                          className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-950/20"
+                          className="w-full min-h-[40px] px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-sm transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-950/20"
                         >
                           <Send className="w-3.5 h-3.5" />
                           <span>Maßnahme festhalten</span>
@@ -334,18 +334,18 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 text-center text-slate-400 text-xs">
+                  <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 text-center text-slate-400 text-sm">
                     Klicken Sie auf eine Stufe in der Pyramide, um Details und Dokumentationsoptionen anzuzeigen.
                   </div>
                 )}
 
                 {/* Quick Info Box: Austrian school context */}
-                <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 space-y-2">
+                <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-sm text-slate-400 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-300">
                     <Info className="w-4 h-4 text-sky-400" />
                     <span>Österreichisches Schulmodell</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                  <p className="text-2xs text-slate-400 leading-relaxed">
                     Dieses Stufenmodell verbindet positives Verstärken (Lob, Goodies, Urkunden) mit gestufter Disziplinierung (Zurechtweisung, Mitteilungsheft, Schulleitung, Bildungsdirektion Tirol gem. § 49 SchUG).
                   </p>
                 </div>
@@ -361,7 +361,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                   <h3 className="text-base font-bold text-slate-50">
                     Dokumentierte Verhaltensmaßnahmen
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-sm text-slate-400">
                     Protokoll über getätigte Interventionen, Elterngespräche, Mitteilungshefteinträge und Auszeichnungen.
                   </p>
                 </div>
@@ -371,7 +371,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                 <div className="py-12 text-center text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800/80">
                   <FileText className="w-10 h-10 text-slate-600 mx-auto mb-2" />
                   <p className="font-semibold text-slate-400">Noch keine Maßnahmen dokumentiert</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-sm text-slate-500 mt-0.5">
                     Wählen Sie in der Stufenpyramide eine Stufe aus, um eine Maßnahme zu protokollieren.
                   </p>
                 </div>
@@ -391,7 +391,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`px-2 py-0.5 rounded-lg text-xs font-bold ${
+                            className={`px-2 py-0.5 rounded-lg text-sm font-bold ${
                               act.stage_level > 0
                                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
                                 : act.stage_level === 0
@@ -405,12 +405,12 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                         </div>
 
                         {act.notes && (
-                          <p className="text-xs text-slate-300 pl-1 mt-1 border-l-2 border-slate-700 italic">
+                          <p className="text-sm text-slate-300 pl-1 mt-1 border-l-2 border-slate-700 italic">
                             &bdquo;{act.notes}&ldquo;
                           </p>
                         )}
 
-                        <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-1">
+                        <div className="flex items-center gap-3 text-2xs text-slate-400 pt-1">
                           <span>
                             Erfasst von:{' '}
                             <strong className="text-amber-300">{act.teacher_short || 'Lehrkraft'}</strong>
@@ -450,13 +450,13 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
               <div className="space-y-3">
                 <h3 className="text-base font-bold text-slate-50 flex items-center gap-2">
                   <span>Vergebene Verhaltenskarten</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-semibold">
+                  <span className="text-sm px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-semibold">
                     {cards.length}
                   </span>
                 </h3>
 
                 {cards.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic py-2">
+                  <p className="text-sm text-slate-500 italic py-2">
                     Keine Verhaltenskarten erfasst.
                   </p>
                 ) : (
@@ -464,7 +464,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                     {cards.map((c) => (
                       <div
                         key={c.id}
-                        className={`p-3.5 rounded-2xl border text-xs flex flex-col justify-between gap-2 ${
+                        className={`p-3.5 rounded-2xl border text-sm flex flex-col justify-between gap-2 ${
                           c.card_type === 'green'
                             ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-200'
                             : c.card_type === 'yellow'
@@ -496,7 +496,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                                 ? 'Cool-Down (kein Rangverlust)'
                                 : 'Rote Karte (Rangverlust)'}
                             </span>
-                            <span className="text-[11px] text-slate-400 font-normal">
+                            <span className="text-2xs text-slate-400 font-normal">
                               von {c.teacher_short || 'SL'}
                             </span>
                           </div>
@@ -518,7 +518,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                           />
                         </div>
 
-                        <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                        <div className="text-2xs text-slate-400 pt-1 border-t border-slate-800">
                           {new Date(c.created_at).toLocaleDateString('de-AT', {
                             day: '2-digit',
                             month: '2-digit',
@@ -537,13 +537,13 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
               <div className="space-y-3 pt-4 border-t border-slate-800">
                 <h3 className="text-base font-bold text-slate-50 flex items-center gap-2">
                   <span>Lernwerkstatt Time-Out Einsätze</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-semibold">
+                  <span className="text-sm px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-semibold">
                     {timeouts.length}
                   </span>
                 </h3>
 
                 {timeouts.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic py-2">
+                  <p className="text-sm text-slate-500 italic py-2">
                     Keine Time-Outs oder Cool-Downs für diesen Schüler verzeichnet.
                   </p>
                 ) : (
@@ -551,18 +551,18 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                     {timeouts.map((ti) => (
                       <div
                         key={ti.id}
-                        className={`p-4 rounded-2xl border text-xs space-y-2 ${ti.kind === 'cooldown' ? 'bg-sky-950/20 border-sky-500/30' : 'bg-rose-950/20 border-rose-500/30'}`}
+                        className={`p-4 rounded-2xl border text-sm space-y-2 ${ti.kind === 'cooldown' ? 'bg-sky-950/20 border-sky-500/30' : 'bg-rose-950/20 border-rose-500/30'}`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`px-2 py-0.5 rounded-md border text-[11px] font-bold ${ti.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'}`}>
+                          <span className={`px-2 py-0.5 rounded-md border text-2xs font-bold ${ti.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'}`}>
                             {ti.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out Einsatz'}
                           </span>
                           {ti.retroactive && (
-                            <span className="rounded-md bg-slate-700 px-2 py-0.5 text-[11px] font-bold text-slate-200">
+                            <span className="rounded-md bg-slate-700 px-2 py-0.5 text-2xs font-bold text-slate-200">
                               Nachtrag
                             </span>
                           )}
-                          <span className="text-slate-400 text-[11px]">
+                          <span className="text-slate-400 text-2xs">
                             {new Date(ti.sent_at).toLocaleDateString('de-AT')} um{' '}
                             {new Date(ti.sent_at).toLocaleTimeString('de-AT', {
                               hour: '2-digit',
@@ -581,7 +581,7 @@ export const PupilProfileModal: React.FC<PupilProfileModalProps> = ({
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                        <div className="flex items-center justify-between text-2xs text-slate-400 pt-1 border-t border-slate-800">
                           <span>
                             Geschickt von: <strong className="text-amber-300">{ti.sent_by_short}</strong>
                           </span>

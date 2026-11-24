@@ -129,7 +129,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
               <h2 id="restore-modal-title" className="text-lg font-bold text-slate-100 flex items-center gap-2">
                 System-Wiederherstellung (Admin)
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Verfügbare Datenbank-Snapshots einsehen und bei Bedarf einspielen.
               </p>
             </div>
@@ -169,13 +169,13 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                 {restoreSuccess.message}
               </p>
               {restoreSuccess.preRestoreBackup && (
-                <p className="text-xs text-slate-400 font-mono bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                <p className="text-sm text-slate-400 font-mono bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
                   Automatisches Sicherheits-Backup:{' '}
                   <span className="text-amber-400 font-bold">{restoreSuccess.preRestoreBackup}</span>
                 </p>
               )}
               <div className="pt-2 flex flex-col items-center gap-3">
-                <p className="text-xs text-slate-400 animate-pulse">
+                <p className="text-sm text-slate-400 animate-pulse">
                   Die Anwendung lädt in wenigen Sekunden automatisch neu...
                 </p>
                 <button
@@ -197,7 +197,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                   <h3 className="text-base font-bold text-rose-300">
                     Sicherheitsüberprüfung: Datenbank wiederherstellen
                   </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className="text-sm text-slate-300 leading-relaxed">
                     Sie sind im Begriff, die gesamte SMILE-Datenbank auf den Stand von{' '}
                     <span className="font-mono font-bold text-rose-300">{selectedBackup.filename}</span>{' '}
                     (vom {formatTimestamp(selectedBackup.timestamp)}) zurückzusetzen.
@@ -205,7 +205,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-950/70 border border-rose-900/40 rounded-xl space-y-2 text-xs text-slate-300">
+              <div className="p-4 bg-slate-950/70 border border-rose-900/40 rounded-xl space-y-2 text-sm text-slate-300">
                 <div className="flex items-center gap-2 font-semibold text-amber-300">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
                   <span>Wichtige Hinweise vor dem Ausführen:</span>
@@ -224,13 +224,13 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
               </div>
 
               {restoreError && (
-                <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-xs text-red-200">
+                <div className="p-3 bg-red-950/80 border border-red-500/40 rounded-xl text-sm text-red-200">
                   {restoreError}
                 </div>
               )}
 
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
+                <label className="block text-sm font-semibold text-slate-300">
                   Tippen Sie zur Freigabe <span className="text-rose-400 font-mono font-bold">WIEDERHERSTELLEN</span> in das Feld ein:
                 </label>
                 <input
@@ -239,7 +239,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                   onChange={(e) => setConfirmInput(e.target.value)}
                   disabled={restoring}
                   placeholder="WIEDERHERSTELLEN"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-600 font-mono text-sm focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-600 font-mono text-sm focus:outline-none focus:border-rose-500 focus-ring transition"
                   autoFocus
                 />
               </div>
@@ -249,7 +249,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                   type="button"
                   onClick={handleCancelConfirmation}
                   disabled={restoring}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-40"
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition disabled:opacity-40"
                 >
                   Abbrechen
                 </button>
@@ -257,7 +257,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                   type="button"
                   onClick={handleExecuteRestore}
                   disabled={confirmInput !== 'WIEDERHERSTELLEN' || restoring}
-                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold text-xs transition flex items-center gap-2 shadow-lg shadow-rose-900/40"
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold text-sm transition flex items-center gap-2 shadow-lg shadow-rose-900/40"
                 >
                   {restoring ? (
                     <>
@@ -277,7 +277,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
             /* Normal Overview: Hero Button & Table */
             <>
               {/* Informational Banner */}
-              <div className="p-4 bg-slate-800/60 border border-slate-700/60 rounded-xl flex items-start gap-3 text-xs text-slate-300">
+              <div className="p-4 bg-slate-800/60 border border-slate-700/60 rounded-xl flex items-start gap-3 text-sm text-slate-300">
                 <Database className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-semibold text-slate-200">
@@ -295,22 +295,22 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                 <div className="p-4 bg-gradient-to-r from-rose-950/40 to-slate-900 border border-rose-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-400 font-bold text-[11px] uppercase tracking-wider">
+                      <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-400 font-bold text-2xs uppercase tracking-wider">
                         Empfohlen bei Ausfall
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-sm text-slate-400">
                         {formatTimestamp(latestBackup.timestamp)}
                       </span>
                     </div>
                     <p className="text-sm font-bold text-slate-100 flex items-center gap-2">
                       <HardDrive className="w-4 h-4 text-rose-400" />
                       {latestBackup.filename}
-                      <span className="text-xs text-slate-400 font-normal">({latestBackup.sizeFormatted})</span>
+                      <span className="text-sm text-slate-400 font-normal">({latestBackup.sizeFormatted})</span>
                     </p>
                   </div>
                   <button
                     onClick={() => handleStartRestore(latestBackup)}
-                    className="pressable px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-900/40 transition shrink-0"
+                    className="pressable px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm flex items-center gap-2 shadow-lg shadow-rose-900/40 transition shrink-0"
                   >
                     <Zap className="w-4 h-4" />
                     <span>Neuestes Backup wiederherstellen</span>
@@ -321,22 +321,22 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
               {/* Backups Table */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                     Vorhandene Backups ({backups.length})
                   </h3>
                 </div>
 
                 {loading ? (
-                  <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400 text-xs">
+                  <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
                     <RefreshCw className="w-6 h-6 animate-spin text-accent" />
                     <span>Backups werden geladen...</span>
                   </div>
                 ) : loadError ? (
-                  <div className="p-4 bg-red-950/50 border border-red-800/60 rounded-xl text-xs text-red-300">
+                  <div className="p-4 bg-red-950/50 border border-red-800/60 rounded-xl text-sm text-red-300">
                     {loadError}
                   </div>
                 ) : backups.length === 0 ? (
-                  <div className="py-12 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+                  <div className="py-12 text-center text-slate-500 text-sm border border-dashed border-slate-800 rounded-xl">
                     Keine Backup-Dateien im Backup-Verzeichnis gefunden.
                   </div>
                 ) : (
@@ -349,21 +349,21 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
                         >
                           <div className="space-y-1 min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-slate-200 truncate">
+                              <span className="text-sm font-bold text-slate-200 truncate">
                                 {b.filename}
                               </span>
                               {b.isSafetySnapshot && (
-                                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                <span className="px-2 py-0.5 rounded text-2xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                   Sicherheitskopie
                                 </span>
                               )}
                               {b.isEncrypted && (
-                                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                <span className="px-2 py-0.5 rounded text-2xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                                   Verschlüsselt
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-4 text-[11px] text-slate-400">
+                            <div className="flex items-center gap-4 text-2xs text-slate-400">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3 text-slate-500" />
                                 {formatTimestamp(b.timestamp)}
@@ -374,7 +374,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
 
                           <button
                             onClick={() => handleStartRestore(b)}
-                            className="pressable px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 text-xs font-semibold transition shrink-0 flex items-center gap-1.5"
+                            className="pressable px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 text-sm font-semibold transition shrink-0 flex items-center gap-1.5"
                             title={`Backup ${b.filename} einspielen`}
                           >
                             <RotateCcw className="w-3 h-3" />
@@ -395,7 +395,7 @@ export const AdminRestoreModal: React.FC<Props> = ({ onClose }) => {
           <button
             onClick={onClose}
             disabled={restoring}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition disabled:opacity-40"
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition disabled:opacity-40"
           >
             Schließen
           </button>

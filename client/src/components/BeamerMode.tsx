@@ -62,22 +62,22 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
   if (loading || !data) {
     return (
-      <div data-force-dark className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 text-slate-50">
+      <div data-force-dark data-mode="beamer" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 text-slate-50">
         <RefreshCw className="w-8 h-8 animate-spin text-amber-400" />
       </div>
     );
   }
 
   return (
-    <div data-force-dark className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-50 p-6 overflow-hidden select-none">
+    <div data-force-dark data-mode="beamer" className="fixed inset-0 z-50 flex flex-col bg-slate-950 text-slate-50 p-6 overflow-hidden select-none">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
         <div>
-          <span className="text-xs uppercase tracking-widest text-amber-400 font-bold">
+          <span className="text-sm uppercase tracking-widest text-amber-400 font-bold">
             Beamer & Konferenz-Modus
           </span>
           <h1 className="text-4xl font-black tracking-tight">Klasse {className}</h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-sm text-slate-400">
             {data.summary.length} Schüler/innen · {data.round?.name || 'Aktiver Zeitraum'}
           </p>
         </div>
@@ -173,7 +173,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
                   Endgültiger Status
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -185,7 +185,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
                     <button
                       key={btn.rank}
                       onClick={() => setOverrideRank(btn.rank)}
-                      className={`py-2.5 rounded-xl font-bold text-xs transition ${
+                      className={`py-2.5 rounded-xl font-bold text-sm transition ${
                         overrideRank === btn.rank
                           ? btn.active
                           : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -198,7 +198,7 @@ export const BeamerMode: React.FC<BeamerModeProps> = ({ classId, className, onCl
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
                   Begründung / Protokollnotiz
                 </label>
                 <input

@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint:design": "node scripts/lint-design.mjs",
     "test": "vitest run",
     "client": "vite"
   },

@@ -126,13 +126,13 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
   return (
     <div className="w-full flex flex-col items-center select-none">
       {/* Legend & Current Grade Highlight Banner */}
-      <div className="w-full max-w-4xl mb-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 shadow-md flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="w-full max-w-4xl mb-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 shadow-md flex flex-wrap items-center justify-between gap-3 text-sm">
         <div className="flex items-center gap-3">
-          <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+          <span className="text-slate-400 font-bold uppercase tracking-wider text-2xs">
             Verhaltensbeurteilung:
           </span>
           <span
-            className={`px-3 py-1 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm ${
+            className={`px-3 py-1 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow-sm ${
               currentGrade === 'Sehr gut'
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 ring-1 ring-emerald-400/30'
                 : currentGrade === 'Gut'
@@ -158,25 +158,25 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
         {calculation?.stats && (
           <div className="flex items-center gap-2">
             <span
-              className="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold text-[11px]"
+              className="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold text-2xs"
               title="Grüne Karten gesamt"
             >
               🟢 {calculation.stats.greenCount} Grün
             </span>
             <span
-              className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold text-[11px]"
+              className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold text-2xs"
               title="Gelbe Karten gesamt"
             >
               🟡 {calculation.stats.yellowCount} Gelb
             </span>
             <span
-              className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/35 font-bold text-[11px]"
+              className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/35 font-bold text-2xs"
               title="Rote Karten gesamt"
             >
               🔴 {calculation.stats.redCount} Rot
             </span>
             <span
-              className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/35 font-bold text-[11px]"
+              className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/35 font-bold text-2xs"
               title="Time-Out Einsätze"
             >
               ⏱️ {calculation.stats.timeoutCount} Time-Out
@@ -188,7 +188,7 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
       {/* Main Container: Left Scale (Verhaltensnote) + Diamond Pyramid */}
       <div className="w-full max-w-4xl flex items-stretch gap-2 md:gap-4">
         {/* Left Vertical Scale: Verhaltensnote bracket */}
-        <div className="w-16 md:w-28 flex flex-col justify-between py-1 text-[11px] font-bold">
+        <div className="w-16 md:w-28 flex flex-col justify-between py-1 text-2xs font-bold">
           {/* Sehr gut (+10 down to +2) */}
           <div
             className={`flex-1 rounded-xl p-1.5 flex flex-col items-center justify-center text-center transition border ${
@@ -229,7 +229,7 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
             title="Zufriedenstellend: Wiederholte Regelverstöße / Mitteilungsheft (-2 bis -4)"
           >
             <AlertTriangle className="w-4 h-4 mb-0.5" />
-            <span className="leading-tight text-[11px] md:text-[11px]">Zufrieden-stellend</span>
+            <span className="leading-tight text-2xs md:text-2xs">Zufrieden-stellend</span>
           </div>
 
           <div className="h-1.5" />
@@ -244,7 +244,7 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
             title="Wenig zufriedenstellend: Schwerwiegende Verstöße, Time-Outs, Direktion (-5 bis -10)"
           >
             <ShieldAlert className="w-4 h-4 mb-0.5" />
-            <span className="leading-tight text-[11px] md:text-[11px]">Wenig zufrieden-stellend</span>
+            <span className="leading-tight text-2xs md:text-2xs">Wenig zufrieden-stellend</span>
           </div>
         </div>
 
@@ -264,28 +264,28 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
                 onClick={() => onSelectStage?.(stage)}
                 onMouseEnter={() => setHoveredLevel(stage.level)}
                 onMouseLeave={() => setHoveredLevel(null)}
-                style={{ width: `${width}%` }}
-                className={`group relative h-9 px-3 rounded-lg border text-xs font-semibold flex items-center justify-between transition-all duration-150 ${styles}`}
+                style={{ '--meter-value': `${width}%` } as React.CSSProperties}
+                className={`bar-w group relative h-9 px-3 rounded-lg border text-sm font-semibold flex items-center justify-between transition-all duration-150 ${styles}`}
               >
                 <div className="flex items-center gap-2 truncate">
-                  <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center text-[11px] font-bold flex-shrink-0">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center text-2xs font-bold flex-shrink-0">
                     +{stage.level}
                   </span>
                   <span className="truncate">{stage.title}</span>
                   {stage.level === 10 && <Trophy className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />}
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-shrink-0 text-[11px] opacity-80 group-hover:opacity-100">
-                  <span className="hidden sm:inline text-[11px] text-emerald-300/80">
+                <div className="flex items-center gap-1.5 flex-shrink-0 text-2xs opacity-80 group-hover:opacity-100">
+                  <span className="hidden sm:inline text-2xs text-emerald-300/80">
                     {stage.thresholdLabel}
                   </span>
                   {isDominant && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-0.5 shadow-sm">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-2xs flex items-center gap-0.5 shadow-sm">
                       <Star className="w-2.5 h-2.5 fill-current" /> Aktuell
                     </span>
                   )}
                   {isReached && !isDominant && (
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-bold text-[11px] flex items-center gap-0.5 shadow-sm">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-400 text-slate-950 font-bold text-2xs flex items-center gap-0.5 shadow-sm">
                       <CheckCircle2 className="w-2.5 h-2.5" /> Erreicht
                     </span>
                   )}
@@ -299,8 +299,8 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
             onClick={() => onSelectStage?.(neutralStage)}
             onMouseEnter={() => setHoveredLevel(0)}
             onMouseLeave={() => setHoveredLevel(null)}
-            style={{ width: '100%' }}
-            className={`h-9 px-3 rounded-lg border text-xs font-semibold flex items-center justify-between transition-all duration-150 ${
+            style={{ '--meter-value': '100%' } as React.CSSProperties}
+            className={`bar-w h-9 px-3 rounded-lg border text-sm font-semibold flex items-center justify-between transition-all duration-150 ${
               selectedStageLevel === 0
                 ? 'bg-slate-700 text-slate-50 border-slate-400 ring-2 ring-slate-400'
                 : activeCurrent === 0
@@ -309,15 +309,15 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
             }`}
           >
             <div className="flex items-center gap-2 truncate">
-              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center justify-center text-[11px] font-bold flex-shrink-0">
+              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center justify-center text-2xs font-bold flex-shrink-0">
                 0
               </span>
               <span className="font-bold text-slate-300">{neutralStage.title}</span>
             </div>
-            <div className="flex items-center gap-1 text-[11px] text-slate-400">
+            <div className="flex items-center gap-1 text-2xs text-slate-400">
               <span className="hidden sm:inline">Normalitätsbereich</span>
               {activeCurrent === 0 && (
-                <span className="px-1.5 py-0.5 rounded bg-sky-400 text-slate-950 font-bold text-[11px]">
+                <span className="px-1.5 py-0.5 rounded bg-sky-400 text-slate-950 font-bold text-2xs">
                   Aktuelle Basis
                 </span>
               )}
@@ -338,28 +338,28 @@ export const BehaviorPyramid: React.FC<BehaviorPyramidProps> = ({
                 onClick={() => onSelectStage?.(stage)}
                 onMouseEnter={() => setHoveredLevel(stage.level)}
                 onMouseLeave={() => setHoveredLevel(null)}
-                style={{ width: `${width}%` }}
-                className={`group relative h-9 px-3 rounded-lg border text-xs font-semibold flex items-center justify-between transition-all duration-150 ${styles}`}
+                style={{ '--meter-value': `${width}%` } as React.CSSProperties}
+                className={`bar-w group relative h-9 px-3 rounded-lg border text-sm font-semibold flex items-center justify-between transition-all duration-150 ${styles}`}
               >
                 <div className="flex items-center gap-2 truncate">
-                  <span className="w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-400/30 flex items-center justify-center text-[11px] font-bold flex-shrink-0">
+                  <span className="w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-400/30 flex items-center justify-center text-2xs font-bold flex-shrink-0">
                     {stage.level}
                   </span>
                   <span className="truncate">{stage.title}</span>
                   {stage.level <= -7 && <ShieldAlert className="w-3.5 h-3.5 text-rose-300 flex-shrink-0" />}
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-shrink-0 text-[11px] opacity-80 group-hover:opacity-100">
-                  <span className="hidden sm:inline text-[11px] text-rose-300/80">
+                <div className="flex items-center gap-1.5 flex-shrink-0 text-2xs opacity-80 group-hover:opacity-100">
+                  <span className="hidden sm:inline text-2xs text-rose-300/80">
                     {stage.thresholdLabel}
                   </span>
                   {isDominant && (
-                    <span className="px-1.5 py-0.5 rounded bg-rose-500 text-slate-50 font-bold text-[11px] flex items-center gap-0.5 shadow-sm animate-pulse">
+                    <span className="px-1.5 py-0.5 rounded bg-rose-500 text-slate-50 font-bold text-2xs flex items-center gap-0.5 shadow-sm animate-pulse">
                       <AlertTriangle className="w-2.5 h-2.5" /> Aktive Mahnung
                     </span>
                   )}
                   {isReached && !isDominant && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-0.5 shadow-sm">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-2xs flex items-center gap-0.5 shadow-sm">
                       <AlertTriangle className="w-2.5 h-2.5" /> Erreicht
                     </span>
                   )}

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { withViewTransition } from '../lib/viewTransition';
 
 /**
  * Light / dark theme.
@@ -65,11 +66,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     set(theme === 'dark' ? 'light' : 'dark');
   }, [theme, set]);
 
+  /*
+    Projection context (conference modal): force the dark palette on the root.
+    The enlarged projector type scale (data-mode='beamer', see index.css) is
+    scoped to the actual presentation surfaces (walkthrough view & BeamerMode)
+    so the interactive conference table retains its working density.
+  */
   const forceDark = useCallback((enabled: boolean) => {
     if (enabled) {
       document.documentElement.setAttribute('data-force-dark', '');
     } else {
       document.documentElement.removeAttribute('data-force-dark');
+      document.documentElement.removeAttribute('data-mode');
     }
   }, []);
 
@@ -104,13 +112,11 @@ export const ThemeToggle: React.FC<{ className?: string }> = ({ className = '' }
 
   return (
     <button
-      onClick={toggle}
+      onClick={() => withViewTransition(toggle)}
       title={nextLabel}
       aria-label={nextLabel}
       aria-pressed={theme === 'light'}
-      className={`pressable focus-ring min-h-[44px] min-w-[44px] rounded-lg
-                  bg-slate-800 border border-slate-700 text-slate-300
-                  hover:bg-slate-700 hover:text-slate-50 transition flex items-center justify-center ${className}`}
+      className={`icon-button pressable focus-ring min-h-[44px] min-w-[44px] ${className}`}
     >
       {theme === 'dark' ? (
         <Sun className="w-4 h-4" aria-hidden="true" />

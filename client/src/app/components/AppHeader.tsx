@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { SchoolClass, User } from '../../types';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { withViewTransition } from '../../lib/viewTransition';
 import type { AppModals } from '../hooks/useAppModals';
 import type { AppTab } from '../types';
 
@@ -111,7 +112,7 @@ export function AppHeader({
 
           {/* Navigation tabs: [Schulalltag] [WebUntis] [Schulstatistik] (hidden: [Einstufung]) */}
           <div data-tour="nav-tabs" className="flex items-center gap-1.5 shrink-0">
-            <div className="flex items-center p-1 rounded-lg bg-slate-800/60 border border-hairline shrink-0">
+            <div className="segmented shrink-0">
               {(
                 [
                   ['schulalltag', 'Schulalltag', Calendar],
@@ -122,15 +123,10 @@ export function AppHeader({
               ).map(([key, label, Icon]) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key)}
-                  aria-current={activeTab === key}
+                  onClick={() => withViewTransition(() => setActiveTab(key))}
+                  aria-current={activeTab === key ? 'true' : undefined}
                   title={label}
-                  className={`pressable focus-ring min-h-[40px] px-3 md:px-3.5 py-1.5 rounded-md text-xs font-semibold
-                    flex items-center gap-1.5 whitespace-nowrap transition-colors ${
-                      activeTab === key
-                        ? 'bg-accent text-slate-950 font-bold shadow-sm'
-                        : 'text-slate-400 hover:text-slate-100'
-                    }`}
+                  className="segmented-item pressable focus-ring md:px-3.5"
                 >
                   <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
                   <span>{label}</span>
@@ -141,7 +137,7 @@ export function AppHeader({
             {/* 1-Click Toggle to Show / Hide Einstufung for Conferences */}
             <button
               onClick={toggleAllModules}
-              className={`min-h-[40px] px-2.5 py-1.5 rounded-xl transition border text-xs flex items-center gap-1.5 ${
+              className={`min-h-[40px] px-2.5 py-1.5 rounded-xl transition border text-sm flex items-center gap-1.5 ${
                 showAllModules
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
                   : 'bg-slate-800/70 text-slate-300 hover:text-slate-100 hover:bg-slate-700 border-slate-700/60'
@@ -154,7 +150,7 @@ export function AppHeader({
               aria-label={showAllModules ? 'Einstufungsmodul ausblenden' : 'Einstufungsmodul einblenden'}
             >
               <ClipboardList className="w-4 h-4 shrink-0" />
-              <span className="hidden lg:inline text-[11px] font-semibold whitespace-nowrap">
+              <span className="hidden lg:inline text-2xs font-semibold whitespace-nowrap">
                 {showAllModules ? 'Einstufung aktiv' : 'Einstufung'}
               </span>
             </button>
@@ -164,13 +160,13 @@ export function AppHeader({
         {/* Action Controls & Consolidated User Menu */}
         <div className="flex items-center justify-end gap-2">
           {/* Live Status Pill */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs">
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-sm">
             <span
               className={`w-2 h-2 rounded-full ${
-                connectionError ? 'bg-rose-400' : isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-pulse'
+                connectionError ? 'bg-rose-400' : isConnected ? 'bg-emerald-400 animate-pulse-soft' : 'bg-amber-400 animate-pulse-soft'
               }`}
             />
-            <span className="text-[11px] text-slate-400 whitespace-nowrap" title={connectionError || undefined}>
+            <span className="text-2xs text-slate-400 whitespace-nowrap" title={connectionError || undefined}>
               {connectionError ? 'Live Sync gestört' : isConnected ? 'Live Sync' : 'Verbinde...'}
             </span>
           </div>
@@ -180,7 +176,7 @@ export function AppHeader({
             <button
               data-tour="conference-button"
               onClick={() => setConferenceModalOpen(true)}
-              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95"
+              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm flex items-center gap-1.5 shadow-sm transition active:scale-95"
               title="Klassenkonferenz & Notenbeschluss im Vollbildmodus (Schulleitung & Administrator)"
             >
               <Scale className="w-3.5 h-3.5 shrink-0" />
@@ -191,13 +187,13 @@ export function AppHeader({
           {isSchoolLeadership && (
             <button
               onClick={() => setTimeoutEscalationOpen(true)}
-              className="pressable focus-ring min-h-[40px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-slate-50 font-bold text-xs flex items-center gap-1.5 shadow-sm transition"
+              className="pressable focus-ring min-h-[40px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-slate-50 font-bold text-sm flex items-center gap-1.5 shadow-sm transition"
               title="Time-Out Eskalationen & Elternvereinbarungen (Mahnstufen 3, 6, 9...)"
             >
               <Clock className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden xl:inline whitespace-nowrap">Time-Out</span>
               {pendingTimeoutCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-white text-rose-600 text-[11px] font-bold flex items-center justify-center animate-pulse">
+                <span className="w-4 h-4 rounded-full bg-white text-rose-600 text-2xs font-bold flex items-center justify-center animate-pulse">
                   {pendingTimeoutCount}
                 </span>
               )}
@@ -211,7 +207,7 @@ export function AppHeader({
           <button
             data-tour="help-button"
             onClick={() => setReleaseHistoryOpen(true)}
-            className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-amber-400 hover:bg-slate-700 transition border border-slate-700/60 flex items-center justify-center"
+            className="icon-button pressable focus-ring hover:text-amber-400"
             title="Hilfe, Änderungen & Versionsverlauf öffnen"
             aria-label="Hilfe, Änderungen und Versionsverlauf"
           >
@@ -229,14 +225,14 @@ export function AppHeader({
               className="min-h-[40px] px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 flex items-center gap-2 transition"
             >
               <div className="text-right hidden sm:block">
-                <span className="text-xs font-bold text-slate-50 block leading-tight">
+                <span className="text-sm font-bold text-slate-50 block leading-tight">
                   {currentUser.teacher?.shortName || currentUser.teacher?.fullName || currentUser.username}
                 </span>
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block leading-tight">
+                <span className="text-2xs text-slate-400 uppercase tracking-wider block leading-tight">
                   {isHeadmaster ? 'Schulleitung' : currentUser.role}
                 </span>
               </div>
-              <span className="sm:hidden text-xs font-bold text-slate-100">
+              <span className="sm:hidden text-sm font-bold text-slate-100">
                 {currentUser.teacher?.shortName || currentUser.username}
               </span>
               <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
@@ -249,10 +245,10 @@ export function AppHeader({
                 className="absolute right-0 mt-2 w-64 rounded-2xl surface-3 shadow-xl py-2 z-50 border border-hairline"
               >
                 <div className="px-3.5 py-2 border-b border-hairline mb-1">
-                  <p className="text-xs font-bold text-slate-100 truncate">
+                  <p className="text-sm font-bold text-slate-100 truncate">
                     {currentUser.teacher?.fullName || currentUser.username}
                   </p>
-                  <p className="text-[11px] text-slate-400 truncate">
+                  <p className="text-2xs text-slate-400 truncate">
                     {currentUser.teacher?.shortName ? `${currentUser.teacher.shortName} · ` : ''}
                     {isHeadmaster ? 'Schulleitung' : currentUser.role}
                   </p>
@@ -266,7 +262,7 @@ export function AppHeader({
                       setMenuOpen(false);
                       setPupilManagerOpen(true);
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition"
+                    className="menu-item"
                   >
                     <Users className="w-4 h-4 text-slate-400" />
                     <span>Schülerverwaltung ({currentClass.name})</span>
@@ -280,7 +276,7 @@ export function AppHeader({
                     setMenuOpen(false);
                     setNotificationSettingsOpen(true);
                   }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition"
+                  className="menu-item"
                 >
                   <Bell className="w-4 h-4 text-sky-400" />
                   <span>E-Mail-Benachrichtigungen</span>
@@ -294,7 +290,7 @@ export function AppHeader({
                       setMenuOpen(false);
                       setAllClassesExportOpen(true);
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition"
+                    className="menu-item"
                   >
                     <FileText className="w-4 h-4 text-emerald-400" />
                     <span>Gesamtexport aller Klassen (PDF)</span>
@@ -309,7 +305,7 @@ export function AppHeader({
                       setMenuOpen(false);
                       setAdminAccountsOpen(true);
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition"
+                    className="menu-item"
                   >
                     <KeyRound className="w-4 h-4 text-accent" />
                     <span>Konten verwalten</span>
@@ -324,7 +320,7 @@ export function AppHeader({
                       setMenuOpen(false);
                       onDownloadBackup();
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-semibold text-slate-200 hover:bg-slate-800 flex items-center gap-2.5 transition"
+                    className="menu-item"
                   >
                     <Download className="w-4 h-4 text-amber-400" />
                     <span>1-Klick Backup herunterladen</span>
@@ -339,7 +335,7 @@ export function AppHeader({
                       setMenuOpen(false);
                       setAdminRestoreOpen(true);
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-semibold text-rose-300 hover:bg-slate-800 flex items-center gap-2.5 transition"
+                    className="menu-item" data-tone="danger"
                   >
                     <RotateCcw className="w-4 h-4 text-rose-400" />
                     <span>System-Wiederherstellung</span>
@@ -355,7 +351,7 @@ export function AppHeader({
                     setMenuOpen(false);
                     onLogout();
                   }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-semibold text-rose-300 hover:bg-rose-500/10 flex items-center gap-2.5 transition"
+                  className="menu-item" data-tone="danger"
                 >
                   <LogOut className="w-4 h-4 text-rose-400" />
                   <span>Abmelden</span>

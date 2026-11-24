@@ -584,12 +584,12 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
           {/* Teacher Observation Comment Box (for conference & KEL) */}
           <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 flex flex-col gap-1.5 shadow-sm">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <label className="text-sm font-bold text-slate-300 flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-amber-400" />
                 <span>Anmerkung / Begründung für die Konferenz (optional):</span>
               </label>
               {isAllSubjectsMode && (
-                <span className="text-[11px] text-amber-400/80 font-medium">
+                <span className="text-2xs text-amber-400/80 font-medium">
                   Gilt für alle deine Fächer ({mySubjects.map((s) => s.code).join(', ')})
                 </span>
               )}
@@ -603,7 +603,7 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
               disabled={!canWrite || isLockedByConference || isPastDeadline}
               rows={2}
               placeholder="z.B. Zeigt im Unterricht hohe Motivation, arbeitet verlässlich in Gruppen..."
-              className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none transition"
+              className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none transition"
             />
           </div>
           {/* Beobachtungsbogen Accordion Button (On Click Only) */}
@@ -611,12 +611,12 @@ export const BeobachtungsGrid: React.FC<BeobachtungsGridProps> = ({
             <button
               type="button"
               onClick={() => setShowDetailedRaster((prev) => !prev)}
-              className="w-full py-2.5 px-4 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-slate-100 text-xs font-bold flex items-center justify-between transition shadow-xs group"
+              className="w-full py-2.5 px-4 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-slate-100 text-sm font-bold flex items-center justify-between transition shadow-xs group"
             >
               <div className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-amber-400 group-hover:scale-110 transition" />
                 <span>Beobachtungsbogen (18 Kriterien & Merkmale)</span>
-                <span className="text-[11px] text-slate-400 font-normal">
+                <span className="text-2xs text-slate-400 font-normal">
                   · {showDetailedRaster ? 'Einklappen' : 'Auf Klick öffnen für Feinanpassung'}
                 </span>
               </div>

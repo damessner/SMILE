@@ -54,19 +54,19 @@ export const QuickGradeCard: React.FC<QuickGradeCardProps> = ({
   return (
     <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+        <span className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
           <span>Schnellbewertung (1-Klick)</span>
         </span>
         <div className="flex items-center gap-3">
           {saveSuccessMsg && (
-            <span className="text-emerald-400 text-[11px] font-bold flex items-center gap-1 animate-fadeIn">
+            <span className="text-emerald-400 text-2xs font-bold flex items-center gap-1 animate-fade-in">
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>{saveSuccessMsg}</span>
             </span>
           )}
           {onToggleAutoAdvance && (
-            <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 hover:text-slate-200 cursor-pointer select-none">
+            <label className="inline-flex items-center gap-1.5 text-2xs font-semibold text-slate-400 hover:text-slate-200 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={Boolean(autoAdvance)}
@@ -79,7 +79,7 @@ export const QuickGradeCard: React.FC<QuickGradeCardProps> = ({
         </div>
       </div>
       {isAllSubjectsMode && (
-        <p className="text-[11px] text-amber-400/80">
+        <p className="text-2xs text-amber-400/80">
           Gilt für alle Fächer: {mySubjects.map((subject) => subject.name).join(' · ')}
         </p>
       )}
@@ -109,12 +109,12 @@ export const QuickGradeCard: React.FC<QuickGradeCardProps> = ({
                   <span className="font-bold text-sm text-slate-50">{opt.label}</span>
                 </div>
                 {isSelected && (
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[11px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-2xs font-bold border border-emerald-500/30 flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> Gewählt
                   </span>
                 )}
               </div>
-              <span className="text-[11px] text-slate-400 mt-2 block">
+              <span className="text-2xs text-slate-400 mt-2 block">
                 {opt.desc}
               </span>
             </button>

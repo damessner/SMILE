@@ -1031,7 +1031,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     ? `Klasse ${currentClass.name}`
                     : 'Klasse'}
             </h1>
-            <span className="text-xs text-slate-400">
+            <span className="text-sm text-slate-400">
               {isLwView
                 ? `(${activeTimeouts.length} in der Lernwerkstatt)`
                 : isAllClassesView
@@ -1042,7 +1042,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
           {/* Timetable Indicator (Compact) */}
           {timetableData && (
-            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-1.5 flex items-center gap-3 text-xs">
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-1.5 flex items-center gap-3 text-sm">
               <div className="flex items-center gap-1.5 text-slate-300">
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
                 <span>
@@ -1051,12 +1051,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </div>
               {timetableData.currentLesson ? (
                 <div className="flex items-center gap-1.5 pl-2.5 border-l border-slate-800 text-emerald-400 font-bold">
-                  <span className="bg-emerald-500/20 px-1.5 py-0.5 rounded text-[11px] border border-emerald-500/30">
+                  <span className="bg-emerald-500/20 px-1.5 py-0.5 rounded text-2xs border border-emerald-500/30">
                     {timetableData.currentLesson.className || timetableData.currentLesson.class_name} ({timetableData.currentLesson.subjectCode || timetableData.currentLesson.subject_code})
                   </span>
                 </div>
               ) : (
-                <div className="pl-2.5 border-l border-slate-800 text-slate-400 text-[11px]">
+                <div className="pl-2.5 border-l border-slate-800 text-slate-400 text-2xs">
                   {timetableData.nextLesson ? (
                     <span>Nächste: <strong>{timetableData.nextLesson.className || timetableData.nextLesson.class_name}</strong></span>
                   ) : (
@@ -1071,7 +1071,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         {/* Class Selection Tabs & LW Pill */}
         <div className="pt-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div data-tour="class-selector" className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-2xl">
-            <span className="text-xs font-bold text-slate-400 mr-1 flex-shrink-0">Bereich:</span>
+            <span className="text-sm font-bold text-slate-400 mr-1 flex-shrink-0">Bereich:</span>
 
             {/* Special LW Button */}
             <button
@@ -1079,7 +1079,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 setIsAllClassesView(false);
                 setIsLwView(true);
               }}
-              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
+              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-sm transition flex-shrink-0 flex items-center gap-1.5 ${
                 isLwView
                   ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
                   : 'bg-slate-800/80 text-amber-300 hover:text-slate-50 hover:bg-slate-700 border border-amber-500/30'
@@ -1088,7 +1088,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <Clock className="w-3.5 h-3.5" />
               <span>Lernwerkstatt (LW)</span>
               {activeTimeouts.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-[11px] animate-pulse">
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-2xs animate-pulse">
                   {activeTimeouts.length}
                 </span>
               )}
@@ -1104,7 +1104,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 }}
                 aria-current={isAllClassesView ? 'true' : undefined}
                 title="Alle Klassen: Schülerstatus sehen und Karten / Time-Outs / Cool-Downs vergeben"
-                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
+                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-sm transition flex-shrink-0 flex items-center gap-1.5 ${
                   isAllClassesView
                     ? 'bg-sky-500 text-slate-950 font-bold shadow-md'
                     : 'bg-slate-800/80 text-sky-300 hover:text-slate-50 hover:bg-slate-700 border border-sky-500/30'
@@ -1123,7 +1123,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   setIsLwView(false);
                   onSelectClass(cls.id);
                 }}
-                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs transition flex-shrink-0 flex items-center gap-1.5 ${
+                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-sm transition flex-shrink-0 flex items-center gap-1.5 ${
                   !isLwView && currentClass?.id === cls.id
                     ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-sm'
                     : 'bg-slate-800/80 text-slate-300 hover:text-slate-50 hover:bg-slate-700'
@@ -1139,8 +1139,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
           {/* Today's Schedule Quick Links for this Teacher */}
           {timetableData?.todayLessons && timetableData.todayLessons.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs overflow-x-auto">
-              <span className="text-[11px] text-slate-500 font-bold uppercase mr-1">Heute:</span>
+            <div className="flex items-center gap-1.5 text-sm overflow-x-auto">
+              <span className="text-2xs text-slate-500 font-bold uppercase mr-1">Heute:</span>
               {timetableData.todayLessons.map((l: any, i: number) => {
                 const cName = l.className || l.class_name;
                 const sCode = l.subjectCode || l.subject_code;
@@ -1160,7 +1160,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         onSelectClass(targetCls.id);
                       }
                     }}
-                    className={`min-h-[40px] px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+                    className={`min-h-[40px] px-2.5 py-1.5 rounded-xl text-sm font-bold border transition ${
                       (isLwView && isThisLW) || (!isLwView && currentClass.name === cName)
                         ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                         : 'bg-slate-800 text-slate-400 hover:text-slate-50 border-slate-700'
@@ -1190,18 +1190,18 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     Lernwerkstatt – Aktive Time-Out &amp; Cool-Down Schüler*innen
                   </h2>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-sm text-slate-400 mt-1">
                   Disziplinäre Time-Outs und consequence-free Cool-Downs aus den Klassen.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="px-3.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300">
+                <span className="px-3.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm font-bold text-slate-300">
                   Aktuell im Raum: <strong className="text-rose-400 text-sm">{activeTimeouts.length}</strong>
                 </span>
                 <button
                   onClick={loadTimeoutsData}
-                  className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-xs font-bold transition"
+                  className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-sm font-bold transition"
                 >
                   Aktualisieren
                 </button>
@@ -1218,7 +1218,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 <div className="py-16 text-center text-slate-400 bg-slate-950/40 rounded-2xl border border-slate-800/80">
                   <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-80" />
                   <p className="font-bold text-slate-50 text-base">Aktuell keine Schüler im Time-Out oder Cool-Down!</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-sm text-slate-500 mt-0.5">
                     Sobald eine Lehrkraft eine Schülerin / einen Schüler in die Lernwerkstatt schickt, erscheint sie/er hier live.
                   </p>
                 </div>
@@ -1234,14 +1234,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`px-2.5 py-0.5 rounded-lg border text-[11px] font-bold ${item.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'}`}>
+                              <span className={`px-2.5 py-0.5 rounded-lg border text-2xs font-bold ${item.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'}`}>
                                 {item.kind === 'cooldown' ? (
                                   <><Snowflake className="w-3.5 h-3.5 inline" aria-hidden="true" /> Cool-Down aktiv</>
                                 ) : (
                                   <><Clock className="w-3.5 h-3.5 inline" aria-hidden="true" /> Time-Out aktiv</>
                                 )}
                               </span>
-                              <span className="text-xs font-bold text-slate-400">
+                              <span className="text-sm font-bold text-slate-400">
                                 Klasse {item.class_name}
                               </span>
                             </div>
@@ -1250,7 +1250,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             </h3>
                           </div>
 
-                          <div className="text-right text-[11px] text-slate-400">
+                          <div className="text-right text-2xs text-slate-400">
                             <div>Geschickt von <strong className="text-amber-400">{item.sent_by_short}</strong></div>
                             <div className="text-slate-500 mt-0.5">
                               {new Date(item.sent_at).toLocaleTimeString('de-AT', {
@@ -1263,11 +1263,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Arbeitsauftrag Box */}
                         <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 mb-4">
-                          <div className={`flex items-center gap-1.5 text-[11px] font-bold uppercase mb-1.5 ${item.kind === 'cooldown' ? 'text-sky-300' : 'text-amber-300'}`}>
+                          <div className={`flex items-center gap-1.5 text-2xs font-bold uppercase mb-1.5 ${item.kind === 'cooldown' ? 'text-sky-300' : 'text-amber-300'}`}>
                             <FileText className="w-3.5 h-3.5" />
                             <span>{item.kind === 'cooldown' ? 'Notiz / Beobachtung:' : 'Arbeitsauftrag der Lehrperson:'}</span>
                           </div>
-                          <p className="text-xs text-slate-50 leading-relaxed font-medium bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                          <p className="text-sm text-slate-50 leading-relaxed font-medium bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
                             &bdquo;{item.task_assignment}&ldquo;
                           </p>
                         </div>
@@ -1276,7 +1276,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       {/* Action: Resolve and send back */}
                       <button
                         onClick={() => handleResolveTimeout(item.id, item.pupil_name, item.kind)}
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-sm active:scale-95"
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-sm active:scale-95"
                       >
                         <Check className="w-4 h-4" />
                         <span>
@@ -1304,16 +1304,16 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 {timeoutHistory.map((h) => (
                   <div
                     key={h.id}
-                    className="p-3 rounded-2xl surface-1 text-xs flex items-center justify-between gap-3"
+                    className="p-3 rounded-2xl surface-1 text-sm flex items-center justify-between gap-3"
                   >
                     <div>
                       <div className="font-bold text-slate-50">
                         {h.pupil_name} ({h.class_name})
-                        <span className={`ml-2 rounded px-1.5 py-0.5 text-[11px] font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
+                        <span className={`ml-2 rounded px-1.5 py-0.5 text-2xs font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
                           {h.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out'}
                         </span>
                         {h.retroactive && (
-                          <span className="ml-1 rounded bg-slate-700 px-1.5 py-0.5 text-[11px] font-bold text-slate-200">
+                          <span className="ml-1 rounded bg-slate-700 px-1.5 py-0.5 text-2xs font-bold text-slate-200">
                             Nachtrag
                           </span>
                         )}
@@ -1321,12 +1321,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           von {h.sent_by_short} am {new Date(h.sent_at).toLocaleDateString('de-AT')} um {new Date(h.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 italic mt-0.5 truncate max-w-xl">
+                      <p className="text-2xs text-slate-400 italic mt-0.5 truncate max-w-xl">
                         &bdquo;{h.task_assignment}&ldquo;
                       </p>
                     </div>
 
-                    <div className="text-right text-[11px] text-emerald-400 flex-shrink-0 font-bold">
+                    <div className="text-right text-2xs text-emerald-400 flex-shrink-0 font-bold">
                       {h.status === 'resolved' ? 'Erledigt' : 'Aktiv'}
                     </div>
                   </div>
@@ -1357,14 +1357,14 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Schüler in Klasse suchen..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
               />
             </div>
 
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
               <button
                 onClick={() => setFilterRank('all')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition ${
                   filterRank === 'all' ? 'bg-slate-700 text-slate-50' : 'bg-slate-800 text-slate-400 hover:text-slate-50'
                 }`}
               >
@@ -1372,7 +1372,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
               <button
                 onClick={() => setFilterRank('Lehrling')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition flex items-center gap-1 ${
                   filterRank === 'Lehrling' ? 'bg-rose-500 text-slate-50' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
                 }`}
               >
@@ -1381,7 +1381,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
               <button
                 onClick={() => setFilterRank('Geselle')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition flex items-center gap-1 ${
                   filterRank === 'Geselle' ? 'bg-blue-500 text-slate-50' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'
                 }`}
               >
@@ -1390,7 +1390,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
               <button
                 onClick={() => setFilterRank('Meister')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1 ${
+                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition flex items-center gap-1 ${
                   filterRank === 'Meister' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
                 }`}
               >
@@ -1401,7 +1401,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-slate-700 pl-2">
                 <label
                   htmlFor="pupil-sort"
-                  className="whitespace-nowrap text-xs font-semibold text-slate-400"
+                  className="whitespace-nowrap text-sm font-semibold text-slate-400"
                 >
                   Sortieren:
                 </label>
@@ -1409,7 +1409,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                   id="pupil-sort"
                   value={sortMode}
                   onChange={(e) => setSortMode(e.target.value as PupilSortMode)}
-                  className="min-h-[40px] rounded-xl border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs font-bold text-slate-100 focus:border-amber-400 focus:outline-none"
+                  className="min-h-[40px] rounded-xl border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm font-bold text-slate-100 focus:border-amber-400 focus:outline-none"
                 >
                   {PUPIL_SORT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1424,9 +1424,9 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           {/* Compact Minimalist Pupils List */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden divide-y divide-slate-800/80">
             {/* Simple class overview header */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 text-2xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <span>Klasse {currentClass.name} · {filteredPupils.length} Schüler*innen</span>
-              <div className="flex items-center gap-3 sm:gap-4 text-[11px] normal-case font-medium tracking-normal text-slate-400">
+              <div className="flex items-center gap-3 sm:gap-4 text-2xs normal-case font-medium tracking-normal text-slate-400">
                 <span className="hidden md:flex items-center gap-2 text-slate-400">
                   <span className="font-semibold text-slate-300">Karten:</span>
                   <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Grün</span>
@@ -1501,17 +1501,17 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             setActiveProfilePupilId(pupil.id);
                           }}
-                          className={`flex min-h-[56px] min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-400 ${rankBoxClass}`}
+                          className={`flex min-h-[56px] min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus-ring ${rankBoxClass}`}
                           title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
                         >
                           <span data-testid="pupil-name" className="truncate text-base font-extrabold">{pupil.fullName}</span>
-                          <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide">
+                          <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-2xs font-extrabold uppercase tracking-wide">
                             {rankLabel}
                           </span>
                         </button>
                         {activeTimeoutIncident && (
                           <span
-                            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-bold text-amber-300"
+                            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-2xs font-bold text-amber-300"
                             title={activeTimeoutIncident.kind === 'cooldown' ? 'Im Cool-Down (Lernwerkstatt)' : 'Im Time-Out (Lernwerkstatt)'}
                           >
                             {activeTimeoutIncident.kind === 'cooldown' ? (
@@ -1524,7 +1524,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                         )}
                         {isYellowAlert && (
                           <span
-                            className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-[11px] font-bold text-rose-300"
+                            className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-2xs font-bold text-rose-300"
                             title="Mahnstufe (>= 2 gelbe Karten)"
                           >
                             <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
@@ -1553,7 +1553,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                       >
                         {/* Grün */}
                         <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
                             greenCards.length > 0
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35 shadow-sm shadow-emerald-950/40'
                               : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
@@ -1566,7 +1566,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Gelb */}
                         <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
                             yellowCards.length > 0
                               ? 'bg-amber-500/20 text-amber-300 border-amber-500/35 shadow-sm shadow-amber-950/40'
                               : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
@@ -1579,7 +1579,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Rot */}
                         <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
                             redCards.length > 0
                               ? 'bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-950/40 font-extrabold'
                               : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
@@ -1592,7 +1592,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Time-Out */}
                         <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
                             timeoutCount > 0
                               ? 'bg-orange-500/20 text-orange-300 border-orange-500/35 shadow-sm shadow-orange-950/40'
                               : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
@@ -1605,7 +1605,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Cool-Down */}
                         <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-xs font-bold border transition ${
+                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
                             cooldownCount > 0
                               ? 'bg-sky-500/20 text-sky-300 border-sky-500/35 shadow-sm shadow-sky-950/40'
                               : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
@@ -1632,7 +1632,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Grüne Karte vergeben  (Tastatur: 1)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1651,7 +1651,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             });
                             setCardNote('');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Gelbe Karte vergeben  (Tastatur: 2)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -1663,7 +1663,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenRedCardModal(pupil);
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
                         >
                           <ShieldAlertIcon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1675,7 +1675,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'timeout');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
                         >
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -1687,7 +1687,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             handleOpenTimeoutModal(pupil, 'cooldown');
                           }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-[11px] font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
+                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
                           title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich)  (Tastatur: 5)"
                         >
                           <Snowflake className="w-3.5 h-3.5 text-sky-300" />
@@ -1701,7 +1701,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             e.stopPropagation();
                             setExpandedPupilId(isExpanded ? null : pupil.id);
                           }}
-                          className="hidden min-h-[56px] w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800/80 text-[11px] font-bold leading-none text-slate-400 transition hover:bg-slate-700 hover:text-slate-50 sm:inline-flex"
+                          className="hidden min-h-[56px] w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800/80 text-2xs font-bold leading-none text-slate-400 transition hover:bg-slate-700 hover:text-slate-50 sm:inline-flex"
                           aria-expanded={isExpanded}
                           title={isExpanded ? 'Details ausblenden' : 'Details einblenden'}
                         >
@@ -1715,7 +1715,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                     {isExpanded && (
                       <div className="bg-surface-2 px-5 py-4 border-t border-hairline space-y-4">
                         {/* Header inside detail: Info Bar */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 text-sm">
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                             {pupil.finalRank && currentRank && currentRank !== pupil.finalRank && (
                               <span className="text-rose-300 font-semibold">
@@ -1735,12 +1735,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             <button
                               type="button"
                               onClick={() => setActiveProfilePupilId(pupil.id)}
-                              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-amber-500/20 hover:from-emerald-500/30 hover:via-sky-500/30 hover:to-amber-500/30 border border-amber-500/35 text-amber-200 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-amber-500/20 hover:from-emerald-500/30 hover:via-sky-500/30 hover:to-amber-500/30 border border-amber-500/35 text-amber-200 text-sm font-bold transition flex items-center gap-1.5 shadow-sm"
                             >
                               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                               <span>Verhaltensprofil &amp; Stufenpyramide</span>
                             </button>
-                            <div className="text-slate-400 text-xs hidden sm:block">
+                            <div className="text-slate-400 text-sm hidden sm:block">
                               {pupilCards.length === 0 ? 'Keine Karten' : `${pupilCards.length} Verhaltenskarten erfasst`}
                             </div>
                           </div>
@@ -1748,7 +1748,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Active Alerts in Detail */}
                         {activeTimeoutIncident && (
-                          <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${activeTimeoutIncident.kind === 'cooldown' ? 'bg-sky-500/10 border-sky-500/40 text-sky-200' : 'bg-amber-500/15 border-amber-500/40 text-amber-200'}`}>
+                          <div className={`p-3 rounded-xl border text-sm flex items-start gap-2 ${activeTimeoutIncident.kind === 'cooldown' ? 'bg-sky-500/10 border-sky-500/40 text-sky-200' : 'bg-amber-500/15 border-amber-500/40 text-amber-200'}`}>
                             {activeTimeoutIncident.kind === 'cooldown' ? (
                               <Snowflake className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
                             ) : (
@@ -1763,7 +1763,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                               <div className="mt-0.5 text-slate-300">
                                 {activeTimeoutIncident.kind === 'cooldown' ? 'Notiz' : 'Arbeitsauftrag'}: &bdquo;{activeTimeoutIncident.task_assignment}&ldquo;
                               </div>
-                              <div className={`mt-1 text-[11px] ${activeTimeoutIncident.kind === 'cooldown' ? 'text-sky-400' : 'text-amber-400'}`}>
+                              <div className={`mt-1 text-2xs ${activeTimeoutIncident.kind === 'cooldown' ? 'text-sky-400' : 'text-amber-400'}`}>
                                 Geschickt von {activeTimeoutIncident.sent_by_short} um {new Date(activeTimeoutIncident.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                               </div>
                             </div>
@@ -1772,11 +1772,11 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
 
                         {/* Cards History List */}
                         <div className="space-y-2">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                          <h4 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                             Verhaltenskarten &amp; Vorfälle
                           </h4>
                           {pupilCards.length === 0 ? (
-                            <p className="text-xs text-slate-500 italic py-1">
+                            <p className="text-sm text-slate-500 italic py-1">
                               Noch keine Verhaltenskarten für diesen Schüler eingetragen.
                             </p>
                           ) : (
@@ -1784,7 +1784,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                               {pupilCards.map((c) => (
                                 <div
                                   key={c.id}
-                                  className={`p-3 rounded-xl border text-xs flex items-start justify-between gap-2 ${
+                                  className={`p-3 rounded-xl border text-sm flex items-start justify-between gap-2 ${
                                     c.card_type === 'green'
                                       ? 'bg-emerald-500/10 border-emerald-500/25 text-slate-200'
                                       : c.card_type === 'yellow'
@@ -1817,7 +1817,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                           ? 'Cool-Down'
                                           : 'Rote Karte'}
                                       </span>
-                                      <span className="text-[11px] text-slate-400 font-normal">
+                                      <span className="text-2xs text-slate-400 font-normal">
                                         von {c.teacher_short} · {new Date(c.created_at).toLocaleDateString('de-AT')} {new Date(c.created_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                                       </span>
                                     </div>
@@ -1874,7 +1874,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                           <button
                             onClick={() => handleSaveInlineNote(pupil.id)}
                             disabled={savingInlineNote === pupil.id || !inlineNotes[pupil.id]?.trim()}
-                            className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-xs font-bold transition disabled:opacity-40"
+                            className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-sm font-bold transition disabled:opacity-40"
                           >
                             {savingInlineNote === pupil.id ? '...' : 'Notiz speichern'}
                           </button>
