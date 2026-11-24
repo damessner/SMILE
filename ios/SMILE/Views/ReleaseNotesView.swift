@@ -80,6 +80,16 @@ enum AppReleases {
                     title: "HTTP-Server über DDNS erreichbar",
                     text: "Explizit als http:// eingegebene Adressen (z. B. http://smiletelfs.dpdns.org:3000) werden akzeptiert, sofern sie lokal/privat oder ein unterstützter DDNS-Dienst sind; passende ATS-Ausnahmen in der Info.plist."
                 ),
+                AppReleaseNote(
+                    kind: .improvement,
+                    title: "SMILE-Logo in der App",
+                    text: "Das offizielle SMILE-Logo (Regenbogen-Schriftzug) erscheint auf dem Login-Bildschirm und als App-Icon."
+                ),
+                AppReleaseNote(
+                    kind: .improvement,
+                    title: "Schlankes Login, klare Tabs",
+                    text: "Die Anmeldung besteht nur noch aus Server/Domain (leer = gespeicherter Standard-Server), Benutzername und Passwort; Zugangsdaten werden automatisch sicher auf dem Gerät gespeichert. Unten sind nur noch Schulalltag, Lernwerkstatt und Schulstatistik."
+                ),
             ]
         ),
         AppRelease(

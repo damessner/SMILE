@@ -12,10 +12,8 @@ struct MainTabView: View {
 
     enum AppTab: Hashable {
         case schulalltag
-        case bewertung
         case lernwerkstatt
         case statistik
-        case alleKlassen
     }
 
     var body: some View {
@@ -31,15 +29,6 @@ struct MainTabView: View {
                 Label("Schulalltag", systemImage: "person.3.sequence.fill")
             }
             .tag(AppTab.schulalltag)
-
-            NavigationStack {
-                BewertungView()
-                    .toolbar { accountToolbarItem }
-            }
-            .tabItem {
-                Label("Bewertung", systemImage: "checklist")
-            }
-            .tag(AppTab.bewertung)
 
             NavigationStack {
                 LernwerkstattView(
@@ -62,16 +51,6 @@ struct MainTabView: View {
             }
             .tag(AppTab.statistik)
 
-            if user.schoolWideBehaviour == true {
-                NavigationStack {
-                    SchoolWideBehaviorView()
-                        .toolbar { accountToolbarItem }
-                }
-                .tabItem {
-                    Label("Alle Klassen", systemImage: "person.3.fill")
-                }
-                .tag(AppTab.alleKlassen)
-            }
         }
         .safeAreaInset(edge: .top) {
             if user.viewAs == true {

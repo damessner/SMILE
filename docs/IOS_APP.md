@@ -9,7 +9,8 @@ Die App ist **kein Web-Wrapper**: keine `WKWebView`, keine gebündelten HTML/JS-
 ## Funktionsumfang für Lehrpersonen
 
 1. **Anmeldung & Sicherheit (`LoginView` & `KeychainBiometricsService`):**
-   - **Server-Adresse als Login-Feld (ab 2.1.2):** Die Anmeldung besteht aus **Server/Domain, Benutzername und Passwort**. Eine bare Domain (`smile.schule.intern`, `172.16.1.11:3000`) wird automatisch um `https://` ergänzt. Explizit eingegebenes `http://` (z. B. `http://smiletelfs.dpdns.org:3000`) ist nur für Loopback-/private Adressen (inkl. `.local`) und die in `APIClient.insecureHTTPDomainSuffixes` freigegebenen DDNS-Anbieter erlaubt — diese Liste muss mit den `NSExceptionDomains` in `Info.plist` synchron bleiben, sonst blockiert ATS die unverschlüsselte Verbindung. Bei unverschlüsseltem HTTP zeigt das Login-Formular einen Warnhinweis. „Server testen“ prüft die Adresse vorab über `GET /health`. Über Schnellwahl-Chips lassen sich die Schul-Adressen (`172.16.1.11`, `smile.schule.intern`) und die DDNS-Adresse (`https://smiletelfs.dpdns.org`) direkt übernehmen; `https://smiletelfs.dpdns.org` funktioniert mit dem eingebetteten internen CA-Zertifikat, sofern Caddy dafür ein Zertifikat mit dieser Domain ausstellt (sonst `http://smiletelfs.dpdns.org:3000` verwenden, sofern der Port weitergeleitet wird).
+   - **Schlankes Login-Formular (ab 2.1.2):** nur **Server/Domain, Benutzername und Passwort** plus Anmelden-Button (Face-ID-Button erscheint, sobald Zugangsdaten gespeichert sind). Das Server-Feld bleibt leer, solange keine Adresse eingegeben wird — dann gilt der gespeicherte/Standard-Server. Eine eingegebene bare Domain (`smile.schule.intern`, `172.16.1.11:3000`) wird automatisch um `https://` ergänzt. Explizit eingegebenes `http://` (z. B. `http://smiletelfs.dpdns.org:3000`) ist nur für Loopback-/private Adressen (inkl. `.local`) und die in `APIClient.insecureHTTPDomainSuffixes` freigegebenen DDNS-Anbieter erlaubt — diese Liste muss mit den `NSExceptionDomains` in `Info.plist` synchron bleiben, sonst blockiert ATS die unverschlüsselte Verbindung. Bei unverschlüsseltem HTTP zeigt das Login-Formular einen Warnhinweis. `https://smiletelfs.dpdns.org` funktioniert mit dem eingebetteten internen CA-Zertifikat, sofern Caddy dafür ein Zertifikat mit dieser Domain ausstellt (sonst `http://smiletelfs.dpdns.org:3000` verwenden, sofern der Port weitergeleitet wird).
+   - **SMILE-Logo:** Der offizielle Regenbogen-Schriftzug (`SmileLogo.imageset`, aus `logo-vector-clean.svg` gerendert) erscheint im Login-Kopf; das App-Icon zeigt das S-Glyph auf dunklem Grund (PNGs im `AppIcon.appiconset`, lokal mit `@resvg/resvg-js` erzeugt).
    - **Alles auf dem Gerät gespeichert:** Server-Adresse und letzter Benutzername liegen in `UserDefaults`, das Passwort biometrie-geschützt in der iOS Keychain — zusammen mit der Server-Adresse, für die es gilt. Face ID / Touch ID meldet daher nur gegen den Server an, für den die Zugangsdaten gespeichert wurden; beim Wechsel der Adresse wird die Sitzung zurückgesetzt.
    - **Face ID / Touch ID:** Nach der ersten Anmeldung werden die Zugangsdaten verschlüsselt in der iOS Keychain gespeichert und können im Unterricht per Face ID oder Touch ID entsperrt werden.
    - **Integriertes Schul-Zertifikat (`InternalCATrustDelegate`):** Das interne Caddy Root-CA-Zertifikat (`smile-internal-ca.cer`) ist direkt im App-Bundle eingebettet und wird per `SecTrustSetAnchorCertificates` validiert — allerdings **nur für den Host der konfigurierten Server-Adresse**, nicht für beliebige Hosts. Dadurch vertraut die App `https://172.16.1.11` und `https://smile.schule.intern` automatisch, sobald sie als Server eingetragen sind.
@@ -24,32 +25,24 @@ Die App ist **kein Web-Wrapper**: keine `WKWebView`, keine gebündelten HTML/JS-
    - **Karten-Historie & Widerruf:** Tippen auf einen Namen öffnet die Historie; Karten lassen sich per Swipe widerrufen.
    - **Auto-Refresh:** aktualisiert die offene Klasse und den Lernwerkstatt-Zähler alle 30 Sekunden (zusätzlich zu Pull-to-Refresh).
 
-3. **Bewertung / Einstufung (`BewertungView`) — neu in 2.1.0:**
-   - Klassen- und Fachauswahl (Fächer aus der eigenen Einteilung).
-   - **Rangvorschlag** Lehrling / Geselle / Meister pro Schüler*in über einen Tipp.
-   - **Abgeben** (`/api/evaluations/submit`) und **Zurückziehen** (`/api/evaluations/reopen`) vor der Frist.
-   - Zeigt Frist, Konferenzsperre, „x/y abgegeben" und vorhandene Kommentare.
-   - Bewusst eine Schnell-Einstufung: das vollständige 18-Kriterien-Raster bleibt vorerst im Web.
-
-4. **Lernwerkstatt (`LernwerkstattView`):**
+3. **Lernwerkstatt (`LernwerkstattView`):**
    - Live-Übersicht aller aktuellen Time-Outs/Cool-Downs inkl. Badge-Zähler.
    - **1-Tap Abschließen** mit optionaler Rückmeldungs-Notiz.
    - Umschalter zwischen aktiven Fällen und Verlauf, Auto-Refresh alle 30 Sekunden.
 
-5. **Schulstatistik (`SchoolStatisticsView`):**
+4. **Schulstatistik (`SchoolStatisticsView`):**
    - Standardmäßig **„Alle Klassen (Schulweit)"** (`selectedClassId = "all"`).
    - Faktenbasiert: Verteilungsbalken, zeitliche Verteilung, Klassenübersicht, durchsuchbare Schülertabelle.
 
-6. **Alle Klassen (`SchoolWideBehaviorView`) — neu in 2.1.0:**
-   - Schulweite Verhaltensübersicht – nur sichtbar, wenn der Server `schoolWideBehaviour` freigibt.
-   - **Klassen-Buttons** mit Schülerzahl filtern die Liste und die Kennzahlen (statt einer bloßen Sammelansicht).
-   - Dieselben fünf Schnellaktionen wie im Schulalltag; Aktionen sind auf `canRecord` begrenzt.
-   - Auto-Refresh alle 30 Sekunden.
-
-7. **Konto & Versionsverlauf (`MainTabView`/`ReleaseNotesView`):**
+5. **Konto & Versionsverlauf (`MainTabView`/`ReleaseNotesView`):**
    - Konto-Sheet mit Name, Rolle, Server, App-Version.
    - **Versionsverlauf** mit allen App-Releases.
    - Nach einem Update erscheint einmalig „Was ist neu?" (Key pro Version und Benutzer*in in `UserDefaults`).
+
+> **Tab-Leiste:** Nur **Schulalltag, Lernwerkstatt und Schulstatistik**. Die Tabs
+> „Bewertung" und „Alle Klassen" wurden entfernt (die entsprechenden Views
+> `BewertungView.swift` / `SchoolWideBehaviorView.swift` sind gelöscht; Bewertung
+> und schulweite Verhaltensübersicht bleiben im Web).
 
 ---
 
@@ -71,13 +64,11 @@ ios/
     │   ├── LoginView.swift             # Login, Face ID & Startpasswort-Änderung
     │   ├── MainTabView.swift           # Tabs, Konto-Menü, Update-Hinweis
     │   ├── SchulalltagView.swift       # Unterrichts-Ansicht, Zähler & Kartenvergabe
-    │   ├── BewertungView.swift         # Schnell-Einstufung pro Klasse/Fach
     │   ├── LernwerkstattView.swift     # Aktive Time-Outs/Cool-Downs & Abschluss
-    │   ├── SchoolWideBehaviorView.swift# Schulweite Verhaltensübersicht
     │   ├── SchoolStatisticsView.swift  # Faktenbasierte Schul- & Klassenstatistik
     │   └── ReleaseNotesView.swift      # „Was ist neu?" & Versionsverlauf
     └── Resources/
-        ├── Assets.xcassets/            # AppIcon & AccentColor
+        ├── Assets.xcassets/            # AppIcon (S-Glyph), SmileLogo (Wortmarke), AccentColor
         └── smile-internal-ca.cer       # Eingebettetes Caddy Root-CA Zertifikat
 ```
 

@@ -248,36 +248,6 @@ final class APIClient: ObservableObject {
         return url
     }
 
-    /// Unauthenticated liveness probe at the server root (`GET /health`, outside `/api`).
-    /// Used by the login form's "Server testen" so a teacher can verify the entered
-    /// domain before submitting credentials.
-    func checkServer() async throws {
-        guard let base = Self.normalizeServerURL(baseURL),
-              let url = URL(string: "\(base)/health") else {
-            throw APIError.invalidURL
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.cachePolicy = .reloadIgnoringLocalCacheData
-        req.timeoutInterval = 10
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: req)
-        } catch {
-            throw APIError.networkError(error)
-        }
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw APIError.serverError(status: status, message: "Server antwortet nicht mit 2xx (\(status)).", code: nil)
-        }
-        struct HealthResponse: Decodable { let status: String }
-        do {
-            _ = try JSONDecoder().decode(HealthResponse.self, from: data)
-        } catch {
-            throw APIError.decodingError(error.localizedDescription)
-        }
-    }
-
     private func perform(
         _ path: String,
         method: String = "GET",

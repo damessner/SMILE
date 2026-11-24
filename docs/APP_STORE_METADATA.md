@@ -54,10 +54,9 @@ SMILE ist die Begleit-App für Lehrpersonen der Mittelschule Telfs Dr. Aloys Wei
 
 Funktionen im Überblick:
 • Schulalltag: Automatische Erkennung der aktuellen Unterrichtsstunde, Klassenübersicht mit Kompetenzrängen und Schnellaktionen für Verhaltenskarten (Grün, Gelb, Rot), Time-Out und Cool-Down.
-• Bewertung: Fachbezogene und gebündelte Rangvorschläge (Meister, Geselle, Lehrling) inklusive Abgabe und Rücknahme vor der Frist.
 • Lernwerkstatt: Übersicht über aktive Time-Outs und Cool-Downs mit direkter Erledigungsmeldung und Verlauf.
 • Schüler-Historie: Einsicht in vergebene Karten, Verhaltensstufe, Verhaltensnote und pädagogische Maßnahmen.
-• Schulstatistik & Alle Klassen: Faktenbasierte Klassen- und Schulauswertungen im Schulnetzwerk.
+• Schulstatistik: Faktenbasierte Klassen- und Schulauswertungen im Schulnetzwerk.
 • Sicherheit: Verschlüsselte Verbindung zum schuleigenen SMILE-Server und Anmeldung per Face ID / Touch ID.
 
 Hinweis: Zur Nutzung wird ein aktives Lehrpersonen-Konto der Mittelschule Telfs benötigt.

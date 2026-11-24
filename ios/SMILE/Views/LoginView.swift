@@ -6,21 +6,18 @@ struct LoginView: View {
     @State private var serverAddress = ""
     @State private var username = ""
     @State private var password = ""
-    @State private var rememberBiometrics = true
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var serverStatus: String?
-    @State private var isTestingServer = false
 
     /// The entered server address, normalized (https assumed for bare domains).
+    /// Empty input means: use the stored/default server.
     private var normalizedServer: String? {
-        APIClient.normalizeServerURL(serverAddress)
+        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : APIClient.normalizeServerURL(trimmed)
     }
 
     private var canSubmit: Bool {
-        normalizedServer != nil
-            && !username.trimmingCharacters(in: .whitespaces).isEmpty
-            && !password.isEmpty
+        !username.trimmingCharacters(in: .whitespaces).isEmpty && !password.isEmpty
     }
 
     var body: some View {
@@ -33,29 +30,10 @@ struct LoginView: View {
                     VStack(spacing: 28) {
                         // Brand Header
                         VStack(spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                Color(red: 0.23, green: 0.51, blue: 0.96),
-                                                Color(red: 0.12, green: 0.35, blue: 0.80)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(width: 76, height: 76)
-                                    .shadow(color: .blue.opacity(0.35), radius: 16, y: 8)
-
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 34, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-
-                            Text("SMILE")
-                                .font(.system(size: 32, weight: .heavy, design: .rounded))
-                                .foregroundStyle(.white)
+                            Image("SmileLogo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 52)
 
                             Text("Mittelschule Telfs · Schulalltag & Statistik")
                                 .font(.subheadline)
@@ -78,13 +56,15 @@ struct LoginView: View {
                                 .background(Color.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                             }
 
-                            // Server / Domain — stored on the device together with the login.
+                            // Server / Domain — optional; left empty the stored/default
+                            // server is used. A typed address is normalized and stored on
+                            // the device together with the login.
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Server / Domain")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
 
-                                TextField("z. B. smile.schule.intern oder http://smiletelfs.dpdns.org:3000", text: $serverAddress)
+                                TextField("Server / Domain (z. B. smile.schule.intern)", text: $serverAddress)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .keyboardType(.URL)
@@ -96,44 +76,6 @@ struct LoginView: View {
                                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                                     )
 
-                                HStack(spacing: 8) {
-                                    Button("172.16.1.11") {
-                                        serverAddress = "https://172.16.1.11"
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                    Button("smile.schule.intern") {
-                                        serverAddress = "https://smile.schule.intern"
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                    Button("smiletelfs.dpdns.org") {
-                                        serverAddress = "https://smiletelfs.dpdns.org"
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                    Spacer()
-
-                                    Button {
-                                        Task { await testServer() }
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            if isTestingServer {
-                                                ProgressView().controlSize(.mini)
-                                            } else {
-                                                Image(systemName: "wave.3.right")
-                                            }
-                                            Text("Server testen")
-                                        }
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .disabled(normalizedServer == nil || isTestingServer || isLoading)
-                                }
-
                                 if let normalized = normalizedServer,
                                    normalized.hasPrefix("http://"),
                                    let host = URL(string: normalized)?.host,
@@ -141,12 +83,6 @@ struct LoginView: View {
                                     Label("Achtung: unverschlüsselte HTTP-Verbindung — Zugangsdaten werden im Klartext übertragen. Nur im vertrauenswürdigen Netz verwenden.", systemImage: "exclamationmark.triangle.fill")
                                         .font(.caption2)
                                         .foregroundStyle(.orange)
-                                }
-
-                                if let status = serverStatus {
-                                    Text(status)
-                                        .font(.caption2)
-                                        .foregroundStyle(status.hasPrefix("Server erreichbar") ? .green : .red)
                                 }
                             }
 
@@ -184,16 +120,6 @@ struct LoginView: View {
                                         Task { await performLogin() }
                                     }
                             }
-
-                            Toggle(isOn: $rememberBiometrics) {
-                                Label(
-                                    "Für \(KeychainBiometricsService.biometricTypeLabel) speichern",
-                                    systemImage: "faceid"
-                                )
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                            }
-                            .tint(.blue)
 
                             Button {
                                 Task { await performLogin() }
@@ -248,46 +174,31 @@ struct LoginView: View {
             }
         }
         .task {
-            // Prefill from what is stored on this device: the last used server
-            // address and login name (the password lives in the Keychain).
-            serverAddress = api.baseURL
+            // Prefill only the stored login name. The server field stays empty and
+            // falls back to the stored/default server; the password lives in the Keychain.
             if username.isEmpty, let last = api.lastUsername {
                 username = last
             }
         }
     }
 
-    /// Verifies the entered server address against `GET /health` and persists it on
-    /// the device, so a typo is caught before credentials are submitted.
-    private func testServer() async {
-        guard let normalized = normalizedServer else {
-            serverStatus = "Ungültige Server-Adresse."
-            return
-        }
-        serverStatus = nil
-        errorMessage = nil
-        isTestingServer = true
-        defer { isTestingServer = false }
-
-        do {
-            try api.setBaseURL(normalized)
-            serverAddress = api.baseURL
-            try await api.checkServer()
-            serverStatus = "Server erreichbar: \(api.baseURL)"
-            Haptics.notify(.success)
-        } catch {
-            serverStatus = error.localizedDescription
-            Haptics.notify(.error)
-        }
-    }
-
     private func performLogin() async {
         errorMessage = nil
-        serverStatus = nil
-        guard let normalized = normalizedServer else {
+
+        // Empty server field = stored/default server; a typed address is normalized
+        // (bare domains get https://; explicit http:// is restricted to local/private/
+        // DDNS hosts by APIClient.normalizeServerURL) and persisted on the device.
+        let serverInput = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized: String
+        if serverInput.isEmpty {
+            normalized = api.baseURL
+        } else if let candidate = APIClient.normalizeServerURL(serverInput) {
+            normalized = candidate
+        } else {
             errorMessage = "Ungültige Server-Adresse. Domain oder Host eingeben (z. B. smile.schule.intern, 172.16.1.11 oder http://smiletelfs.dpdns.org:3000). Ohne „http(s)://“ wird https:// angenommen; reines http:// ist nur für lokale/private Adressen und DDNS-Anbieter erlaubt."
             return
         }
+
         isLoading = true
         defer { isLoading = false }
 
@@ -296,12 +207,11 @@ struct LoginView: View {
             // Persist the server address on the device; switching the server drops the
             // old session (cookies belong to the old host).
             try api.setBaseURL(normalized)
-            serverAddress = api.baseURL
             _ = try await api.login(username: cleanUser, password: password)
             // Store the login on this device: username + server in UserDefaults,
             // password in the biometry-protected Keychain (scoped to this server).
             api.lastUsername = cleanUser
-            if rememberBiometrics, !api.isDemoMode {
+            if !api.isDemoMode {
                 KeychainBiometricsService.save(username: cleanUser, password: password, serverURL: api.baseURL)
             }
             Haptics.notify(.success)
@@ -313,7 +223,6 @@ struct LoginView: View {
 
     private func performBiometricLogin() async {
         errorMessage = nil
-        serverStatus = nil
         isLoading = true
         defer { isLoading = false }
 
