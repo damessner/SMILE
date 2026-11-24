@@ -500,6 +500,7 @@ struct SchulalltagView: View {
             }
 
             // Default to the teacher's current lesson class if available
+            let hadSelection = selectedClassId != nil
             if let lessonClassId = loadedTimetable?.currentLesson?.classId,
                self.classes.contains(where: { $0.id == lessonClassId }) {
                 self.selectedClassId = lessonClassId
@@ -507,7 +508,9 @@ struct SchulalltagView: View {
                 self.selectedClassId = self.classes.first?.id
             }
 
-            if let cid = self.selectedClassId {
+            // onChange(of: selectedClassId) already loads when the selection changed,
+            // so only load here when the selection was already set (e.g. "Erneut").
+            if hadSelection, let cid = self.selectedClassId {
                 await loadClassDetails(classId: cid)
             }
         } catch {

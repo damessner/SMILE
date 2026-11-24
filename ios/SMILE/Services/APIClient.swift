@@ -38,7 +38,10 @@ enum APIError: LocalizedError {
 }
 
 /// Validates TLS connections against the bundled SMILE Internal Caddy Root CA (`smile-internal-ca.cer`)
-/// in addition to the system trust store.
+/// in addition to the system trust store — but **only for the host of the currently configured
+/// server**. For every other host the system trust store alone decides, so the school-internal
+/// CA can never vouch for an unrelated server (the previous version added it as an anchor for
+/// every host the app happened to contact).
 final class InternalCATrustDelegate: NSObject, URLSessionDelegate, Sendable {
     private let pinnedRootCert: SecCertificate? = {
         guard let url = Bundle.main.url(forResource: "smile-internal-ca", withExtension: "cer"),
@@ -48,6 +51,13 @@ final class InternalCATrustDelegate: NSObject, URLSessionDelegate, Sendable {
         }
         return cert
     }()
+
+    /// Returns the host of the server the user configured (persisted base URL, or the default).
+    private let trustedHostProvider: @Sendable () -> String?
+
+    init(trustedHostProvider: @escaping @Sendable () -> String?) {
+        self.trustedHostProvider = trustedHostProvider
+    }
 
     func urlSession(
         _ session: URLSession,
@@ -60,7 +70,13 @@ final class InternalCATrustDelegate: NSObject, URLSessionDelegate, Sendable {
             return
         }
 
-        if let rootCert = pinnedRootCert {
+        let challengeHost = challenge.protectionSpace.host?.lowercased()
+        let trustedHost = trustedHostProvider()?.lowercased()
+        let isConfiguredServer = challengeHost != nil && challengeHost == trustedHost
+
+        if let rootCert = pinnedRootCert, isConfiguredServer {
+            // Add the internal root as an *additional* anchor (system anchors stay active)
+            // so publicly trusted certificates keep working for the configured server too.
             SecTrustSetAnchorCertificates(serverTrust, [rootCert] as CFArray)
             SecTrustSetAnchorCertificatesOnly(serverTrust, false)
         }
@@ -78,13 +94,22 @@ final class InternalCATrustDelegate: NSObject, URLSessionDelegate, Sendable {
 final class APIClient: ObservableObject {
     static let shared = APIClient()
 
-    private static let serverURLKey = "smile_server_base_url"
-    static let defaultServerURL = "https://172.16.1.11"
+    // `nonisolated`: the URLSession delegate runs on a background queue and must be able
+    // to read the configured host without hopping to the main actor.
+    private nonisolated static let serverURLKey = "smile_server_base_url"
+    private nonisolated static let lastUsernameKey = "smile_last_username"
+    nonisolated static let defaultServerURL = "https://172.16.1.11"
 
     @Published var baseURL: String {
         didSet {
             UserDefaults.standard.set(baseURL, forKey: Self.serverURLKey)
         }
+    }
+
+    /// Last successfully used login name, prefilled on the login form. Not secret.
+    var lastUsername: String? {
+        get { UserDefaults.standard.string(forKey: Self.lastUsernameKey) }
+        set { UserDefaults.standard.setValue(newValue, forKey: Self.lastUsernameKey) }
     }
 
     @Published var currentUser: User?
@@ -93,48 +118,129 @@ final class APIClient: ObservableObject {
 
     private let demoService = DemoReviewService()
     private let session: URLSession
-    private let trustDelegate = InternalCATrustDelegate()
+    private let trustDelegate: InternalCATrustDelegate
 
-    static func isAllowedServerURL(_ raw: String) -> Bool {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+    /// Normalizes a user-entered server address to `scheme://host[:port]`.
+    ///
+    /// Accepts a bare domain or IP (`smile.schule.intern`, `172.16.1.11`, `172.16.1.11:3000`)
+    /// by assuming `https://`. Plain `http` is only allowed for loopback hosts — the login
+    /// password must never travel in cleartext to a non-loopback server. Any path, query
+    /// or userinfo in the input is dropped: the field is a server *address*, not a URL path.
+    nonisolated static func normalizeServerURL(_ raw: String) -> String? {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if !trimmed.contains("://") {
+            trimmed = "https://" + trimmed
+        }
         guard let url = URL(string: trimmed),
               let scheme = url.scheme?.lowercased(),
-              let host = url.host?.lowercased(),
-              !host.isEmpty else {
-            return false
+              let host = url.host, !host.isEmpty,
+              url.user == nil, url.password == nil else {
+            return nil
         }
-        if scheme == "https" {
-            return true
+        let isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
+        guard scheme == "https" || (scheme == "http" && isLoopback) else {
+            return nil
         }
-        return scheme == "http" && (host == "localhost" || host == "127.0.0.1")
+        var normalized = "\(scheme)://"
+        let lowerHost = host.lowercased()
+        normalized += lowerHost.contains(":") ? "[\(lowerHost)]" : lowerHost
+        if let port = url.port {
+            normalized += ":\(port)"
+        }
+        return normalized
+    }
+
+    nonisolated static func isAllowedServerURL(_ raw: String) -> Bool {
+        normalizeServerURL(raw) != nil
+    }
+
+    /// The persisted server address, or the default when nothing valid is stored.
+    private nonisolated static func persistedBaseURL() -> String {
+        if let saved = UserDefaults.standard.string(forKey: serverURLKey),
+           let normalized = normalizeServerURL(saved) {
+            return normalized
+        }
+        return defaultServerURL
+    }
+
+    private nonisolated static func persistedBaseURLHost() -> String? {
+        URL(string: persistedBaseURL())?.host?.lowercased()
     }
 
     private init() {
-        let saved = UserDefaults.standard.string(forKey: Self.serverURLKey)
-        if let saved, Self.isAllowedServerURL(saved) {
-            self.baseURL = saved.trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        } else {
-            self.baseURL = Self.defaultServerURL
-        }
+        self.baseURL = Self.persistedBaseURL()
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 120
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
         config.httpCookieStorage = HTTPCookieStorage.shared
+        self.trustDelegate = InternalCATrustDelegate(trustedHostProvider: { Self.persistedBaseURLHost() })
         self.session = URLSession(configuration: config, delegate: trustDelegate, delegateQueue: nil)
     }
 
+    /// Sets and persists a new server address. Changing the server invalidates the current
+    /// session: the cookies belong to the old host and any cached user no longer applies.
+    func setBaseURL(_ raw: String) throws {
+        guard let normalized = Self.normalizeServerURL(raw) else {
+            throw APIError.invalidURL
+        }
+        let changed = normalized != baseURL
+        baseURL = normalized // didSet persists to UserDefaults
+        if changed {
+            currentUser = nil
+            isAuthenticated = false
+            isDemoMode = false
+            clearCookies()
+        }
+    }
+
+    private func clearCookies() {
+        if let cookies = HTTPCookieStorage.shared.cookies {
+            for cookie in cookies {
+                HTTPCookieStorage.shared.deleteCookie(cookie)
+            }
+        }
+    }
+
     private func makeURL(_ path: String) throws -> URL {
-        let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        guard Self.isAllowedServerURL(trimmedBase),
-              let url = URL(string: "\(trimmedBase)/api\(path)") else {
+        guard let base = Self.normalizeServerURL(baseURL),
+              let url = URL(string: "\(base)/api\(path)") else {
             throw APIError.invalidURL
         }
         return url
+    }
+
+    /// Unauthenticated liveness probe at the server root (`GET /health`, outside `/api`).
+    /// Used by the login form's "Server testen" so a teacher can verify the entered
+    /// domain before submitting credentials.
+    func checkServer() async throws {
+        guard let base = Self.normalizeServerURL(baseURL),
+              let url = URL(string: "\(base)/health") else {
+            throw APIError.invalidURL
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        req.timeoutInterval = 10
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw APIError.networkError(error)
+        }
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw APIError.serverError(status: status, message: "Server antwortet nicht mit 2xx (\(status)).", code: nil)
+        }
+        struct HealthResponse: Decodable { let status: String }
+        do {
+            _ = try JSONDecoder().decode(HealthResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error.localizedDescription)
+        }
     }
 
     private func perform(
@@ -146,6 +252,9 @@ final class APIClient: ObservableObject {
         var req = URLRequest(url: url)
         req.mainDocumentURL = url
         req.httpMethod = method
+        // The 30-second polling in the views must always see fresh server state;
+        // URLSession would otherwise answer GETs from its heuristic cache.
+        req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
         if let body = body {
@@ -239,9 +348,16 @@ final class APIClient: ObservableObject {
             let res: MeResponse = try await request("/auth/me")
             self.currentUser = res.user
             self.isAuthenticated = true
+        } catch let error as APIError {
+            // Only an explicit 401 ends the session. A network or decoding failure
+            // (server unreachable, captive portal, …) must NOT sign the teacher out:
+            // the session cookie may still be perfectly valid.
+            if case .unauthorized = error {
+                self.currentUser = nil
+                self.isAuthenticated = false
+            }
         } catch {
-            self.currentUser = nil
-            self.isAuthenticated = false
+            // Unknown error: keep the current state for the same reason.
         }
     }
 
@@ -254,11 +370,7 @@ final class APIClient: ObservableObject {
         }
         struct EmptyResponse: Decodable {}
         _ = try? await request("/auth/logout", method: "POST") as EmptyResponse
-        if let cookies = HTTPCookieStorage.shared.cookies {
-            for cookie in cookies {
-                HTTPCookieStorage.shared.deleteCookie(cookie)
-            }
-        }
+        clearCookies()
         self.currentUser = nil
         self.isAuthenticated = false
     }

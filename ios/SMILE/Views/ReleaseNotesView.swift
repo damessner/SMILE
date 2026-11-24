@@ -45,6 +45,39 @@ struct AppRelease: Identifiable {
 enum AppReleases {
     static let all: [AppRelease] = [
         AppRelease(
+            version: "2.1.2",
+            date: "24.11.2026",
+            title: "Server-Adresse direkt beim Login",
+            summary: "Server/Domain, Benutzername und Passwort werden gemeinsam auf dem Gerät gespeichert; der Server lässt sich vorab testen und das Schul-Zertifikat wird nur für die konfigurierte Adresse vertraut.",
+            notes: [
+                AppReleaseNote(
+                    kind: .feature,
+                    title: "Server / Domain als Login-Feld",
+                    text: "Domain oder IP (z. B. smile.schule.intern oder 172.16.1.11) direkt im Anmeldeformular eingeben — https:// wird automatisch ergänzt und die Adresse auf dem Gerät gespeichert. „Server testen“ prüft die Adresse vorab über den Gesundheits-Endpunkt."
+                ),
+                AppReleaseNote(
+                    kind: .feature,
+                    title: "Login-Daten auf dem Gerät gespeichert",
+                    text: "Server, Benutzername und Passwort werden nach erfolgreicher Anmeldung auf dem Gerät hinterlegt. Face ID / Touch ID meldet nur noch gegen den Server an, für den die Zugangsdaten gespeichert wurden."
+                ),
+                AppReleaseNote(
+                    kind: .improvement,
+                    title: "Schul-CA nur für den konfigurierten Server",
+                    text: "Das eingebettete interne CA-Zertifikat wird nur noch für die eingestellte Server-Adresse als zusätzlicher Vertrauensanker verwendet, nicht mehr für beliebige Hosts."
+                ),
+                AppReleaseNote(
+                    kind: .improvement,
+                    title: "Immer aktuelle Serverdaten",
+                    text: "Anfragen umgehen den lokalen Antwort-Cache; ein nicht erreichbarer Server beim Session-Check meldet nicht mehr fälschlich ab."
+                ),
+                AppReleaseNote(
+                    kind: .fix,
+                    title: "Kleinere Korrekturen",
+                    text: "Fehler beim Abschließen eines Time-Outs erscheinen direkt im Dialog; „Ansicht als“-Sitzungen zeigen ein schreibgeschütztes Banner; doppeltes Laden der Klasse beim Start vermieden."
+                ),
+            ]
+        ),
+        AppRelease(
             version: "2.1.1",
             date: "15.11.2026",
             title: "Gesamt-Bewertung, Verhaltensprofil & Sicherheit",

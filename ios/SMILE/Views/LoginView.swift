@@ -3,13 +3,25 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject var api: APIClient
 
+    @State private var serverAddress = ""
     @State private var username = ""
     @State private var password = ""
     @State private var rememberBiometrics = true
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var showServerSettings = false
-    @State private var customURL = ""
+    @State private var serverStatus: String?
+    @State private var isTestingServer = false
+
+    /// The entered server address, normalized (https assumed for bare domains).
+    private var normalizedServer: String? {
+        APIClient.normalizeServerURL(serverAddress)
+    }
+
+    private var canSubmit: Bool {
+        normalizedServer != nil
+            && !username.trimmingCharacters(in: .whitespaces).isEmpty
+            && !password.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
@@ -64,6 +76,63 @@ struct LoginView: View {
                                 }
                                 .padding(12)
                                 .background(Color.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+                            }
+
+                            // Server / Domain — stored on the device together with the login.
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Server / Domain")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                TextField("z. B. smile.schule.intern oder 172.16.1.11", text: $serverAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .keyboardType(.URL)
+                                    .textContentType(.URL)
+                                    .padding(14)
+                                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                    )
+
+                                HStack(spacing: 8) {
+                                    Button("172.16.1.11") {
+                                        serverAddress = "https://172.16.1.11"
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
+                                    Button("smile.schule.intern") {
+                                        serverAddress = "https://smile.schule.intern"
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
+                                    Spacer()
+
+                                    Button {
+                                        Task { await testServer() }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            if isTestingServer {
+                                                ProgressView().controlSize(.mini)
+                                            } else {
+                                                Image(systemName: "wave.3.right")
+                                            }
+                                            Text("Server testen")
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .disabled(normalizedServer == nil || isTestingServer || isLoading)
+                                }
+
+                                if let status = serverStatus {
+                                    Text(status)
+                                        .font(.caption2)
+                                        .foregroundStyle(status.hasPrefix("Server erreichbar") ? .green : .red)
+                                }
                             }
 
                             VStack(alignment: .leading, spacing: 6) {
@@ -129,7 +198,7 @@ struct LoginView: View {
                                 .background(Color.blue, in: RoundedRectangle(cornerRadius: 14))
                                 .foregroundStyle(.white)
                             }
-                            .disabled(isLoading || username.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty)
+                            .disabled(isLoading || !canSubmit)
 
                             if KeychainBiometricsService.hasSavedCredentials {
                                 Button {
@@ -157,88 +226,68 @@ struct LoginView: View {
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
 
-                        // Server Endpoint Configuration
-                        VStack(spacing: 10) {
-                            Button {
-                                withAnimation {
-                                    customURL = api.baseURL
-                                    showServerSettings.toggle()
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "network")
-                                    Text("Server: \(api.baseURL)")
-                                    Image(systemName: showServerSettings ? "chevron.up" : "chevron.down")
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            }
-
-                            if showServerSettings {
-                                VStack(spacing: 10) {
-                                    HStack(spacing: 8) {
-                                        Button("172.16.1.11 (Standard)") {
-                                            api.baseURL = "https://172.16.1.11"
-                                            customURL = api.baseURL
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-
-                                        Button("smile.schule.intern") {
-                                            api.baseURL = "https://smile.schule.intern"
-                                            customURL = api.baseURL
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
-
-                                    HStack {
-                                        TextField("https://172.16.1.11", text: $customURL)
-                                            .textInputAutocapitalization(.never)
-                                            .autocorrectionDisabled()
-                                            .font(.caption)
-                                            .padding(8)
-                                            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-
-                                        Button("Speichern") {
-                                            let trimmed = customURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                                                .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-                                            guard APIClient.isAllowedServerURL(trimmed) else {
-                                                errorMessage = "Ungültige Server-URL. Bitte eine https://-Adresse eingeben."
-                                                return
-                                            }
-                                            errorMessage = nil
-                                            api.baseURL = trimmed
-                                            customURL = trimmed
-                                            showServerSettings = false
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .controlSize(.small)
-                                    }
-                                }
-                                .padding(14)
-                                .frame(maxWidth: 440)
-                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
-                            }
-                        }
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
                 }
             }
         }
+        .task {
+            // Prefill from what is stored on this device: the last used server
+            // address and login name (the password lives in the Keychain).
+            serverAddress = api.baseURL
+            if username.isEmpty, let last = api.lastUsername {
+                username = last
+            }
+        }
+    }
+
+    /// Verifies the entered server address against `GET /health` and persists it on
+    /// the device, so a typo is caught before credentials are submitted.
+    private func testServer() async {
+        guard let normalized = normalizedServer else {
+            serverStatus = "Ungültige Server-Adresse."
+            return
+        }
+        serverStatus = nil
+        errorMessage = nil
+        isTestingServer = true
+        defer { isTestingServer = false }
+
+        do {
+            try api.setBaseURL(normalized)
+            serverAddress = api.baseURL
+            try await api.checkServer()
+            serverStatus = "Server erreichbar: \(api.baseURL)"
+            Haptics.notify(.success)
+        } catch {
+            serverStatus = error.localizedDescription
+            Haptics.notify(.error)
+        }
     }
 
     private func performLogin() async {
         errorMessage = nil
+        serverStatus = nil
+        guard let normalized = normalizedServer else {
+            errorMessage = "Ungültige Server-Adresse. Bitte nur Domain/Host eingeben (z. B. smile.schule.intern oder 172.16.1.11) — https:// wird automatisch ergänzt."
+            return
+        }
         isLoading = true
         defer { isLoading = false }
 
         let cleanUser = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         do {
+            // Persist the server address on the device; switching the server drops the
+            // old session (cookies belong to the old host).
+            try api.setBaseURL(normalized)
+            serverAddress = api.baseURL
             _ = try await api.login(username: cleanUser, password: password)
-            if rememberBiometrics {
-                KeychainBiometricsService.save(username: cleanUser, password: password)
+            // Store the login on this device: username + server in UserDefaults,
+            // password in the biometry-protected Keychain (scoped to this server).
+            api.lastUsername = cleanUser
+            if rememberBiometrics, !api.isDemoMode {
+                KeychainBiometricsService.save(username: cleanUser, password: password, serverURL: api.baseURL)
             }
             Haptics.notify(.success)
         } catch {
@@ -249,13 +298,22 @@ struct LoginView: View {
 
     private func performBiometricLogin() async {
         errorMessage = nil
+        serverStatus = nil
         isLoading = true
         defer { isLoading = false }
 
         do {
             let creds = try await KeychainBiometricsService.unlockWithBiometrics()
+            // Replay the stored password only against the server it was saved for.
+            if let savedServer = creds.serverURL,
+               let normalized = APIClient.normalizeServerURL(savedServer),
+               normalized != api.baseURL {
+                try api.setBaseURL(normalized)
+                serverAddress = normalized
+            }
             username = creds.username
             _ = try await api.login(username: creds.username, password: creds.password)
+            api.lastUsername = creds.username
             Haptics.notify(.success)
         } catch {
             Haptics.notify(.error)
@@ -337,7 +395,7 @@ struct ForcePasswordChangeView: View {
 
         do {
             _ = try await api.changePassword(currentPassword: currentPassword, newPassword: newPassword)
-            KeychainBiometricsService.save(username: user.username, password: newPassword)
+            KeychainBiometricsService.save(username: user.username, password: newPassword, serverURL: api.baseURL)
             Haptics.notify(.success)
         } catch {
             Haptics.notify(.error)

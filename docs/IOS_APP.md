@@ -1,6 +1,6 @@
 # SMILE — Native iOS / iPadOS App (`ios/`)
 
-Die native SMILE App für **iPadOS & iOS (ab Version 17.0)** ist in **Swift & SwiftUI** geschrieben und greift direkt auf die SMILE REST-API (`https://172.16.1.11` bzw. `https://smile.schule.intern`) zu. Aktuelle App-Version: **2.1.1**.
+Die native SMILE App für **iPadOS & iOS (ab Version 17.0)** ist in **Swift & SwiftUI** geschrieben und greift direkt auf die SMILE REST-API (`https://172.16.1.11` bzw. `https://smile.schule.intern`) zu. Aktuelle App-Version: **2.1.2**.
 
 Die App ist **kein Web-Wrapper**: keine `WKWebView`, keine gebündelten HTML/JS-Dateien. Alle Daten laufen über `URLSession` gegen dieselben `/api`-Endpunkte wie die Web-App.
 
@@ -9,10 +9,12 @@ Die App ist **kein Web-Wrapper**: keine `WKWebView`, keine gebündelten HTML/JS-
 ## Funktionsumfang für Lehrpersonen
 
 1. **Anmeldung & Sicherheit (`LoginView` & `KeychainBiometricsService`):**
+   - **Server-Adresse als Login-Feld (ab 2.1.2):** Die Anmeldung besteht aus **Server/Domain, Benutzername und Passwort**. Eine bare Domain (`smile.schule.intern`, `172.16.1.11:3000`) wird automatisch um `https://` ergänzt; Klartext-`http` ist nur für Loopback-Adressen erlaubt. „Server testen“ prüft die Adresse vorab über `GET /health`.
+   - **Alles auf dem Gerät gespeichert:** Server-Adresse und letzter Benutzername liegen in `UserDefaults`, das Passwort biometrie-geschützt in der iOS Keychain — zusammen mit der Server-Adresse, für die es gilt. Face ID / Touch ID meldet daher nur gegen den Server an, für den die Zugangsdaten gespeichert wurden; beim Wechsel der Adresse wird die Sitzung zurückgesetzt.
    - **Face ID / Touch ID:** Nach der ersten Anmeldung werden die Zugangsdaten verschlüsselt in der iOS Keychain gespeichert und können im Unterricht per Face ID oder Touch ID entsperrt werden.
-   - **Integriertes Schul-Zertifikat (`InternalCATrustDelegate`):** Das interne Caddy Root-CA-Zertifikat (`smile-internal-ca.cer`) ist direkt im App-Bundle eingebettet und wird per `SecTrustSetAnchorCertificates` validiert. Dadurch vertraut die App `https://172.16.1.11` und `https://smile.schule.intern` automatisch.
+   - **Integriertes Schul-Zertifikat (`InternalCATrustDelegate`):** Das interne Caddy Root-CA-Zertifikat (`smile-internal-ca.cer`) ist direkt im App-Bundle eingebettet und wird per `SecTrustSetAnchorCertificates` validiert — allerdings **nur für den Host der konfigurierten Server-Adresse**, nicht für beliebige Hosts. Dadurch vertraut die App `https://172.16.1.11` und `https://smile.schule.intern` automatisch, sobald sie als Server eingetragen sind.
    - **Start-Passwort-Wechsel (`ForcePasswordChangeView`):** Unterstützt den verpflichtenden Erstpasswort-Wechsel direkt in der App.
-   - **Session-Cookies:** Authentifizierung wie im Browser über `HTTPCookieStorage`; bei `401` wird die Sitzung geräumt.
+   - **Session-Cookies:** Authentifizierung wie im Browser über `HTTPCookieStorage`; bei `401` wird die Sitzung geräumt, bei reinen Netzwerkfehlern bleibt eine bestehende Sitzung bestehen. Alle Anfragen umgehen den URLSession-Cache (`reloadIgnoringLocalCacheData`), damit die 30-Sekunden-Aktualisierung frische Daten sieht.
 
 2. **Schulalltag (`SchulalltagView`):**
    - **Automatische Stundenerkennung:** Liest `/api/timetable/current` aus, zeigt die laufende Unterrichtsstunde (Stunde, Uhrzeit, Klasse, Fach, Raum) als Banner an und wählt automatisch die aktuelle Klasse vor.
@@ -97,7 +99,7 @@ Bewusst noch im Web, weil dort Konferenz- und Verwaltungs-Workflows liegen:
 - Konferenzmodus / Notenbeschluss und Gesamtexport
 - Schülerverwaltung, Konten- und Wiederherstellungs-Administration
 - Offline-Zwischenspeicher und Push-Benachrichtigungen
-- MDM-vorbelegte Server-Adresse (statt manueller Eingabe)
+- MDM-vorbelegte Server-Adresse (die manuelle Eingabe im Login-Formular ist bereits umgesetzt; MDM-Vorbelegung bleibt als Ergänzung offen)
 
 ---
 

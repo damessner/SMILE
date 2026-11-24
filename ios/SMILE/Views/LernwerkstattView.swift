@@ -12,6 +12,7 @@ struct LernwerkstattView: View {
 
     @State private var resolvingItem: TimeoutIncident?
     @State private var resolutionNote = ""
+    @State private var resolveError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +77,14 @@ struct LernwerkstattView: View {
                     Section("Rückmeldung aus der Lernwerkstatt (optional)") {
                         TextField("z. B. Arbeitsauftrag ruhig erledigt…", text: $resolutionNote, axis: .vertical)
                             .lineLimit(3...5)
+                    }
+
+                    if let resolveError {
+                        Section {
+                            Text(resolveError)
+                                .foregroundStyle(.red)
+                                .font(.footnote)
+                        }
                     }
                 }
                 .navigationTitle("Zurück in die Klasse")
@@ -167,6 +176,7 @@ struct LernwerkstattView: View {
                     Button {
                         Haptics.impact(.medium)
                         resolutionNote = ""
+                        resolveError = nil
                         resolvingItem = item
                     } label: {
                         Label("Abschließen", systemImage: "checkmark.circle.fill")
@@ -204,6 +214,7 @@ struct LernwerkstattView: View {
     }
 
     private func completeResolve(_ item: TimeoutIncident) async {
+        resolveError = nil
         do {
             try await api.resolveTimeout(id: item.id, resolutionNote: resolutionNote)
             Haptics.notify(.success)
@@ -211,7 +222,9 @@ struct LernwerkstattView: View {
             await loadData()
         } catch {
             Haptics.notify(.error)
-            errorMessage = error.localizedDescription
+            // Keep the sheet open and show the reason inside it; the banner behind
+            // the sheet is not visible while the modal is up.
+            resolveError = error.localizedDescription
         }
     }
 

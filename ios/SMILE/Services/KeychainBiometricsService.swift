@@ -10,6 +10,30 @@ enum KeychainBiometricsService {
     struct SavedCredentials: Codable {
         let username: String
         let password: String
+        /// The server address these credentials belong to. Saved biometric logins must
+        /// never be replayed against a different server, so the login flow compares this
+        /// against the configured base URL before using the stored password.
+        let serverURL: String?
+
+        enum CodingKeys: String, CodingKey {
+            case username
+            case password
+            case serverURL
+        }
+
+        init(username: String, password: String, serverURL: String? = nil) {
+            self.username = username
+            self.password = password
+            self.serverURL = serverURL
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            username = try container.decode(String.self, forKey: .username)
+            password = try container.decode(String.self, forKey: .password)
+            // Entries saved before the server URL was recorded decode with nil.
+            serverURL = try container.decodeIfPresent(String.self, forKey: .serverURL)
+        }
     }
 
     static var hasSavedCredentials: Bool {
@@ -43,8 +67,8 @@ enum KeychainBiometricsService {
         }
     }
 
-    static func save(username: String, password: String) {
-        guard let data = try? JSONEncoder().encode(SavedCredentials(username: username, password: password)) else {
+    static func save(username: String, password: String, serverURL: String? = nil) {
+        guard let data = try? JSONEncoder().encode(SavedCredentials(username: username, password: password, serverURL: serverURL)) else {
             return
         }
         let deleteQuery: [String: Any] = [

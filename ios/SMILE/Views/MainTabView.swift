@@ -73,6 +73,20 @@ struct MainTabView: View {
                 .tag(AppTab.alleKlassen)
             }
         }
+        .safeAreaInset(edge: .top) {
+            if user.viewAs == true {
+                HStack(spacing: 8) {
+                    Image(systemName: "eye.fill")
+                    Text("Ansicht als \(user.actUsername ?? user.username) — schreibgeschützt.")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.30))
+            }
+        }
         .sheet(isPresented: $showAccountSheet) {
             AccountSheetView(user: user)
                 .environmentObject(api)
