@@ -12,80 +12,21 @@ in **App Review Information → Demo video**, and fill the demo credentials in *
 ## 1. Final Notes text (App Review Information → Notes) — copy verbatim
 
 ```text
-Thank you for the detailed feedback. All requested information is provided below; a screen
-recording is attached in the "Demo video" field of this App Review Information section.
+Thank you — all requested information is below; a screen recording is attached as the demo video (physical iPad, latest iPadOS, starts at app launch, shows login and the typical flow: Schulalltag -> issue card -> pupil history -> Lernwerkstatt -> Schulstatistik).
 
-1. SCREEN RECORDING
-The attached recording (screenrecording.mp4, H.264, captured on a physical iPad running the
-latest iPadOS) begins with launching the app and shows the typical user flow end to end:
-app launch -> login with the demo account below -> "Schulalltag" class view with pupils ->
-issue a green card -> open a pupil's history -> "Lernwerkstatt" (resolve a time-out) ->
-"Schulstatistik" (KPIs, distribution charts, pupil table).
-Flows that do not exist in this app: there is NO in-app account registration and NO in-app
-account deletion — teacher accounts are provisioned and deprovisioned centrally by the
-school's administrator on the school's own server, so there is no sign-up or account-deletion
-flow to demonstrate. There is NO user-generated content visible across users: all entries
-(cards, notes, evaluations) are visible only to authenticated staff of the school on the
-school's server, so content reporting/blocking mechanisms do not apply. There is NO paid
-content or feature.
+1. RECORDING: see attached demo video. This app has NO in-app sign-up and NO account deletion — teacher accounts are provisioned/deprovisioned centrally by the school admin on the school's own server. There is NO user-generated content visible across users: entries (cards, notes, evaluations) are visible only to authenticated school staff on the school server, so reporting/blocking mechanisms do not apply. NO paid content or features.
 
-2. PURPOSE AND TARGET AUDIENCE
-SMILE is the internal companion app for the teaching staff of Mittelschule Telfs Dr. Aloys
-Weissenbach, a public middle school in Telfs, Tyrol, Austria. It replaces paper-based,
-non-auditable classroom assessment and behaviour tracking: teachers record competence ranks,
-behaviour cards (green/yellow/red), time-outs and cool-downs in real time during lessons, and
-the same data feeds conference preparation and school statistics. The value is an always
-current, auditable class overview on the iPad while teaching. Target audience: exclusively
-the school's own teaching staff; the app requires a staff account provisioned by the school.
+2. PURPOSE / AUDIENCE: SMILE is the internal app for the teaching staff of Mittelschule Telfs Dr. Aloys Weissenbach (Telfs, Tyrol, Austria). It replaces paper-based, non-auditable classroom assessment and behaviour tracking: teachers record competence ranks, behaviour cards (green/yellow/red), time-outs and cool-downs in real time; the same data feeds conferences and school statistics. Value: a current, auditable class overview on the iPad while teaching. Audience: school staff only; a school-provisioned account is required.
 
-3. SETUP INSTRUCTIONS AND DEMO CREDENTIALS
-Demo account (built-in offline demo mode of the app — no school server is contacted and no
-real pupil data is involved):
-  Username: apple-review
-  Password: SmileReview2026!
-Steps: open the app -> the "Server / Domain" field can be left empty (the demo login works
-without any server; alternatively enter any https address) -> enter the demo username and
-password -> tap "Anmelden". Main features to try: Schulalltag (class 3a appears, issue a
-card with the colored buttons, tap a pupil for the history), Lernwerkstatt (active
-time-outs, "Abschließen"), Schulstatistik (totals, charts, searchable pupil table).
-Face ID / Touch ID sign-in is additionally available on the device after the first login.
-Real staff accounts exist but contain real pupil data and are intentionally not shared.
+3. SETUP / DEMO CREDENTIALS: Username: apple-review, Password: SmileReview2026! — a built-in offline demo mode with fabricated data; no server needed (the "Server / Domain" field can stay empty). After login try: Schulalltag (issue a card, open a pupil's history), Lernwerkstatt (resolve a time-out), Schulstatistik. Face ID / Touch ID is available after the first login. Real staff accounts contain real pupil data and are intentionally not shared.
 
-4. EXTERNAL SERVICES / TOOLS / PLATFORMS USED FOR CORE FUNCTIONALITY
-- The school's own SMILE REST API (Fastify + PostgreSQL on a school-owned Linux container in
-  Austria) — the only backend the app talks to, over HTTPS. The server address is entered
-  manually in the login form.
-- TLS is validated against the school's internal Caddy root CA bundled in the app (trusted
-  only for the configured server host, in addition to the system trust store).
-- Authentication: school staff accounts via an httpOnly session cookie; on-device credential
-  storage in the iOS Keychain protected by Face ID / Touch ID.
-- NO third-party SDKs, NO analytics or tracking, NO advertising, NO payment processors, NO AI
-  services, NO external data providers. Apple services (App Store Connect / TestFlight) are
-  used only to distribute the build, not for app functionality.
+4. EXTERNAL SERVICES: only the school's own SMILE REST API (Fastify + PostgreSQL on a school-owned server in Austria) over HTTPS; the server address is entered manually in the login form. TLS is validated against the school's internal Caddy root CA bundled in the app (trusted only for the configured host, plus the system trust store). Auth via httpOnly session cookie; credentials stored on-device in the iOS Keychain protected by Face ID / Touch ID. NO third-party SDKs, analytics, ads, payment processors, AI services or external data providers. Apple services (App Store Connect / TestFlight) are used for distribution only.
 
-5. REGIONAL DIFFERENCES
-None. The app is German-language (de-AT) and used exclusively by one school in Austria. All
-data stays on the school's own server in Austria; the app behaves identically in every region.
+5. REGIONAL DIFFERENCES: none. The app is German-language (de-AT), used by one school in Austria; all data stays on the school's server in Austria; identical behavior in all regions.
 
-6. HIGHLY REGULATED INDUSTRY / AUTHORIZATION
-The app processes education records of minors, which is why it is a closed, staff-only
-system: the app and all data belong to the school itself. Mittelschule Telfs Dr. Aloys
-Weissenbach (Telfs, Austria) is the data controller under the EU GDPR; the school's Apple
-Developer account (Team ID ZC5QZ8N67B) publishes the app for its own staff. No app data is
-processed on Apple's infrastructure. The privacy policy is linked in the App Privacy section
-of this app record. Contact: smile@ms-telfs.at.
+6. REGULATED INDUSTRY / AUTHORIZATION: the app processes minors' education records, hence the closed staff-only design. The school is the GDPR data controller and publishes the app from its own developer account (Team ID ZC5QZ8N67B); no app data is processed on Apple infrastructure; the privacy policy is linked in App Privacy. Contact: smile@ms-telfs.at.
 
-ADDITIONAL POINTS
-- In-App Purchase: none (Guideline 3.1.1 not applicable).
-- Screenshots show the app actually in use (class view, statistics), not a login or splash
-  screen (Guideline 2.3.3).
-- Build 8 was QA-tested on physical iPads via TestFlight before this resubmission
-  (Guideline 2.1 bugs/crashes) and is compiled with the iOS 27 SDK / Xcode 27 (ITMS-90725).
-- Guideline 3.2: SMILE is intended solely for the employees of one specific organization
-  (the school). If you prefer, we can switch this app's availability to "Custom Apps"
-  (Apple Business Manager), which offers it only to our organization and never lists it
-  publicly; alternatively we distribute it as an MDM/Intune line-of-business app. If a
-  public listing is acceptable, the demo account above provides full access to review.
+ALSO: no In-App Purchase (Guideline 3.1.1 n/a); screenshots show the app in use, not a login screen (2.3.3); build 8 was QA-tested on physical iPads via TestFlight and compiled with the iOS 27 SDK / Xcode 27 (ITMS-90725 resolved). Guideline 3.2: SMILE is intended solely for employees of one specific organization (the school) — if you prefer, we can switch availability to Custom Apps (Apple Business Manager) or distribute via Intune as an LOB app; if a public listing is acceptable, the demo account above gives full access for review.
 ```
 
 ## 2. Where each piece goes in App Store Connect
