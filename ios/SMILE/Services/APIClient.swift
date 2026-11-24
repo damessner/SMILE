@@ -70,9 +70,9 @@ final class InternalCATrustDelegate: NSObject, URLSessionDelegate, Sendable {
             return
         }
 
-        let challengeHost = challenge.protectionSpace.host?.lowercased()
+        let challengeHost = challenge.protectionSpace.host.lowercased()
         let trustedHost = trustedHostProvider()?.lowercased()
-        let isConfiguredServer = challengeHost != nil && challengeHost == trustedHost
+        let isConfiguredServer = trustedHost != nil && challengeHost == trustedHost
 
         if let rootCert = pinnedRootCert, isConfiguredServer {
             // Add the internal root as an *additional* anchor (system anchors stay active)
