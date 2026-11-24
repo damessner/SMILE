@@ -11,7 +11,10 @@ on:
 jobs:
   build-and-deploy:
     name: Build, Sign & Upload to TestFlight
-    runs-on: macos-26
+    # macos-27-arm64 ships Xcode 27 (iOS 27 SDK) as default. Apple rejects uploads
+    # built with older SDKs (ITMS-90725: from April 2027 the iOS 27 SDK / Xcode 27
+    # is required for App Store Connect), so do not build on macos-26 anymore.
+    runs-on: macos-27-arm64
     defaults:
       run:
         working-directory: ios
@@ -19,6 +22,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Select latest installed Xcode and print SDK version
+        run: |
+          XCODE_APP="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          echo "Using $XCODE_APP"
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i 'iphonesimulator' | tail -3
 
       - name: Generate Xcode project with XcodeGen
         run: |
