@@ -120,12 +120,48 @@ final class APIClient: ObservableObject {
     private let session: URLSession
     private let trustDelegate: InternalCATrustDelegate
 
+    /// DDNS providers for which plain `http://` is allowed when the user types the scheme
+    /// explicitly. Must stay in sync with the `NSExceptionDomains` ATS exceptions in
+    /// `Info.plist` — without the matching plist entry iOS blocks the insecure load even
+    /// though the app accepts the address.
+    nonisolated static let insecureHTTPDomainSuffixes = [
+        "ddns.net", "dpdns.org", "duckdns.org", "dynu.net",
+        "myfritz.net", "no-ip.com", "no-ip.org", "spdyn.de",
+    ]
+
+    /// True for loopback, `.local`, private/ULA IP ranges and the whitelisted DDNS domains.
+    nonisolated static func isPrivateOrLocalHost(_ host: String) -> Bool {
+        let h = host.lowercased()
+        if h == "localhost" || h == "127.0.0.1" || h == "::1" || h.hasSuffix(".local") {
+            return true
+        }
+        // IPv6 link-local / unique-local
+        if h.hasPrefix("fe80") || h.hasPrefix("fc") || h.hasPrefix("fd") {
+            return true
+        }
+        for suffix in insecureHTTPDomainSuffixes where h == suffix || h.hasSuffix("." + suffix) {
+            return true
+        }
+        // IPv4 private ranges (10/8, 172.16/12, 192.168/16, 169.254/16)
+        let parts = h.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return false }
+        let a = parts[0], b = parts[1]
+        return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || (a == 169 && b == 254)
+    }
+
+    nonisolated static func isLoopbackHost(_ host: String) -> Bool {
+        let h = host.lowercased()
+        return h == "localhost" || h == "127.0.0.1" || h == "::1"
+    }
+
     /// Normalizes a user-entered server address to `scheme://host[:port]`.
     ///
     /// Accepts a bare domain or IP (`smile.schule.intern`, `172.16.1.11`, `172.16.1.11:3000`)
-    /// by assuming `https://`. Plain `http` is only allowed for loopback hosts — the login
-    /// password must never travel in cleartext to a non-loopback server. Any path, query
-    /// or userinfo in the input is dropped: the field is a server *address*, not a URL path.
+    /// by assuming `https://`. Plain `http` requires the scheme to be typed explicitly
+    /// (`http://smiletelfs.dpdns.org:3000`) and is only accepted for private/local hosts
+    /// and the whitelisted DDNS domains — the login password must not travel in cleartext
+    /// to an arbitrary internet host. Any path, query or userinfo in the input is dropped:
+    /// the field is a server *address*, not a URL path.
     nonisolated static func normalizeServerURL(_ raw: String) -> String? {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -138,8 +174,7 @@ final class APIClient: ObservableObject {
               url.user == nil, url.password == nil else {
             return nil
         }
-        let isLoopback = host == "localhost" || host == "127.0.0.1" || host == "::1"
-        guard scheme == "https" || (scheme == "http" && isLoopback) else {
+        guard scheme == "https" || (scheme == "http" && isPrivateOrLocalHost(host)) else {
             return nil
         }
         var normalized = "\(scheme)://"

@@ -53,7 +53,7 @@ enum AppReleases {
                 AppReleaseNote(
                     kind: .feature,
                     title: "Server / Domain als Login-Feld",
-                    text: "Domain oder IP (z. B. smile.schule.intern oder 172.16.1.11) direkt im Anmeldeformular eingeben — https:// wird automatisch ergänzt und die Adresse auf dem Gerät gespeichert. „Server testen“ prüft die Adresse vorab über den Gesundheits-Endpunkt."
+                    text: "Domain oder IP (z. B. smile.schule.intern oder 172.16.1.11) direkt im Anmeldeformular eingeben — https:// wird automatisch ergänzt und die Adresse auf dem Gerät gespeichert. „Server testen“ prüft die Adresse vorab über den Gesundheits-Endpunkt. Explizit eingegebenes http:// (z. B. http://smiletelfs.dpdns.org:3000) ist für lokale/private Adressen und DDNS-Anbieter erlaubt und wird mit einem Warnhinweis versehen."
                 ),
                 AppReleaseNote(
                     kind: .feature,
@@ -74,6 +74,11 @@ enum AppReleases {
                     kind: .fix,
                     title: "Kleinere Korrekturen",
                     text: "Fehler beim Abschließen eines Time-Outs erscheinen direkt im Dialog; „Ansicht als“-Sitzungen zeigen ein schreibgeschütztes Banner; doppeltes Laden der Klasse beim Start vermieden."
+                ),
+                AppReleaseNote(
+                    kind: .fix,
+                    title: "HTTP-Server über DDNS erreichbar",
+                    text: "Explizit als http:// eingegebene Adressen (z. B. http://smiletelfs.dpdns.org:3000) werden akzeptiert, sofern sie lokal/privat oder ein unterstützter DDNS-Dienst sind; passende ATS-Ausnahmen in der Info.plist."
                 ),
             ]
         ),

@@ -84,7 +84,7 @@ struct LoginView: View {
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
 
-                                TextField("z. B. smile.schule.intern oder 172.16.1.11", text: $serverAddress)
+                                TextField("z. B. smile.schule.intern oder http://smiletelfs.dpdns.org:3000", text: $serverAddress)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .keyboardType(.URL)
@@ -109,6 +109,12 @@ struct LoginView: View {
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
 
+                                    Button("smiletelfs.dpdns.org") {
+                                        serverAddress = "https://smiletelfs.dpdns.org"
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
                                     Spacer()
 
                                     Button {
@@ -126,6 +132,15 @@ struct LoginView: View {
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
                                     .disabled(normalizedServer == nil || isTestingServer || isLoading)
+                                }
+
+                                if let normalized = normalizedServer,
+                                   normalized.hasPrefix("http://"),
+                                   let host = URL(string: normalized)?.host,
+                                   !APIClient.isLoopbackHost(host) {
+                                    Label("Achtung: unverschlüsselte HTTP-Verbindung — Zugangsdaten werden im Klartext übertragen. Nur im vertrauenswürdigen Netz verwenden.", systemImage: "exclamationmark.triangle.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
                                 }
 
                                 if let status = serverStatus {
@@ -270,7 +285,7 @@ struct LoginView: View {
         errorMessage = nil
         serverStatus = nil
         guard let normalized = normalizedServer else {
-            errorMessage = "Ungültige Server-Adresse. Bitte nur Domain/Host eingeben (z. B. smile.schule.intern oder 172.16.1.11) — https:// wird automatisch ergänzt."
+            errorMessage = "Ungültige Server-Adresse. Domain oder Host eingeben (z. B. smile.schule.intern, 172.16.1.11 oder http://smiletelfs.dpdns.org:3000). Ohne „http(s)://“ wird https:// angenommen; reines http:// ist nur für lokale/private Adressen und DDNS-Anbieter erlaubt."
             return
         }
         isLoading = true
