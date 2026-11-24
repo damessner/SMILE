@@ -18,7 +18,7 @@ import {
 } from './schema.js';
 import { adminBootstrapPassword, config, initialBootstrapPassword } from '../config.js';
 import { safeErrorLogFields } from '../lib/log-safety.js';
-import { invalidateTeacherCache } from '../lib/guards.js';
+import { invalidateTeacherCache, kvFieldMatches } from '../lib/guards.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -192,10 +192,13 @@ async function seed() {
   const bootstrapPassword = initialBootstrapPassword();
   const adminPassword = adminBootstrapPassword();
 
-  const homeroomNames = new Set<string>();
+  // Raw homeroom-teacher fields exactly as the WebUntis export stores them
+  // ("Alfred Zimmermann (ZIA) / Maria Meier (MED)", ...). Matched per teacher
+  // below with kvFieldMatches — never with a substring test.
+  const homeroomFields = new Set<string>();
   for (const c of classMap.values()) {
-    if (c.head1) homeroomNames.add(c.head1);
-    if (c.head2) homeroomNames.add(c.head2);
+    if (c.head1) homeroomFields.add(c.head1);
+    if (c.head2) homeroomFields.add(c.head2);
   }
 
   let created = 0;
@@ -224,7 +227,11 @@ async function seed() {
 
   for (const t of teacherMap.values()) {
     const username = t.shortName.toLowerCase();
-    const isHead = Array.from(homeroomNames).some((h) => h.includes(t.shortName));
+    // The same matcher the runtime KV check uses (guards.ts kvFieldMatches).
+    // The previous substring check promoted any teacher whose short name
+    // happened to occur inside an unrelated homeroom field (short name "Z"
+    // inside "Karin Ziegler"), seeding a plain teacher as head_teacher.
+    const isHead = Array.from(homeroomFields).some((field) => kvFieldMatches(field, t));
     const role = isHead ? 'head_teacher' : 'teacher';
 
     const [existing] = await db.select().from(users).where(eq(users.username, username)).limit(1);

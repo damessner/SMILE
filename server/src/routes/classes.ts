@@ -22,6 +22,7 @@ import {
   getClassAccess,
   getGlobalAccess,
   isSchoolLeader,
+  LW_CLASS_ID,
   parseIdParam,
   requireAuth,
   type ClassAccess,
@@ -239,10 +240,20 @@ export const classRoutes: FastifyPluginAsync = async (fastify) => {
       aggregation: config.rankAggregation,
     };
 
-    if (cid === 999) {
-      const [cls] = await db.select().from(schoolClasses).where(eq(schoolClasses.id, 999)).limit(1);
+    if (cid === LW_CLASS_ID) {
+      // The Lernwerkstatt room shell is not public. The same rule as the
+      // WebSocket room 999 applies: the duty teacher for the running period
+      // or school leadership may read it; everyone else gets 403. The branch
+      // previously returned this payload to any authenticated caller before
+      // any access check ran.
+      const lwAccess = await getClassAccess(user, cid);
+      if (!lwAccess.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
+      if (!lwAccess.canRead) {
+        return reply.status(403).send({ error: 'Keine Zugriffsberechtigung für die Schüler dieser Klasse' });
+      }
+      const [cls] = await db.select().from(schoolClasses).where(eq(schoolClasses.id, cid)).limit(1);
       return reply.send({
-        class: cls ?? { id: 999, name: 'LW', grade: 0 },
+        class: cls ?? { id: cid, name: 'LW', grade: 0 },
         submissionDeadline: config.submissionDeadline.toISOString(),
         rubricConfig,
         pupils: [],

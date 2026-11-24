@@ -133,8 +133,10 @@ export const evaluations = pgTable('evaluations', {
   classId: integer('class_id').references(() => schoolClasses.id).notNull(),
   // The column Invariant 1 in IF_YOU_ARE_AN_AI.md governs: canonical WebUntis codes
   // only ("D", "E", "M", "BO", "PH", ...), never a full German name or a legacy alias
-  // ("SD", "SE", "SM"). No CHECK constraint here, and normalizeSubject() coerces rather
-  // than rejects, so a write path must validate the code itself — none does yet.
+  // ("SD", "SE", "SM"). There is no CHECK constraint, so every write path must validate
+  // with normalizeKnownSubject() before inserting (all of them do — evaluations.ts
+  // routes and the WS UPDATE_RATING path); normalizeSubject() stays a read-time
+  // coercer for legacy rows and must never be persisted from a write.
   subjectCode: text('subject_code').notNull(),
   teacherId: integer('teacher_id').references(() => teachers.id).notNull(),
   proposedStatus: text('proposed_status'), // "Lehrling", "Geselle", "Meister"

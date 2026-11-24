@@ -175,13 +175,13 @@ export function AppHeader({
             </span>
           </div>
 
-          {/* Conference Button (For Headmasters MED, SLC, Admin AND Class KVs) */}
+          {/* Conference Button (school leadership only: MED, SLC, admin — matches server canRunConference) */}
           {canAccessConference && (
             <button
               data-tour="conference-button"
               onClick={() => setConferenceModalOpen(true)}
               className="min-h-[40px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95"
-              title="Klassenkonferenz & Notenbeschluss im Vollbildmodus (Schulleitung & Klassenvorstände)"
+              title="Klassenkonferenz & Notenbeschluss im Vollbildmodus (Schulleitung & Administrator)"
             >
               <Scale className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden xl:inline whitespace-nowrap">Konferenz-Modus</span>

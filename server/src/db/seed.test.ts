@@ -36,4 +36,14 @@ describe('seed account policy', () => {
   it('does not depend on the reverted per-account credentials file', () => {
     expect(source).not.toMatch(/seed-credentials/);
   });
+
+  it('detects homeroom teachers with kvFieldMatches, never a substring test', () => {
+    // A bare `field.includes(shortName)` would seed any teacher whose short
+    // name occurs inside an unrelated homeroom field as head_teacher. The seed
+    // must use the same exact/parenthesised/separator matcher as the runtime
+    // KV check in guards.ts.
+    expect(source).not.toMatch(/\.includes\(t\.shortName\)/);
+    expect(source).toMatch(/kvFieldMatches\(field, t\)/);
+    expect(source).toMatch(/import \{[^}]*kvFieldMatches[^}]*\} from '\.\.\/lib\/guards\.js'/);
+  });
 });

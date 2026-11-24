@@ -312,6 +312,48 @@ Safeguards that remain in force:
 - The pupil-in-class check still runs on every write; a forged `pupilId`/`classId` pair is rejected.
 "Alle Klassen" does **not** widen ratings, conference rights, roster/pupil management or WebUntis scope; those remain class-scoped through `getClassAccess`/`getGlobalAccess`.
 
+## 2026-11-24 review pass
+
+Full re-review of `main` at `911d26f` (server security/correctness, client
+state/live-sync, seed/import scripts, deploy tooling) after the 2026-11-09
+review. The items that review had left open were verified against the current
+code first: the WebSocket `UPDATE_RATING` write now runs inside one transaction
+that takes `acquireClassRoundLock` and re-reads the lock (the §2.1 race is
+closed), the retroactive Time-Out duplicate is backed by the partial unique
+index `timeout_incidents_retroactive_slot_uidx` plus an in-transaction advisory
+lock (the §2.2 TOCTOU is closed), `/batch-default` refuses submitted ballots
+inside its transaction, and the deferred client items (WebUntisView request
+generation guards and event-modal class match, `useClassData` auto-detect
+yank, conference-modal a11y) are all present. No change was made to those.
+
+Fixed in this pass:
+
+- **Seed homeroom roles used a substring match.** `db/seed.ts` decided the
+  `head_teacher` role with `field.includes(t.shortName)` — the exact bug class
+  `kvFieldMatches()` was written to kill at runtime — so a teacher whose short
+  name occurs inside an unrelated homeroom field (short name `Z` inside
+  "Karin Ziegler") was seeded as `head_teacher`. The seed now matches with
+  `kvFieldMatches()`, the same predicate `getClassAccess` uses, pinned by a
+  source test in `seed.test.ts`.
+- **`GET /api/classes/999/pupils` answered any authenticated caller before any
+  access check.** The Lernwerkstatt room shell (class row, deadline, rubric
+  config) is now gated by `getClassAccess(user, 999).canRead` — the same rule
+  the WebSocket room 999 already enforced — so only the duty teacher for the
+  running period and school leadership get it. Behavioral test in
+  `classes.test.ts`.
+- **Stale authorization copy.** The conference lock/vote 403 messages still
+  named "Klassenvorstände" as permitted callers although `canRunConference`
+  has been leadership-plus-admin only since 2026-10-12; a future edit trusting
+  the message could re-widen the gate. Messages and the summary doc comment
+  now state the actual rule (same fix for the conference button title in
+  `AppHeader.tsx`), and the stale `schema.ts` comment claiming no write path
+  validates subject codes was corrected.
+
+Verification: `npm run typecheck` clean (server + client); server suite 818
+passed / 32 skipped and client suite 317 passed under
+`SKIP_POSTGRES_INTEGRATION=true` (the skipped set is the PostgreSQL integration
+suite, still owed a CI run with `TEST_DATABASE_URL`).
+
 ## Known limitations
 
 - **HTTP port 3000 during transition.** TLS is available through Caddy on port 443

@@ -133,8 +133,11 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     const access = await getClassAccess(user, cid);
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRunConference) {
+      // canRunConference is school leadership (SLC, MED) plus admin only — see
+      // guards.getClassAccess. Do not widen the message to include homeroom
+      // heads; that would invite re-widening the gate.
       return reply.status(403).send({
-        error: 'Nur Schulleitung (MED, SLC) oder Klassenvorstände können die Abstimmung sperren',
+        error: 'Nur die Schulleitung (MED, SLC) oder der Administrator können die Abstimmung sperren.',
       });
     }
 
@@ -256,7 +259,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRunConference) {
       return reply.status(403).send({
-        error: 'Nur Schulleitung (MED, SLC) oder die Klassenvorstände dieser Klasse dürfen Konferenzbeschlüsse erfassen.',
+        error: 'Nur die Schulleitung (MED, SLC) oder der Administrator dürfen Konferenzbeschlüsse erfassen.',
       });
     }
 
@@ -423,7 +426,7 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
     if (!access.exists) return reply.status(404).send({ error: 'Klasse nicht gefunden' });
     if (!access.canRunConference) {
       return reply.status(403).send({
-        error: 'Nur Schulleitung (MED, SLC) oder die Klassenvorstände dieser Klasse dürfen Konferenzbeschlüsse erfassen.',
+        error: 'Nur die Schulleitung (MED, SLC) oder der Administrator dürfen Konferenzbeschlüsse erfassen.',
       });
     }
 
@@ -510,10 +513,11 @@ export const conferenceRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * GET /api/conferences/:classId/summary — the data behind the conference view.
    *
-   * Scoped: homeroom heads and school leadership see the full picture including other
-   * teachers' comments. Other teachers get their own class view restricted to what
-   * they are responsible for. The endpoint previously returned every teacher's
-   * comments for any class to any authenticated user.
+   * Scoped to `access.canRead` (teachers of the class, its homeroom heads, school
+   * leadership). When `STATISTICS_SHOW_FOREIGN_COMMENTS` is false, another
+   * teacher's `comment`/`nextStep` are blanked unless the caller may run the
+   * conference (school leadership / admin). The endpoint previously returned
+   * every teacher's comments for any class to any authenticated user.
    */
   fastify.get('/:classId/summary', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const user: AuthUser = requireAuth(request);

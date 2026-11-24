@@ -226,6 +226,24 @@ describe('GET /api/classes/:classId/pupils rubric configuration', () => {
     });
   });
 
+  it('refuses the Lernwerkstatt room shell to a caller without read access to room 999', async () => {
+    // The 999 shortcut used to answer any authenticated caller before any access
+    // check. Now the same rule as the WebSocket room applies: duty teacher or
+    // school leadership only.
+    resetState();
+    classState.access = { ...classState.access!, classId: 999, canRead: false };
+
+    const res = await app!.inject({
+      method: 'GET',
+      url: '/api/classes/999/pupils',
+      headers: { cookie: 'smile_session=' + sessionCookie() },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().pupils).toBeUndefined();
+    resetState();
+  });
+
   it('attaches assignedTeachers and assignedGroups to each pupil in the roster', async () => {
     resetState();
     classState.pupils = [
