@@ -6,7 +6,7 @@ on:
 jobs:
   capture-screenshots:
     name: Capture Simulator Screenshots (iPhone & 13-inch iPad)
-    runs-on: macos-27-arm64
+    runs-on: xcode-27
     defaults:
       run:
         working-directory: ios
