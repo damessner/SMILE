@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  GraduationCap,
   Users,
   Download,
   LogOut,
@@ -103,11 +102,8 @@ export function AppHeader({
       */
       <header className="material-bar relative z-40 safe-top px-4 md:px-6 py-2.5 md:py-3 flex flex-wrap items-center justify-between gap-2.5">
         <div className="flex items-center gap-3 md:gap-4 min-w-0">
-          <div data-tour="welcome-logo" className="flex items-center gap-2 text-slate-50 font-semibold text-base tracking-tight shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
-              <GraduationCap className="w-4.5 h-4.5" />
-            </div>
-            <span className="hidden sm:inline">SMILE</span>
+          <div data-tour="welcome-logo" className="inline-flex items-center rounded-xl bg-white/95 px-2.5 py-1 shadow-sm border border-slate-200/60 shrink-0">
+            <img src="/smile-logo.svg" alt="SMILE" className="h-6 w-auto" />
           </div>
 
           {/* Navigation tabs: [Schulalltag] [WebUntis] [Schulstatistik] (hidden: [Einstufung]) */}

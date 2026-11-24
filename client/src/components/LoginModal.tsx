@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, GraduationCap } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { login } from '../services/api';
 import { User } from '../types';
 
@@ -38,12 +38,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onSuccess }) => {
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="text-center mb-8 relative">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 mb-4 border border-amber-500/30">
-            <GraduationCap className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center rounded-2xl bg-white/95 px-6 py-3.5 mb-4 shadow-md border border-slate-200/70">
+            <img src="/smile-logo.svg" alt="SMILE" className="h-12 w-auto" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-50 mb-2">
-            SMILE <span className="text-amber-400">Plattform</span>
-          </h1>
+          <h1 className="sr-only">SMILE Plattform</h1>
           <p className="text-sm text-slate-400">
             MS Weissenbach · Beobachtung &amp; Konferenz
           </p>

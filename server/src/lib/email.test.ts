@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRedCardEmail, isEmailConfigured, sendRedCardEmail } from './email.js';
+import { SMILE_LOGO_CID, SMILE_LOGO_PNG } from './email-logo.js';
 import type { RedCardMessage } from './teams.js';
 
 const message: RedCardMessage = {
@@ -25,6 +26,8 @@ describe('buildRedCardEmail', () => {
     expect(mail.text).toContain('Störte den Unterricht trotz Ermahnung.');
     expect(mail.html).toContain('Anna Muster (3a)');
     expect(mail.html).toContain('Geselle ---&gt; Lehrling');
+    expect(mail.html).toContain(`cid:${SMILE_LOGO_CID}`);
+    expect(SMILE_LOGO_PNG.subarray(0, 4).toString('hex')).toBe('89504e47');
     expect(mail.html).not.toContain('<table');
   });
 

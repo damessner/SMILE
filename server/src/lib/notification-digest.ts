@@ -1,7 +1,7 @@
 import { db, getPool } from '../db/index.js';
 import { config } from '../config.js';
 import { notificationDigestLog } from '../db/schema.js';
-import { escapeHtml, isSmtpConfigured, sendMail } from './email.js';
+import { escapeHtml, isSmtpConfigured, renderEmailCard, sendMail } from './email.js';
 
 /**
  * Weekly per-class digest for teachers who ticked "Wochenübersicht".
@@ -162,40 +162,46 @@ function digestEmail(
   const rows = digest.pupils
     .map(
       (p) => `<tr>
-        <td style="padding:4px 12px 4px 0;border-bottom:1px solid #e5e7eb">${escapeHtml(p.pupilName)}</td>
-        <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #e5e7eb">${p.green}</td>
-        <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #e5e7eb">${p.yellow}</td>
-        <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #e5e7eb">${p.red}</td>
-        <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #e5e7eb">${p.timeout}</td>
-        <td style="padding:4px 8px;text-align:center;border-bottom:1px solid #e5e7eb">${p.cooldown}</td>
+        <td style="padding:8px 12px 8px 0;border-bottom:1px solid #e2e8f0;color:#0f172a;font-weight:600">${escapeHtml(p.pupilName)}</td>
+        <td style="padding:8px;text-align:center;border-bottom:1px solid #e2e8f0;color:#166534;font-weight:600">${p.green}</td>
+        <td style="padding:8px;text-align:center;border-bottom:1px solid #e2e8f0;color:#854d0e;font-weight:600">${p.yellow}</td>
+        <td style="padding:8px;text-align:center;border-bottom:1px solid #e2e8f0;color:#991b1b;font-weight:600">${p.red}</td>
+        <td style="padding:8px;text-align:center;border-bottom:1px solid #e2e8f0;color:#9f1239;font-weight:600">${p.timeout}</td>
+        <td style="padding:8px;text-align:center;border-bottom:1px solid #e2e8f0;color:#075985;font-weight:600">${p.cooldown}</td>
       </tr>`,
     )
     .join('');
 
-  const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5">
-      <h2 style="margin:0 0 6px">Wochenübersicht Klasse ${escapeHtml(className)}</h2>
-      <p style="margin:0 0 16px;color:#6b7280">${escapeHtml(range)}</p>
-      <p style="margin:0 0 16px"><strong>Gesamt:</strong> ${escapeHtml(totalLine)}</p>
-      ${
-        digest.pupils.length === 0
-          ? '<p>Keine Ereignisse in dieser Woche.</p>'
-          : `<table style="border-collapse:collapse;width:100%;font-size:14px">
-              <thead><tr>
-                <th style="text-align:left;padding:4px 12px 4px 0">Schüler*in</th>
-                <th style="padding:4px 8px">Grün</th>
-                <th style="padding:4px 8px">Gelb</th>
-                <th style="padding:4px 8px">Rot</th>
-                <th style="padding:4px 8px">Time-Out</th>
-                <th style="padding:4px 8px">Cool-Down</th>
-              </tr></thead>
-              <tbody>${rows}</tbody>
-            </table>`
-      }
-      ${config.teams.appUrl ? `<p><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
-      <p style="color:#6b7280;font-size:12px;margin-top:24px">Automatisch gesendet von SMILE.</p>
+  const extraHtml = `
+    <div style="margin:0 0 14px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#334155">
+      <strong>Gesamt:</strong> ${escapeHtml(totalLine)}
     </div>
+    ${
+      digest.pupils.length === 0
+        ? '<p style="margin:0;color:#475569;font-size:13px">Keine Ereignisse in dieser Woche.</p>'
+        : `<table style="border-collapse:collapse;width:100%;font-size:13px">
+            <thead>
+              <tr style="border-bottom:2px solid #cbd5e1;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.04em">
+                <th style="text-align:left;padding:6px 12px 6px 0">Schüler*in</th>
+                <th style="padding:6px 8px">Grün</th>
+                <th style="padding:6px 8px">Gelb</th>
+                <th style="padding:6px 8px">Rot</th>
+                <th style="padding:6px 8px">Time-Out</th>
+                <th style="padding:6px 8px">Cool-Down</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>`
+    }
   `.trim();
+
+  const html = renderEmailCard({
+    badge: `Wochenübersicht · KW ${isoWeek(weekStart)}`,
+    tone: 'neutral',
+    meta: `Zeitraum: ${range}`,
+    title: `Wochenübersicht Klasse ${className}`,
+    extraHtml,
+  });
 
   return { subject, text, html };
 }

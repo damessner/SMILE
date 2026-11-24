@@ -9,7 +9,7 @@ import {
   timeoutIncidents,
   users,
 } from '../db/schema.js';
-import { escapeHtml, isSmtpConfigured, sendMail } from './email.js';
+import { escapeHtml, isSmtpConfigured, renderEmailCard, sendMail } from './email.js';
 import { HEADMASTER_SHORTNAMES } from './guards.js';
 import { formatViennaTime } from './notification-format.js';
 
@@ -141,16 +141,16 @@ function formatTimeoutHistoryBlocks(
   const listItemsHtml = formattedEntries
     .map(
       (e) =>
-        `<li style="margin:0 0 4px"><strong>#${e.number}</strong> · ${escapeHtml(e.when)}${escapeHtml(e.retro)} · ${escapeHtml(e.teacher)} — ${escapeHtml(e.note)}</li>`,
+        `<li style="margin:0 0 6px;color:#334155"><strong>#${e.number}</strong> · ${escapeHtml(e.when)}${escapeHtml(e.retro)} · ${escapeHtml(e.teacher)} — ${escapeHtml(e.note)}</li>`,
     )
     .join('');
 
   const htmlBlock = `
-    <div style="margin:0 0 16px;padding:12px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">
-      <p style="font-weight:700;margin:0${formattedEntries.length > 0 ? ' 0 8px' : ''}">${escapeHtml(totalLabel)}</p>
+    <div style="margin:0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
+      <div style="font-size:13px;font-weight:700;color:#0f172a;margin:0${formattedEntries.length > 0 ? ' 0 6px' : ''}">${escapeHtml(totalLabel)}</div>
       ${
         formattedEntries.length > 0
-          ? `<p style="font-size:12px;color:#4b5563;font-weight:600;margin:0 0 6px">Time-Out-Verlauf:</p><ul style="margin:0;padding-left:18px;font-size:13px">${listItemsHtml}</ul>`
+          ? `<div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin:0 0 8px">Time-Out-Verlauf:</div><ul style="margin:0;padding-left:18px;font-size:13px">${listItemsHtml}</ul>`
           : ''
       }
     </div>
@@ -183,15 +183,16 @@ function eventEmail(
     'Automatisch gesendet von SMILE.',
   ].join('\n');
 
-  const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5;max-width:640px">
-      <p style="font-size:16px;font-weight:700;margin:0 0 12px">${escapeHtml(headline)}</p>
-      <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</p>
-      ${historyBlock.htmlBlock}
-      ${config.teams.appUrl ? `<p style="margin:0 0 12px"><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
-      <p style="color:#9ca3af;font-size:11px;margin:16px 0 0">Automatisch gesendet von SMILE.</p>
-    </div>
-  `.trim();
+  const html = renderEmailCard({
+    badge: label,
+    tone: event.type,
+    meta: `Klasse ${className} · ${time} · ${teacherName}`,
+    title: `${event.pupilName} (${className})`,
+    noteLabel: event.type === 'timeout' ? 'Arbeitsauftrag / Grund' : 'Notiz',
+    note,
+    noteHighlight: event.type === 'timeout',
+    extraHtml: historyBlock.htmlBlock,
+  });
 
   return { subject, text, html };
 }
@@ -314,15 +315,16 @@ export function buildTimeoutEscalationEmail(
     'Automatisch gesendet von SMILE.',
   ].join('\n');
 
-  const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;color:#1f2937;line-height:1.5;max-width:640px">
-      <p style="font-size:16px;font-weight:700;margin:0 0 12px;color:#b91c1c">${escapeHtml(headline)}</p>
-      <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(note)}</p>
-      ${historyBlock.htmlBlock}
-      ${config.teams.appUrl ? `<p style="margin:0 0 12px"><a href="${escapeHtml(config.teams.appUrl)}">In SMILE öffnen</a></p>` : ''}
-      <p style="color:#9ca3af;font-size:11px;margin:16px 0 0">Automatisch gesendet von SMILE.</p>
-    </div>
-  `.trim();
+  const html = renderEmailCard({
+    badge: `Time-Out-Eskalation (${totalCount})${event.retroactive ? ' · Nachtrag' : ''}`,
+    tone: 'timeout',
+    meta: `Klasse ${className} · ${time} · ${teacherName}`,
+    title: `${event.pupilName} (${className})`,
+    noteLabel: 'Arbeitsauftrag / Grund',
+    note,
+    noteHighlight: true,
+    extraHtml: historyBlock.htmlBlock,
+  });
 
   return { subject, text, html };
 }

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  GraduationCap,
   Sparkles,
   Award,
   Calendar,
@@ -454,8 +453,8 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
           {/* Header Bar */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-950/60">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
-                <GraduationCap className="w-4.5 h-4.5" />
+              <div className="rounded-lg bg-white/95 px-2 py-1 border border-slate-200/60 shadow-sm flex items-center justify-center">
+                <img src="/smile-logo.svg" alt="SMILE" className="h-4 w-auto" />
               </div>
               <div>
                 <span className="text-sm font-bold text-slate-400 block leading-none">
