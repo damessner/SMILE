@@ -1,28 +1,22 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
-  Award,
-  AlertTriangle,
   Clock,
-  Calendar,
   Search,
   Plus,
   Check,
   X,
-  FileText,
-  RotateCcw,
-  Sparkles,
-  ChevronRight,
-  MessageSquare,
-  ShieldAlert,
-  Flame,
-  ArrowRight,
   CheckCircle2,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
   Snowflake,
   ShieldAlert as ShieldAlertIcon,
+  GraduationCap,
+  SlidersHorizontal,
+  ArrowUpDown,
+  MoreVertical,
+  Send,
+  Star,
+  User as UserIcon,
+  FileText,
 } from 'lucide-react';
 import { SchoolClass, PupilWithData, User, RubricCriterion } from '../types';
 import { scoreSubject, type AssessmentRank } from '../lib/pupilItems';
@@ -112,6 +106,23 @@ interface SchulalltagProps {
   onSelectClass: (classId: number) => void;
   onRefreshClassData: () => void | Promise<void>;
   criteria: RubricCriterion[];
+  viewMode?: 'class' | 'lw' | 'all';
+  onViewModeChange?: (mode: 'class' | 'lw' | 'all') => void;
+  onActiveTimeoutCountChange?: (count: number) => void;
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '??';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+}
+
+function formatElapsedMinutes(isoDate: string): string {
+  const parsed = Date.parse(isoDate);
+  if (!Number.isFinite(parsed)) return 'aktiv';
+  const mins = Math.max(1, Math.round((Date.now() - parsed) / 60000));
+  return `${mins} min`;
 }
 
 export const Schulalltag: React.FC<SchulalltagProps> = ({
@@ -122,25 +133,36 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   onSelectClass,
   onRefreshClassData,
   criteria,
+  viewMode,
+  onViewModeChange,
+  onActiveTimeoutCountChange,
 }) => {
   const [cards, setCards] = useState<BehaviorCardItem[]>([]);
   const [classTimeouts, setClassTimeouts] = useState<TimeoutItem[]>([]);
-  const [loadingCards, setLoadingCards] = useState(false);
+  const [, setLoadingCards] = useState(false);
   const [timetableData, setTimetableData] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'flagged' | 'lw'>('all');
+  const [showRankFilter, setShowRankFilter] = useState(false);
   const [filterRank, setFilterRank] = useState<'all' | 'Lehrling' | 'Geselle' | 'Meister'>('all');
   const [sortMode, setSortMode] = useState<PupilSortMode>('name');
   const [expandedPupilId, setExpandedPupilId] = useState<number | null>(null);
   const [activeProfilePupilId, setActiveProfilePupilId] = useState<number | null>(null);
 
-  // School-wide "Alle Klassen" behaviour view (BEHAVIOUR_SCHOOL_WIDE).
-  const [isAllClassesView, setIsAllClassesView] = useState(false);
+  // Unified view mode (class roster | Lernwerkstatt LW | school-wide Alle Klassen)
+  const [internalViewMode, setInternalViewMode] = useState<'class' | 'lw' | 'all'>('class');
+  const activeViewMode = viewMode ?? internalViewMode;
+  const setViewMode = (next: 'class' | 'lw' | 'all') => {
+    setInternalViewMode(next);
+    onViewModeChange?.(next);
+  };
+  const isAllClassesView = activeViewMode === 'all';
+  const isLwView = activeViewMode === 'lw';
+
   const [allClassesData, setAllClassesData] = useState<BehaviorOverview | null>(null);
   const [allClassesLoading, setAllClassesLoading] = useState(false);
   const [allClassesError, setAllClassesError] = useState<string | null>(null);
 
-  // Lernwerkstatt (LW) View Toggle
-  const [isLwView, setIsLwView] = useState(false);
   const [activeTimeouts, setActiveTimeouts] = useState<TimeoutItem[]>([]);
   const [timeoutHistory, setTimeoutHistory] = useState<TimeoutItem[]>([]);
   const [loadingTimeouts, setLoadingTimeouts] = useState(false);
@@ -213,7 +235,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           data.currentLesson?.subjectCode === 'LW' ||
           data.currentLesson?.subject_code === 'LW'
         ) {
-          setIsLwView(true);
+          setViewMode('lw');
         }
       })
       .catch((e) => console.error('Timetable fetch error:', e));
@@ -252,6 +274,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         getTimeoutHistory(),
       ]);
       setActiveTimeouts(act || []);
+      onActiveTimeoutCountChange?.((act || []).length);
       setTimeoutHistory(hist || []);
     } catch (e) {
       console.error('Error fetching timeouts:', e);
@@ -934,6 +957,39 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
       ? currentLesson?.subjectCode || currentLesson?.subject_code
       : null) || currentClass?.mySubjects?.[0]?.code;
 
+  const activeLwPupilIds = useMemo(
+    () => new Set(activeTimeouts.map((ti) => ti.pupil_id)),
+    [activeTimeouts],
+  );
+
+  // Class-level counters for filter chips & bottom floating summary capsule.
+  const classSummary = useMemo(() => {
+    let green = 0;
+    let yellow = 0;
+    let incidents = 0;
+    let flaggedCount = 0;
+    let activeLwCount = 0;
+
+    for (const p of pupils) {
+      const pCards = cards.filter((c) => c.pupil_id === p.id);
+      const pGreen = pCards.filter((c) => c.card_type === 'green').length;
+      const pYellow = pCards.filter((c) => c.card_type === 'yellow').length;
+      const pRed = pCards.filter((c) => c.card_type === 'red').length;
+      const pTimeouts = classTimeouts.filter(
+        (ti) => ti.pupil_id === p.id && (ti.kind === 'timeout' || !ti.kind),
+      ).length;
+      const isActiveLw = activeLwPupilIds.has(p.id);
+
+      green += pGreen;
+      yellow += pYellow;
+      incidents += pRed + pTimeouts;
+      if (isActiveLw) activeLwCount += 1;
+      if (pYellow > 0 || pRed > 0 || isActiveLw) flaggedCount += 1;
+    }
+
+    return { green, yellow, incidents, flaggedCount, activeLwCount };
+  }, [pupils, cards, classTimeouts, activeLwPupilIds]);
+
   // Filtered and sorted pupils list. Sorting is intentionally client-side: the
   // whole class roster and its card/time-out counters are already loaded, so
   // changing the order must not refetch or mutate anything.
@@ -958,6 +1014,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         const timeouts = classTimeouts.filter(
           (ti) => ti.pupil_id === p.id && (ti.kind === 'timeout' || !ti.kind),
         ).length;
+        const hasActiveLw = activeLwPupilIds.has(p.id);
         return {
           pupil: p,
           displayedRank,
@@ -965,6 +1022,7 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           yellow,
           red,
           timeouts,
+          hasActiveLw,
           incidents: yellow + red + timeouts,
         };
       })
@@ -973,7 +1031,13 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
           .toLowerCase()
           .includes(searchQuery.toLowerCase());
         const matchesRank = filterRank === 'all' || entry.displayedRank === filterRank;
-        return matchesSearch && matchesRank;
+        const matchesQuick =
+          quickFilter === 'all'
+            ? true
+            : quickFilter === 'flagged'
+            ? entry.yellow > 0 || entry.red > 0 || entry.hasActiveLw
+            : entry.hasActiveLw;
+        return matchesSearch && matchesRank && matchesQuick;
       });
 
     decorated.sort((a, b) => {
@@ -1003,10 +1067,12 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   }, [
     pupils,
     searchQuery,
+    quickFilter,
     filterRank,
     sortMode,
     cards,
     classTimeouts,
+    activeLwPupilIds,
     rubricItemKeys,
     currentClass?.mySubjects,
     lessonSubjectCode,
@@ -1016,98 +1082,80 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
   const dayNames = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
 
   return (
-    <div className="space-y-3">
-      {/* Top Banner: Timetable & Active Classroom Info (Compact) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-            <h1 className="text-lg font-bold text-slate-50">
-              {isLwView
-                ? 'Lernwerkstatt (LW)'
-                : isAllClassesView
-                  ? 'Alle Klassen'
-                  : currentClass
-                    ? `Klasse ${currentClass.name}`
-                    : 'Klasse'}
-            </h1>
-            <span className="text-sm text-slate-400">
-              {isLwView
-                ? `(${activeTimeouts.length} in der Lernwerkstatt)`
-                : isAllClassesView
-                  ? `(${allClassesData?.pupils.length ?? 0} Schüler*innen)`
-                  : `(${pupils.length} Schüler*innen)`}
+    <div className="max-w-5xl mx-auto space-y-2.5">
+      {/* Top Context Section */}
+      <section className="flex flex-col gap-2.5 px-3.5 py-3 rounded-2xl bg-surface-1 border border-hairline/70 shadow-sm">
+        {/* Class Meta Badge Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent-dim/20 text-accent text-2xs font-semibold shrink-0">
+              <GraduationCap className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>
+                {isLwView
+                  ? `Lernwerkstatt · ${activeTimeouts.length} aktiv`
+                  : isAllClassesView
+                  ? `Alle Klassen · ${allClassesData?.pupils.length ?? 0} Lernende`
+                  : `${currentClass.name} · ${pupils.length} Lernende`}
+              </span>
             </span>
+
+            {timetableData && (
+              <span className="text-on-surface-variant text-sm truncate">
+                {timetableData.currentLesson
+                  ? `${timetableData.period}. Std · ${timetableData.currentLesson.className || timetableData.currentLesson.class_name} (${timetableData.currentLesson.subjectCode || timetableData.currentLesson.subject_code})`
+                  : timetableData.nextLesson
+                  ? `${timetableData.period}. Std · Nächste: ${timetableData.nextLesson.className || timetableData.nextLesson.class_name}`
+                  : `${dayNames[timetableData.dayOfWeek] || 'Heute'}, ${timetableData.period}. Std`}
+              </span>
+            )}
           </div>
 
-          {/* Timetable Indicator (Compact) */}
-          {timetableData && (
-            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-1.5 flex items-center gap-3 text-sm">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>
-                  <strong>{dayNames[timetableData.dayOfWeek] || 'Heute'}</strong>, {timetableData.period}. Std
-                </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!isLwView && !isAllClassesView && timetableData?.todayLessons && timetableData.todayLessons.length > 0 && (
+              <div className="hidden lg:flex items-center gap-1 mr-1">
+                {timetableData.todayLessons.slice(0, 5).map((l: any, i: number) => {
+                  const cName = l.className || l.class_name;
+                  const sCode = l.subjectCode || l.subject_code;
+                  const targetCls = classes.find((c) => c.name === cName);
+                  const isThisLW = cName === 'LW' || sCode === 'LW';
+                  const isCurrentTarget =
+                    (isLwView && isThisLW) || (!isLwView && currentClass.name === cName);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        if (isThisLW) {
+                          setViewMode('lw');
+                        } else if (targetCls) {
+                          setViewMode('class');
+                          onSelectClass(targetCls.id);
+                        }
+                      }}
+                      className={`px-2 py-1 rounded-full text-2xs font-semibold transition focus-ring ${
+                        isCurrentTarget
+                          ? 'bg-accent/20 text-accent'
+                          : 'bg-surface-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-bright'
+                      }`}
+                      title={`${l.period}. Stunde: ${cName} ${sCode}`}
+                    >
+                      {l.period}. {cName}
+                    </button>
+                  );
+                })}
               </div>
-              {timetableData.currentLesson ? (
-                <div className="flex items-center gap-1.5 pl-2.5 border-l border-slate-800 text-emerald-400 font-bold">
-                  <span className="bg-emerald-500/20 px-1.5 py-0.5 rounded text-2xs border border-emerald-500/30">
-                    {timetableData.currentLesson.className || timetableData.currentLesson.class_name} ({timetableData.currentLesson.subjectCode || timetableData.currentLesson.subject_code})
-                  </span>
-                </div>
-              ) : (
-                <div className="pl-2.5 border-l border-slate-800 text-slate-400 text-2xs">
-                  {timetableData.nextLesson ? (
-                    <span>Nächste: <strong>{timetableData.nextLesson.className || timetableData.nextLesson.class_name}</strong></span>
-                  ) : (
-                    <span>Keine Stunde</span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Class Selection Tabs & LW Pill */}
-        <div className="pt-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div data-tour="class-selector" className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-2xl">
-            <span className="text-sm font-bold text-slate-400 mr-1 flex-shrink-0">Bereich:</span>
-
-            {/* Special LW Button */}
-            <button
-              onClick={() => {
-                setIsAllClassesView(false);
-                setIsLwView(true);
-              }}
-              className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-sm transition flex-shrink-0 flex items-center gap-1.5 ${
-                isLwView
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
-                  : 'bg-slate-800/80 text-amber-300 hover:text-slate-50 hover:bg-slate-700 border border-amber-500/30'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>Lernwerkstatt (LW)</span>
-              {activeTimeouts.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-slate-50 font-bold text-2xs animate-pulse">
-                  {activeTimeouts.length}
-                </span>
-              )}
-            </button>
-
-            <span className="text-slate-700">|</span>
+            )}
 
             {currentUser.schoolWideBehaviour && (
               <button
-                onClick={() => {
-                  setIsLwView(false);
-                  setIsAllClassesView(true);
-                }}
+                type="button"
+                onClick={() => setViewMode(isAllClassesView ? 'class' : 'all')}
                 aria-current={isAllClassesView ? 'true' : undefined}
                 title="Alle Klassen: Schülerstatus sehen und Karten / Time-Outs / Cool-Downs vergeben"
-                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-sm transition flex-shrink-0 flex items-center gap-1.5 ${
+                className={`pressable focus-ring px-2.5 py-1 rounded-full text-2xs font-semibold transition flex items-center gap-1.5 ${
                   isAllClassesView
-                    ? 'bg-sky-500 text-slate-950 font-bold shadow-md'
-                    : 'bg-slate-800/80 text-sky-300 hover:text-slate-50 hover:bg-slate-700 border border-sky-500/30'
+                    ? 'bg-info text-surface-lowest shadow-sm'
+                    : 'bg-surface-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-bright'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1115,93 +1163,197 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               </button>
             )}
 
-            {classes.filter((c) => c.name !== 'LW').map((cls) => (
+            {(isLwView || isAllClassesView) && (
               <button
-                key={cls.id}
-                onClick={() => {
-                  setIsAllClassesView(false);
-                  setIsLwView(false);
-                  onSelectClass(cls.id);
-                }}
-                className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-sm transition flex-shrink-0 flex items-center gap-1.5 ${
-                  !isLwView && currentClass?.id === cls.id
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-sm'
-                    : 'bg-slate-800/80 text-slate-300 hover:text-slate-50 hover:bg-slate-700'
+                type="button"
+                onClick={() => setViewMode('class')}
+                className="pressable focus-ring px-2.5 py-1 rounded-full bg-surface-3 hover:bg-surface-bright text-on-surface text-2xs font-semibold transition"
+              >
+                Zurück zu {currentClass.name}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Filter Toggle Chips & Search Bar (Class view only) */}
+        {!isLwView && !isAllClassesView && (
+          <>
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+              <button
+                type="button"
+                onClick={() => setQuickFilter('all')}
+                className={`pressable focus-ring shrink-0 px-3 py-1.5 rounded-full text-sm font-semibold transition flex items-center gap-1.5 ${
+                  quickFilter === 'all'
+                    ? 'bg-accent text-on-accent shadow-sm'
+                    : 'bg-surface-3 text-on-surface hover:bg-surface-bright'
                 }`}
               >
-                <span>{cls.name}</span>
-                {(timetableData?.currentLesson?.className === cls.name || timetableData?.currentLesson?.class_name === cls.name) && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Aktuell lt. Stundenplan" />
-                )}
+                <span>Alle</span>
+                <span
+                  className={`min-w-[18px] h-4 px-1 rounded-full text-2xs font-bold tabular flex items-center justify-center ${
+                    quickFilter === 'all'
+                      ? 'bg-on-accent/20 text-on-accent'
+                      : 'bg-surface-2 text-on-surface-variant'
+                  }`}
+                >
+                  {pupils.length}
+                </span>
               </button>
-            ))}
-          </div>
 
-          {/* Today's Schedule Quick Links for this Teacher */}
-          {timetableData?.todayLessons && timetableData.todayLessons.length > 0 && (
-            <div className="flex items-center gap-1.5 text-sm overflow-x-auto">
-              <span className="text-2xs text-slate-500 font-bold uppercase mr-1">Heute:</span>
-              {timetableData.todayLessons.map((l: any, i: number) => {
-                const cName = l.className || l.class_name;
-                const sCode = l.subjectCode || l.subject_code;
-                const targetCls = classes.find((c) => c.name === cName);
-                const isThisLW = cName === 'LW' || sCode === 'LW';
+              <button
+                type="button"
+                onClick={() => setQuickFilter(quickFilter === 'flagged' ? 'all' : 'flagged')}
+                className={`pressable focus-ring shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition flex items-center gap-1.5 ${
+                  quickFilter === 'flagged'
+                    ? 'bg-accent text-on-accent font-semibold shadow-sm'
+                    : 'bg-surface-3 text-on-surface hover:bg-surface-bright'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${quickFilter === 'flagged' ? 'bg-on-accent' : 'bg-accent-dim'}`} />
+                <span>Auffällig</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-2xs font-bold tabular leading-none ${
+                    quickFilter === 'flagged'
+                      ? 'bg-on-accent/20 text-on-accent'
+                      : 'bg-accent-dim/20 text-accent'
+                  }`}
+                >
+                  {classSummary.flaggedCount}
+                </span>
+              </button>
 
-                return (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      if (isThisLW) {
-                        setIsAllClassesView(false);
-                        setIsLwView(true);
-                      } else if (targetCls) {
-                        setIsAllClassesView(false);
-                        setIsLwView(false);
-                        onSelectClass(targetCls.id);
-                      }
-                    }}
-                    className={`min-h-[40px] px-2.5 py-1.5 rounded-xl text-sm font-bold border transition ${
-                      (isLwView && isThisLW) || (!isLwView && currentClass.name === cName)
-                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                        : 'bg-slate-800 text-slate-400 hover:text-slate-50 border-slate-700'
-                    }`}
-                    title={`${l.period}. Stunde: ${cName} ${sCode} (Raum ${l.room})`}
-                  >
-                    {l.period}. Std: {cName}
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                onClick={() => setQuickFilter(quickFilter === 'lw' ? 'all' : 'lw')}
+                className={`pressable focus-ring shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition flex items-center gap-1.5 ${
+                  quickFilter === 'lw'
+                    ? 'bg-critical text-surface-lowest font-semibold shadow-sm'
+                    : 'bg-surface-3 text-on-surface hover:bg-surface-bright'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${quickFilter === 'lw' ? 'bg-surface-lowest' : 'bg-critical'}`} />
+                <span>Lernwerkstatt</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-2xs font-bold tabular leading-none ${
+                    quickFilter === 'lw'
+                      ? 'bg-surface-lowest/20 text-surface-lowest'
+                      : 'bg-critical/20 text-critical-soft'
+                  }`}
+                >
+                  {classSummary.activeLwCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowRankFilter((prev) => !prev)}
+                aria-expanded={showRankFilter}
+                className={`pressable focus-ring shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition flex items-center gap-1 ${
+                  showRankFilter || filterRank !== 'all'
+                    ? 'bg-surface-bright text-accent'
+                    : 'bg-surface-3 text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Filter{filterRank !== 'all' ? `: ${filterRank}` : ''}</span>
+              </button>
             </div>
-          )}
-        </div>
-      </div>
+
+            {showRankFilter && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 animate-row-reveal">
+                {(['all', 'Lehrling', 'Geselle', 'Meister'] as const).map((rk) => (
+                  <button
+                    key={rk}
+                    type="button"
+                    onClick={() => setFilterRank(rk)}
+                    className={`px-2.5 py-1 rounded-full text-2xs font-semibold transition focus-ring ${
+                      filterRank === rk
+                        ? 'bg-accent text-on-accent'
+                        : 'bg-surface-2 text-on-surface-variant hover:bg-surface-bright hover:text-on-surface'
+                    }`}
+                  >
+                    {rk === 'all' ? 'Alle Ränge' : rk}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Ultra-Compact Search & Sort Row */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 flex items-center">
+                <Search className="w-4 h-4 text-on-surface-variant absolute left-3 pointer-events-none" aria-hidden="true" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Lernende suchen..."
+                  className="w-full h-9 pl-9 pr-8 rounded-lg bg-surface-3 text-on-surface placeholder:text-on-surface-variant/70 text-sm focus:outline-none focus:bg-surface-bright transition selectable"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    aria-label="Suche leeren"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 p-1 rounded-md text-on-surface-variant hover:text-on-surface"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative flex items-center shrink-0">
+                <label htmlFor="pupil-sort" className="sr-only">
+                  Sortieren:
+                </label>
+                <ArrowUpDown
+                  className="w-3.5 h-3.5 text-on-surface-variant absolute left-2.5 pointer-events-none"
+                  aria-hidden="true"
+                />
+                <select
+                  id="pupil-sort"
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as PupilSortMode)}
+                  className="h-9 pl-8 pr-2.5 rounded-lg bg-surface-3 hover:bg-surface-bright text-on-surface text-sm font-medium focus:outline-none cursor-pointer transition max-w-[175px]"
+                >
+                  {PUPIL_SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
 
       {/* ===================================================================== */}
       {/* LERNWERKSTATT (LW) LIVE VIEW FOR SUPERVISORS                          */}
       {/* ===================================================================== */}
       {isLwView ? (
-        <div className="space-y-6">
-          <div className="bg-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 shadow-lg">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+        <div className="space-y-4">
+          <div className="bg-surface-1 border border-hairline rounded-2xl p-4 sm:p-5 shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-hairline">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
-                  <h2 className="text-xl font-bold text-slate-50">
+                  <span className="w-2.5 h-2.5 rounded-full bg-critical animate-pulse" />
+                  <h2 className="text-lg font-bold text-on-surface">
                     Lernwerkstatt – Aktive Time-Out &amp; Cool-Down Schüler*innen
                   </h2>
                 </div>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-on-surface-variant mt-0.5">
                   Disziplinäre Time-Outs und consequence-free Cool-Downs aus den Klassen.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="px-3.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-sm font-bold text-slate-300">
-                  Aktuell im Raum: <strong className="text-rose-400 text-sm">{activeTimeouts.length}</strong>
+                <span className="px-3 py-1 rounded-full bg-surface-3 text-sm font-semibold text-on-surface tabular">
+                  Aktuell im Raum: <strong className="text-critical">{activeTimeouts.length}</strong>
                 </span>
                 <button
+                  type="button"
                   onClick={loadTimeoutsData}
-                  className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-sm font-bold transition"
+                  className="pressable focus-ring min-h-[36px] px-3 py-1.5 rounded-xl bg-surface-3 hover:bg-surface-bright text-on-surface text-sm font-semibold transition"
                 >
                   Aktualisieren
                 </button>
@@ -1209,74 +1361,72 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             </div>
 
             {/* Active Timeouts Grid */}
-            <div className="pt-5">
+            <div className="pt-4">
               {loadingTimeouts && activeTimeouts.length === 0 ? (
-                <div className="py-16 text-center text-slate-500 text-sm">
+                <div className="py-12 text-center text-on-surface-variant text-sm">
                   Lade Time-Out Daten...
                 </div>
               ) : activeTimeouts.length === 0 ? (
-                <div className="py-16 text-center text-slate-400 bg-slate-950/40 rounded-2xl border border-slate-800/80">
-                  <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-80" />
-                  <p className="font-bold text-slate-50 text-base">Aktuell keine Schüler im Time-Out oder Cool-Down!</p>
-                  <p className="text-sm text-slate-500 mt-0.5">
+                <div className="py-12 text-center text-on-surface-variant bg-surface-lowest/60 rounded-2xl border border-hairline">
+                  <CheckCircle2 className="w-10 h-10 text-positive mx-auto mb-2 opacity-85" />
+                  <p className="font-bold text-on-surface text-base">Aktuell keine Schüler im Time-Out oder Cool-Down!</p>
+                  <p className="text-sm text-on-surface-variant mt-0.5">
                     Sobald eine Lehrkraft eine Schülerin / einen Schüler in die Lernwerkstatt schickt, erscheint sie/er hier live.
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                   {activeTimeouts.map((item) => (
                     <div
                       key={item.id}
-                      className={`bg-slate-950 border-2 ${item.kind === 'cooldown' ? 'border-sky-500/50' : 'border-rose-500/50'} rounded-3xl p-5 shadow-lg flex flex-col justify-between`}
+                      className={`bg-surface-2 border ${item.kind === 'cooldown' ? 'border-info/50' : 'border-critical/50'} rounded-2xl p-4 shadow-md flex flex-col justify-between`}
                     >
                       <div>
-                        {/* Header: Pupil Name & Class */}
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`px-2.5 py-0.5 rounded-lg border text-2xs font-bold ${item.kind === 'cooldown' ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-2xs font-bold inline-flex items-center gap-1 ${item.kind === 'cooldown' ? 'bg-info/20 text-info' : 'bg-critical/20 text-critical-soft animate-pulse'}`}>
                                 {item.kind === 'cooldown' ? (
-                                  <><Snowflake className="w-3.5 h-3.5 inline" aria-hidden="true" /> Cool-Down aktiv</>
+                                  <><Snowflake className="w-3 h-3" aria-hidden="true" /> Cool-Down aktiv</>
                                 ) : (
-                                  <><Clock className="w-3.5 h-3.5 inline" aria-hidden="true" /> Time-Out aktiv</>
+                                  <><Clock className="w-3 h-3" aria-hidden="true" /> Time-Out aktiv</>
                                 )}
                               </span>
-                              <span className="text-sm font-bold text-slate-400">
+                              <span className="text-sm font-semibold text-on-surface-variant">
                                 Klasse {item.class_name}
                               </span>
                             </div>
-                            <h3 className="text-xl font-bold text-slate-50">
+                            <h3 className="text-lg font-bold text-on-surface">
                               {item.pupil_name}
                             </h3>
                           </div>
 
-                          <div className="text-right text-2xs text-slate-400">
-                            <div>Geschickt von <strong className="text-amber-400">{item.sent_by_short}</strong></div>
-                            <div className="text-slate-500 mt-0.5">
+                          <div className="text-right text-2xs text-on-surface-variant tabular">
+                            <div>von <strong className="text-accent">{item.sent_by_short}</strong></div>
+                            <div className="mt-0.5">
                               {new Date(item.sent_at).toLocaleTimeString('de-AT', {
                                 hour: '2-digit',
                                 minute: '2-digit',
-                              })} Uhr
+                              })} Uhr · {formatElapsedMinutes(item.sent_at)}
                             </div>
                           </div>
                         </div>
 
-                        {/* Arbeitsauftrag Box */}
-                        <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 mb-4">
-                          <div className={`flex items-center gap-1.5 text-2xs font-bold uppercase mb-1.5 ${item.kind === 'cooldown' ? 'text-sky-300' : 'text-amber-300'}`}>
+                        <div className="bg-surface-lowest/70 border border-hairline rounded-xl p-3 mb-3.5">
+                          <div className={`flex items-center gap-1.5 text-2xs font-bold uppercase mb-1 ${item.kind === 'cooldown' ? 'text-info' : 'text-accent'}`}>
                             <FileText className="w-3.5 h-3.5" />
-                            <span>{item.kind === 'cooldown' ? 'Notiz / Beobachtung:' : 'Arbeitsauftrag der Lehrperson:'}</span>
+                            <span>{item.kind === 'cooldown' ? 'Notiz / Beobachtung:' : 'Arbeitsauftrag:'}</span>
                           </div>
-                          <p className="text-sm text-slate-50 leading-relaxed font-medium bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                          <p className="text-sm text-on-surface leading-relaxed selectable">
                             &bdquo;{item.task_assignment}&ldquo;
                           </p>
                         </div>
                       </div>
 
-                      {/* Action: Resolve and send back */}
                       <button
+                        type="button"
                         onClick={() => handleResolveTimeout(item.id, item.pupil_name, item.kind)}
-                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-sm active:scale-95"
+                        className="pressable focus-ring w-full py-2.5 px-4 rounded-xl bg-positive-dim hover:brightness-110 text-surface-lowest font-bold text-sm flex items-center justify-center gap-2 transition shadow-sm"
                       >
                         <Check className="w-4 h-4" />
                         <span>
@@ -1292,11 +1442,10 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
             </div>
           </div>
 
-          {/* Today's Resolved History */}
           {timeoutHistory.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg">
-              <h3 className="font-bold text-slate-50 text-sm mb-3 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-slate-400" />
+            <div className="bg-surface-1 border border-hairline rounded-2xl p-4 shadow-md">
+              <h3 className="font-bold text-on-surface text-sm mb-3 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-on-surface-variant" />
                 <span>Kürzlich erledigte Lernwerkstatt-Einträge (letzte 48 Stunden)</span>
               </h3>
 
@@ -1304,29 +1453,29 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 {timeoutHistory.map((h) => (
                   <div
                     key={h.id}
-                    className="p-3 rounded-2xl surface-1 text-sm flex items-center justify-between gap-3"
+                    className="p-3 rounded-xl bg-surface-2 border border-hairline/70 text-sm flex items-center justify-between gap-3"
                   >
-                    <div>
-                      <div className="font-bold text-slate-50">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-on-surface">
                         {h.pupil_name} ({h.class_name})
-                        <span className={`ml-2 rounded px-1.5 py-0.5 text-2xs font-bold ${h.kind === 'cooldown' ? 'bg-sky-500/15 text-sky-300' : 'bg-rose-500/15 text-rose-300'}`}>
+                        <span className={`ml-2 rounded-full px-2 py-0.5 text-2xs font-bold ${h.kind === 'cooldown' ? 'bg-info/15 text-info' : 'bg-critical/15 text-critical-soft'}`}>
                           {h.kind === 'cooldown' ? 'Cool-Down' : 'Time-Out'}
                         </span>
                         {h.retroactive && (
-                          <span className="ml-1 rounded bg-slate-700 px-1.5 py-0.5 text-2xs font-bold text-slate-200">
+                          <span className="ml-1 rounded-full bg-surface-3 px-2 py-0.5 text-2xs font-bold text-on-surface-variant">
                             Nachtrag
                           </span>
                         )}
-                        <span className="ml-2 text-slate-500 font-normal">
-                          von {h.sent_by_short} am {new Date(h.sent_at).toLocaleDateString('de-AT')} um {new Date(h.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
+                        <span className="ml-2 text-on-surface-variant font-normal text-2xs">
+                          von {h.sent_by_short} · {new Date(h.sent_at).toLocaleDateString('de-AT')} {new Date(h.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-2xs text-slate-400 italic mt-0.5 truncate max-w-xl">
+                      <p className="text-2xs text-on-surface-variant italic mt-0.5 truncate max-w-xl selectable">
                         &bdquo;{h.task_assignment}&ldquo;
                       </p>
                     </div>
 
-                    <div className="text-right text-2xs text-emerald-400 flex-shrink-0 font-bold">
+                    <div className="text-right text-2xs text-positive shrink-0 font-bold">
                       {h.status === 'resolved' ? 'Erledigt' : 'Aktiv'}
                     </div>
                   </div>
@@ -1345,113 +1494,42 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
         />
       ) : (
         /* ===================================================================== */
-        /* STANDARD CLASSROOM VIEW (SCHÜLER-KARTEN MIT TIMEOUT BUTTON)           */
+        /* STREAMLINED CLASSROOM ACTION ROWS                                     */
         /* ===================================================================== */
         <>
-          {/* Filter & Search Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-md">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Schüler in Klasse suchen..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
-              <button
-                onClick={() => setFilterRank('all')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition ${
-                  filterRank === 'all' ? 'bg-slate-700 text-slate-50' : 'bg-slate-800 text-slate-400 hover:text-slate-50'
-                }`}
-              >
-                Alle ({pupils.length})
-              </button>
-              <button
-                onClick={() => setFilterRank('Lehrling')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition flex items-center gap-1 ${
-                  filterRank === 'Lehrling' ? 'bg-rose-500 text-slate-50' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                Lehrling
-              </button>
-              <button
-                onClick={() => setFilterRank('Geselle')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition flex items-center gap-1 ${
-                  filterRank === 'Geselle' ? 'bg-blue-500 text-slate-50' : 'bg-slate-800 text-blue-400 hover:bg-slate-700'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                Geselle
-              </button>
-              <button
-                onClick={() => setFilterRank('Meister')}
-                className={`min-h-[40px] px-3 py-2 rounded-xl font-bold text-sm transition flex items-center gap-1 ${
-                  filterRank === 'Meister' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-slate-800 text-amber-400 hover:bg-slate-700'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                Meister
-              </button>
-
-              <div className="ml-1 flex shrink-0 items-center gap-1.5 border-l border-slate-700 pl-2">
-                <label
-                  htmlFor="pupil-sort"
-                  className="whitespace-nowrap text-sm font-semibold text-slate-400"
-                >
-                  Sortieren:
-                </label>
-                <select
-                  id="pupil-sort"
-                  value={sortMode}
-                  onChange={(e) => setSortMode(e.target.value as PupilSortMode)}
-                  className="min-h-[40px] rounded-xl border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm font-bold text-slate-100 focus:border-amber-400 focus:outline-none"
-                >
-                  {PUPIL_SORT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Compact Minimalist Pupils List */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden divide-y divide-slate-800/80">
-            {/* Simple class overview header */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 text-2xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-              <span>Klasse {currentClass.name} · {filteredPupils.length} Schüler*innen</span>
-              <div className="flex items-center gap-3 sm:gap-4 text-2xs normal-case font-medium tracking-normal text-slate-400">
-                <span className="hidden md:flex items-center gap-2 text-slate-400">
-                  <span className="font-semibold text-slate-300">Karten:</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Grün</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Gelb</span>
-                  <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Rot</span>
-                  <span className="inline-flex items-center gap-1"><Clock className="w-2.5 h-2.5 text-orange-400" /> Time-Out</span>
-                  <span className="inline-flex items-center gap-1"><Snowflake className="w-2.5 h-2.5 text-sky-400" /> Cool-Down</span>
-                </span>
-                <span className="text-slate-500">
-                  <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-rose-400 mr-1" />Lehrling</span>
-                  <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Geselle</span>
-                  <span className="mr-2"><span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1" />Meister</span>
-                  <span><span className="inline-block w-2 h-2 rounded-full bg-slate-500 mr-1" />Ausstehend</span>
-                </span>
-              </div>
-            </div>
-
+          <div className="divide-y divide-hairline/40">
             {filteredPupils.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-sm">
-                Keine Schüler gefunden für diese Auswahl.
+              <div className="py-10 px-4 text-center bg-surface-1 rounded-2xl border border-hairline text-on-surface-variant text-sm space-y-2">
+                <p>Keine Schüler gefunden für diese Auswahl.</p>
+                <div className="flex items-center justify-center gap-2">
+                  {(quickFilter !== 'all' || filterRank !== 'all' || searchQuery) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickFilter('all');
+                        setFilterRank('all');
+                        setSearchQuery('');
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-surface-3 hover:bg-surface-bright text-on-surface text-2xs font-semibold transition"
+                    >
+                      Filter zurücksetzen
+                    </button>
+                  )}
+                  {quickFilter === 'lw' && (
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('lw')}
+                      className="px-3 py-1.5 rounded-full bg-accent text-on-accent text-2xs font-bold transition"
+                    >
+                      Lernwerkstatt-Raum öffnen ({activeTimeouts.length})
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               filteredPupils.map((pupil, index) => {
                 const isExpanded = expandedPupilId === pupil.id;
-                const { hasRedCard, demotionSteps, subjectResults } = getPupilRank(pupil);
+                const { demotionSteps, subjectResults } = getPupilRank(pupil);
                 const pupilCards = cards.filter((c) => c.pupil_id === pupil.id);
                 const greenCards = pupilCards.filter((c) => c.card_type === 'green');
                 const yellowCards = pupilCards.filter((c) => c.card_type === 'yellow');
@@ -1469,346 +1547,316 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                 const activeTimeoutIncident = activeTimeouts.find((ti) => ti.pupil_id === pupil.id);
                 const currentRank = getDisplayedRank(pupil, subjectResults, demotionSteps);
                 const rankLabel = currentRank ?? 'Ausstehend';
-                const rankBoxClass =
+
+                const hasAlert = isYellowAlert || redCards.length > 0;
+                const hasAnyIncidentOrCard =
+                  greenCards.length > 0 ||
+                  yellowCards.length > 0 ||
+                  redCards.length > 0 ||
+                  timeoutCount > 0 ||
+                  cooldownCount > 0 ||
+                  Boolean(activeTimeoutIncident);
+                const isCleanMeister =
+                  currentRank === 'Meister' && !hasAlert && yellowCards.length === 0 && !activeTimeoutIncident;
+
+                const rankPillClass =
                   currentRank === 'Meister'
-                    ? 'border-amber-300 bg-amber-400 text-slate-950'
-                    : currentRank === 'Geselle'
-                    ? 'border-blue-300 bg-blue-600 text-white'
+                    ? 'bg-positive-dim/20 text-positive'
                     : currentRank === 'Lehrling'
-                    ? 'border-rose-300 bg-rose-600 text-white'
-                    : 'border-dashed border-slate-600 bg-slate-800 text-slate-300';
+                    ? 'bg-critical/15 text-critical-soft'
+                    : currentRank === 'Geselle'
+                    ? 'bg-surface-3 text-on-surface-variant'
+                    : 'bg-surface-2 text-on-surface-variant/75';
 
                 return (
-                  <div key={pupil.id} data-tour={index === 0 ? 'pupil-row' : undefined} className="transition-colors">
-                    {/* Main Compact Row */}
+                  <div
+                    key={pupil.id}
+                    data-tour={index === 0 ? 'pupil-row' : undefined}
+                    className={
+                      isExpanded
+                        ? 'flex flex-col bg-surface-3/85 rounded-xl my-1.5 overflow-hidden transition-all shadow-md border border-hairline'
+                        : 'flex flex-col bg-surface-0 hover:bg-surface-1/80 transition-colors'
+                    }
+                  >
+                    {/* Main Row Tappable Header */}
                     <div
                       onClick={() => setExpandedPupilId(isExpanded ? null : pupil.id)}
-                      className={`cursor-pointer px-3 py-2.5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 transition ${
-                        isExpanded
-                          ? 'bg-slate-800/80 border-b border-slate-700/60'
-                          : activeTimeoutIncident
-                          ? 'bg-amber-950/20 hover:bg-amber-950/30'
-                          : hasRedCard
-                          ? 'bg-rose-950/15 hover:bg-rose-950/25'
-                          : 'hover:bg-slate-800/50'
-                      }`}
+                      className="cursor-pointer flex items-center justify-between min-h-[60px] px-2.5 sm:px-3 py-1.5 gap-2"
                     >
-                      {/* Left: pupil name in a single rank-coloured box */}
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveProfilePupilId(pupil.id);
-                          }}
-                          className={`flex min-h-[56px] min-w-0 flex-1 items-center justify-between gap-2 rounded-2xl border-2 px-4 py-2 text-left select-none transition hover:brightness-110 active:scale-[0.99] focus:outline-none focus-ring ${rankBoxClass}`}
-                          title="Antippen für Schülerprofil & pädagogische Verhaltenspyramide"
-                        >
-                          <span data-testid="pupil-name" className="truncate text-base font-extrabold">{pupil.fullName}</span>
-                          <span className="shrink-0 rounded-lg border border-black/10 bg-black/15 px-2 py-0.5 text-2xs font-extrabold uppercase tracking-wide">
-                            {rankLabel}
-                          </span>
-                        </button>
-                        {activeTimeoutIncident && (
-                          <span
-                            className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-2xs font-bold text-amber-300"
-                            title={activeTimeoutIncident.kind === 'cooldown' ? 'Im Cool-Down (Lernwerkstatt)' : 'Im Time-Out (Lernwerkstatt)'}
+                      {/* Left: Avatar + Name + Rank & Non-zero Micro Pills */}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="relative shrink-0">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm tabular ${
+                              isCleanMeister
+                                ? 'bg-positive-dim/15 text-positive'
+                                : isExpanded
+                                ? 'bg-surface-1 text-on-surface'
+                                : 'bg-surface-3 text-on-surface'
+                            }`}
                           >
-                            {activeTimeoutIncident.kind === 'cooldown' ? (
-                              <Snowflake className="w-3 h-3" aria-hidden="true" />
-                            ) : (
-                              <Clock className="w-3 h-3" aria-hidden="true" />
+                            {getInitials(pupil.fullName)}
+                          </div>
+                          {activeTimeoutIncident ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-surface-1 flex items-center justify-center shadow-sm">
+                              <span className="w-2.5 h-2.5 rounded-full bg-critical animate-pulse" />
+                            </span>
+                          ) : hasAlert ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-surface-1 flex items-center justify-center shadow-sm">
+                              <span className="w-2.5 h-2.5 rounded-full bg-critical" />
+                            </span>
+                          ) : yellowCards.length > 0 ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent-dim border-2 border-surface-0" />
+                          ) : isCleanMeister ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-surface-0 flex items-center justify-center">
+                              <Star className="w-3 h-3 text-positive fill-positive" aria-hidden="true" />
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-col min-w-0 pr-1">
+                          <span
+                            data-testid="pupil-name"
+                            className="text-base font-semibold text-on-surface truncate leading-tight selectable"
+                          >
+                            {pupil.fullName}
+                          </span>
+
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded-full text-2xs leading-tight font-semibold uppercase tracking-wide ${rankPillClass}`}>
+                              {rankLabel}
+                            </span>
+
+                            {activeTimeoutIncident && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-critical/20 text-critical-soft text-2xs font-bold tabular leading-tight">
+                                {activeTimeoutIncident.kind === 'cooldown' ? (
+                                  <Snowflake className="w-3 h-3" aria-hidden="true" />
+                                ) : (
+                                  <Clock className="w-3 h-3" aria-hidden="true" />
+                                )}
+                                <span>
+                                  {activeTimeoutIncident.kind === 'cooldown' ? 'CD' : 'LW'} · {formatElapsedMinutes(activeTimeoutIncident.sent_at)}
+                                </span>
+                              </span>
                             )}
-                            {' '}LW
-                          </span>
-                        )}
-                        {isYellowAlert && (
-                          <span
-                            className="shrink-0 rounded-md border border-rose-500/40 bg-rose-500/20 px-1.5 py-0.5 text-2xs font-bold text-rose-300"
-                            title="Mahnstufe (>= 2 gelbe Karten)"
-                          >
-                            <ShieldAlertIcon className="w-3 h-3" aria-hidden="true" />
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedPupilId(isExpanded ? null : pupil.id);
-                          }}
-                          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-slate-700 bg-slate-800/80 text-slate-300 transition hover:bg-slate-700 hover:text-slate-50 sm:hidden"
-                          aria-expanded={isExpanded}
-                          aria-label={isExpanded ? 'Details ausblenden' : 'Details einblenden'}
-                          title="Details"
-                        >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
+
+                            {isYellowAlert && (
+                              <span className="inline-flex px-1.5 py-0.5 rounded-full bg-critical/20 text-critical-soft text-2xs leading-tight font-semibold tracking-wide uppercase">
+                                Mahnstufe
+                              </span>
+                            )}
+
+                            {greenCards.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-positive-dim/20 text-positive text-2xs font-bold tabular leading-tight">
+                                +{greenCards.length} Lob
+                              </span>
+                            )}
+
+                            {yellowCards.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-accent-dim/25 text-accent text-2xs font-bold tabular leading-tight">
+                                {yellowCards.length}× Gelb
+                              </span>
+                            )}
+
+                            {redCards.length > 0 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-critical/25 text-critical-soft text-2xs font-bold tabular leading-tight">
+                                {redCards.length}× Rot
+                              </span>
+                            )}
+
+                            {timeoutCount > 0 && !activeTimeoutIncident && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-warning/20 text-warning text-2xs font-bold tabular leading-tight">
+                                {timeoutCount}× TO
+                              </span>
+                            )}
+
+                            {cooldownCount > 0 && !activeTimeoutIncident && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-info/20 text-info text-2xs font-bold tabular leading-tight">
+                                {cooldownCount}× CD
+                              </span>
+                            )}
+
+                            {!hasAnyIncidentOrCard && (
+                              <span className="text-on-surface-variant/65 text-2xs inline-flex items-center gap-0.5">
+                                <Check className="w-3 h-3 text-positive" aria-hidden="true" />
+                                <span>unauffällig</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Middle: Compact Card Counter Block (Option 2) */}
+                      {/* Right: Minimal Thumb Quick Actions (+ G, + Y, ⋮) or LW Return */}
                       <div
+                        data-tour={index === 0 ? 'card-actions' : undefined}
                         onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-1 sm:gap-1.5 shrink-0 bg-slate-950/70 p-1 sm:p-1.5 rounded-2xl border border-slate-800/80 shadow-inner"
-                        title="Kartenstand des Schülers: Grün · Gelb · Rot · Time-Out · Cool-Down"
+                        className="flex items-center gap-1.5 shrink-0"
                       >
-                        {/* Grün */}
-                        <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
-                            greenCards.length > 0
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35 shadow-sm shadow-emerald-950/40'
-                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
-                          }`}
-                          title={`${greenCards.length} Grüne Karte(n) bisher`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${greenCards.length > 0 ? 'bg-emerald-400' : 'bg-slate-600'}`} aria-hidden="true" />
-                          <span>{greenCards.length}</span>
-                        </span>
+                        {activeTimeoutIncident ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleResolveTimeout(
+                                activeTimeoutIncident.id,
+                                pupil.fullName,
+                                activeTimeoutIncident.kind,
+                              )
+                            }
+                            className="pressable focus-ring h-9 px-3 rounded-lg bg-surface-3 text-accent hover:bg-surface-bright transition-colors flex items-center justify-center gap-1 text-sm font-semibold"
+                            title="Zurück in die Klasse"
+                          >
+                            <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+                            <span>Rückkehr</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCardModal({
+                                  pupilId: pupil.id,
+                                  pupilName: pupil.fullName,
+                                  cardType: 'green',
+                                  classId: currentClass.id,
+                                  className: currentClass.name,
+                                });
+                                setCardNote('');
+                              }}
+                              className={`pressable focus-ring h-9 px-2.5 rounded-lg transition-colors flex items-center justify-center gap-0.5 text-sm font-bold ${
+                                greenCards.length > 0 || currentRank === 'Meister'
+                                  ? 'bg-positive-dim/20 text-positive hover:bg-positive-dim/30'
+                                  : 'bg-surface-3 text-on-surface-variant hover:text-positive hover:bg-surface-bright'
+                              }`}
+                              title="Grüne Karte vergeben (Lob · Tastatur: 1)"
+                              aria-label={`Grüne Karte für ${pupil.fullName}`}
+                            >
+                              <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>G</span>
+                            </button>
 
-                        {/* Gelb */}
-                        <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
-                            yellowCards.length > 0
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/35 shadow-sm shadow-amber-950/40'
-                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
-                          }`}
-                          title={`${yellowCards.length} Gelbe Karte(n) bisher`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${yellowCards.length > 0 ? 'bg-amber-400' : 'bg-slate-600'}`} aria-hidden="true" />
-                          <span>{yellowCards.length}</span>
-                        </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveCardModal({
+                                  pupilId: pupil.id,
+                                  pupilName: pupil.fullName,
+                                  cardType: 'yellow',
+                                  classId: currentClass.id,
+                                  className: currentClass.name,
+                                });
+                                setCardNote('');
+                              }}
+                              className={`pressable focus-ring h-9 px-2.5 rounded-lg transition-colors flex items-center justify-center gap-0.5 text-sm font-bold ${
+                                yellowCards.length > 0
+                                  ? 'bg-accent-dim/25 text-accent hover:bg-accent-dim/35'
+                                  : 'bg-surface-3 text-on-surface-variant hover:text-accent hover:bg-surface-bright'
+                              }`}
+                              title="Gelbe Karte vergeben (Mahnung · Tastatur: 2)"
+                              aria-label={`Gelbe Karte für ${pupil.fullName}`}
+                            >
+                              <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Y</span>
+                            </button>
+                          </>
+                        )}
 
-                        {/* Rot */}
-                        <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
-                            redCards.length > 0
-                              ? 'bg-rose-500/25 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-950/40 font-extrabold'
-                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
-                          }`}
-                          title={`${redCards.length} Rote Karte(n) bisher (Rangverlust)`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${redCards.length > 0 ? 'bg-rose-400' : 'bg-slate-600'}`} aria-hidden="true" />
-                          <span>{redCards.length}</span>
-                        </span>
-
-                        {/* Time-Out */}
-                        <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
-                            timeoutCount > 0
-                              ? 'bg-orange-500/20 text-orange-300 border-orange-500/35 shadow-sm shadow-orange-950/40'
-                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
-                          }`}
-                          title={`${timeoutCount} Time-Out(s) in der Lernwerkstatt`}
-                        >
-                          <Clock className={`w-3.5 h-3.5 ${timeoutCount > 0 ? 'text-orange-400' : 'text-slate-600'}`} aria-hidden="true" />
-                          <span>{timeoutCount}</span>
-                        </span>
-
-                        {/* Cool-Down */}
-                        <span
-                          className={`inline-flex min-w-[34px] sm:min-w-[38px] h-9 items-center justify-center gap-1 px-2 rounded-xl text-sm font-bold border transition ${
-                            cooldownCount > 0
-                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/35 shadow-sm shadow-sky-950/40'
-                              : 'bg-slate-900/50 text-slate-500 border-slate-800/50'
-                          }`}
-                          title={`${cooldownCount} Cool-Down(s)`}
-                        >
-                          <Snowflake className={`w-3.5 h-3.5 ${cooldownCount > 0 ? 'text-sky-400' : 'text-slate-600'}`} aria-hidden="true" />
-                          <span>{cooldownCount}</span>
-                        </span>
-                      </div>
-
-                      {/* Right: quick action cards */}
-                      <div className="flex items-stretch gap-1.5 sm:shrink-0">
-                        <div data-tour={index === 0 ? 'card-actions' : undefined} className="grid flex-1 grid-cols-5 gap-1.5 sm:flex sm:flex-none sm:items-stretch">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveCardModal({
-                              pupilId: pupil.id,
-                              pupilName: pupil.fullName,
-                              cardType: 'green',
-                              classId: currentClass.id,
-                              className: currentClass.name,
-                            });
-                            setCardNote('');
-                          }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
-                          title="Grüne Karte vergeben  (Tastatur: 1)"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Grün</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveCardModal({
-                              pupilId: pupil.id,
-                              pupilName: pupil.fullName,
-                              cardType: 'yellow',
-                              classId: currentClass.id,
-                              className: currentClass.name,
-                            });
-                            setCardNote('');
-                          }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
-                          title="Gelbe Karte vergeben  (Tastatur: 2)"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Gelb</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenRedCardModal(pupil);
-                          }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 border border-rose-500/40 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
-                          title="Rote Karte vergeben (sofortiger Rangverlust)  (Tastatur: 3)"
-                        >
-                          <ShieldAlertIcon className="w-3.5 h-3.5" aria-hidden="true" />
-                          <span>Rot</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenTimeoutModal(pupil, 'timeout');
-                          }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-gradient-to-r from-amber-500/25 to-rose-500/25 hover:from-amber-500/40 hover:to-rose-500/40 text-amber-200 border border-amber-500/40 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
-                          title="Ins Time-Out (Lernwerkstatt) schicken  (Tastatur: 4)"
-                        >
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>TIMEOUT</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenTimeoutModal(pupil, 'cooldown');
-                          }}
-                          className="pressable focus-ring min-h-[56px] min-w-0 rounded-xl px-1 py-1.5 sm:w-[72px] bg-sky-500/15 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-2xs font-bold leading-[1.1] transition flex flex-col items-center justify-center gap-0.5  active:scale-95"
-                          title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich)  (Tastatur: 5)"
-                        >
-                          <Snowflake className="w-3.5 h-3.5 text-sky-300" />
-                          <span>COOL-DOWN</span>
-                        </button>
-
-                      </div>
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedPupilId(isExpanded ? null : pupil.id);
-                          }}
-                          className="hidden min-h-[56px] w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-700 bg-slate-800/80 text-2xs font-bold leading-none text-slate-400 transition hover:bg-slate-700 hover:text-slate-50 sm:inline-flex"
+                          onClick={() => setExpandedPupilId(isExpanded ? null : pupil.id)}
                           aria-expanded={isExpanded}
-                          title={isExpanded ? 'Details ausblenden' : 'Details einblenden'}
+                          aria-label={isExpanded ? 'Optionen und Details ausblenden' : 'Optionen und Details einblenden'}
+                          title={isExpanded ? 'Details ausblenden' : 'Weitere Aktionen & Historie'}
+                          className={`focus-ring w-8 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                            isExpanded
+                              ? 'bg-surface-bright text-on-surface'
+                              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-3'
+                          }`}
                         >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          <span>Details</span>
+                          <MoreVertical className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Expanded Detail Panel (When clicked) */}
+                    {/* Expandable Drawer Content */}
                     {isExpanded && (
-                      <div className="bg-surface-2 px-5 py-4 border-t border-hairline space-y-4">
-                        {/* Header inside detail: Info Bar */}
-                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80 text-sm">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            {pupil.finalRank && currentRank && currentRank !== pupil.finalRank && (
-                              <span className="text-rose-300 font-semibold">
-                                Konferenzbeschluss: {pupil.finalRank} (herabgestuft auf {currentRank} durch Karten)
-                              </span>
-                            )}
-                            {subjectResults.map((sr) => (
-                              <span key={sr.subjectCode} className="text-slate-400">
-                                {sr.subjectCode}: {sr.positiveCount}/{rubricItemKeys.length} positiv ·
-                                Basis-Rang: {sr.baseRank ?? 'Ausstehend'}
-                                {sr.hasRedCardDemotion && ` (herabgestuft auf ${sr.rank} durch Karten)`}
-                              </span>
-                            ))}
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setActiveProfilePupilId(pupil.id)}
-                              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 via-sky-500/20 to-amber-500/20 hover:from-emerald-500/30 hover:via-sky-500/30 hover:to-amber-500/30 border border-amber-500/35 text-amber-200 text-sm font-bold transition flex items-center gap-1.5 shadow-sm"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                              <span>Verhaltensprofil &amp; Stufenpyramide</span>
-                            </button>
-                            <div className="text-slate-400 text-sm hidden sm:block">
-                              {pupilCards.length === 0 ? 'Keine Karten' : `${pupilCards.length} Verhaltenskarten erfasst`}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Active Alerts in Detail */}
+                      <div className="flex flex-col gap-2.5 px-3 pb-3 pt-2.5 bg-surface-lowest/70 border-t border-hairline/50 animate-row-reveal">
+                        {/* Active LW Callout */}
                         {activeTimeoutIncident && (
-                          <div className={`p-3 rounded-xl border text-sm flex items-start gap-2 ${activeTimeoutIncident.kind === 'cooldown' ? 'bg-sky-500/10 border-sky-500/40 text-sky-200' : 'bg-amber-500/15 border-amber-500/40 text-amber-200'}`}>
+                          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-surface-3/90">
                             {activeTimeoutIncident.kind === 'cooldown' ? (
-                              <Snowflake className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                              <Snowflake className="w-4 h-4 text-info shrink-0 mt-0.5" />
                             ) : (
-                              <Clock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              <Clock className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                             )}
-                            <div>
-                              <strong>
-                                {activeTimeoutIncident.kind === 'cooldown'
-                                  ? 'Aktuell im Cool-Down (Lernwerkstatt):'
-                                  : 'Aktuell im Time-Out (Lernwerkstatt):'}
-                              </strong>
-                              <div className="mt-0.5 text-slate-300">
-                                {activeTimeoutIncident.kind === 'cooldown' ? 'Notiz' : 'Arbeitsauftrag'}: &bdquo;{activeTimeoutIncident.task_assignment}&ldquo;
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between text-2xs text-on-surface-variant">
+                                <span className="font-semibold text-accent">
+                                  {activeTimeoutIncident.kind === 'cooldown'
+                                    ? 'Aktuell im Cool-Down (Lernwerkstatt)'
+                                    : 'Aktuell im Time-Out (Lernwerkstatt)'}
+                                </span>
+                                <span className="tabular">
+                                  {activeTimeoutIncident.sent_by_short} · {new Date(activeTimeoutIncident.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
                               </div>
-                              <div className={`mt-1 text-2xs ${activeTimeoutIncident.kind === 'cooldown' ? 'text-sky-400' : 'text-amber-400'}`}>
-                                Geschickt von {activeTimeoutIncident.sent_by_short} um {new Date(activeTimeoutIncident.sent_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
-                              </div>
+                              <p className="text-2xs text-on-surface mt-0.5 selectable">
+                                &bdquo;{activeTimeoutIncident.task_assignment}&ldquo;
+                              </p>
                             </div>
                           </div>
                         )}
 
-                        {/* Cards History List */}
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                            Verhaltenskarten &amp; Vorfälle
-                          </h4>
-                          {pupilCards.length === 0 ? (
-                            <p className="text-sm text-slate-500 italic py-1">
-                              Noch keine Verhaltenskarten für diesen Schüler eingetragen.
-                            </p>
-                          ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {pupilCards.map((c) => (
-                                <div
-                                  key={c.id}
-                                  className={`p-3 rounded-xl border text-sm flex items-start justify-between gap-2 ${
-                                    c.card_type === 'green'
-                                      ? 'bg-emerald-500/10 border-emerald-500/25 text-slate-200'
-                                      : c.card_type === 'yellow'
-                                      ? 'bg-amber-500/10 border-amber-500/25 text-slate-200'
-                                      : c.card_type === 'cooldown'
-                                      ? 'bg-sky-500/10 border-sky-500/25 text-slate-200'
-                                      : 'bg-rose-500/15 border-rose-500/35 text-rose-200'
-                                  }`}
-                                >
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5 font-bold mb-0.5">
-                                      <span className="inline-flex items-center gap-1.5">
-                                        <span
-                                          className={`w-2 h-2 rounded-full shrink-0 ${
-                                            c.card_type === 'green'
-                                              ? 'bg-emerald-400'
-                                              : c.card_type === 'yellow'
-                                              ? 'bg-amber-400'
-                                              : c.card_type === 'cooldown'
-                                              ? 'bg-sky-400'
-                                              : 'bg-rose-400'
-                                          }`}
-                                          aria-hidden="true"
-                                        />
+                        {/* Per-subject & Conference Evidence Summary */}
+                        {(subjectResults.length > 0 || (pupil.finalRank && currentRank && currentRank !== pupil.finalRank)) && (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-on-surface-variant">
+                            {pupil.finalRank && currentRank && currentRank !== pupil.finalRank && (
+                              <span className="text-critical-soft font-semibold">
+                                Konferenzbeschluss: {pupil.finalRank} (herabgestuft auf {currentRank} durch Karten)
+                              </span>
+                            )}
+                            {subjectResults.map((sr) => (
+                              <span key={sr.subjectCode}>
+                                {sr.subjectCode}: {sr.positiveCount}/{rubricItemKeys.length} positiv · Basis-Rang: {sr.baseRank ?? 'Ausstehend'}
+                                {sr.hasRedCardDemotion && ` (herabgestuft auf ${sr.rank} durch Karten)`}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Card & Incident History */}
+                        {pupilCards.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {pupilCards.map((c) => (
+                              <div
+                                key={c.id}
+                                className="flex items-start justify-between gap-2 p-2.5 rounded-lg bg-surface-3/85"
+                              >
+                                <div className="flex items-start gap-2 min-w-0 flex-1">
+                                  <span
+                                    className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${
+                                      c.card_type === 'green'
+                                        ? 'bg-positive'
+                                        : c.card_type === 'yellow'
+                                        ? 'bg-accent-dim'
+                                        : c.card_type === 'cooldown'
+                                        ? 'bg-info'
+                                        : 'bg-critical'
+                                    }`}
+                                    aria-hidden="true"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2 text-2xs">
+                                      <span
+                                        className={`font-semibold ${
+                                          c.card_type === 'green'
+                                            ? 'text-positive'
+                                            : c.card_type === 'yellow'
+                                            ? 'text-accent'
+                                            : c.card_type === 'cooldown'
+                                            ? 'text-info'
+                                            : 'text-critical-soft'
+                                        }`}
+                                      >
                                         {c.card_type === 'green'
                                           ? 'Grüne Karte'
                                           : c.card_type === 'yellow'
@@ -1817,8 +1865,8 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                           ? 'Cool-Down'
                                           : 'Rote Karte'}
                                       </span>
-                                      <span className="text-2xs text-slate-400 font-normal">
-                                        von {c.teacher_short} · {new Date(c.created_at).toLocaleDateString('de-AT')} {new Date(c.created_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
+                                      <span className="text-on-surface-variant tabular shrink-0">
+                                        {c.teacher_short} · {new Date(c.created_at).toLocaleDateString('de-AT')} {new Date(c.created_at).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}
                                       </span>
                                     </div>
                                     <CardNoteEditor
@@ -1840,28 +1888,34 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                                       }}
                                     />
                                   </div>
-
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleRevokeCard(c);
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition flex-shrink-0"
-                                    title="Karte zurücknehmen"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
 
-                        {/* Inline Note Input in Detail */}
-                        <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRevokeCard(c);
+                                  }}
+                                  className="p-1 text-on-surface-variant hover:text-critical rounded-lg hover:bg-surface-2 transition shrink-0"
+                                  title="Karte zurücknehmen"
+                                  aria-label="Karte zurücknehmen"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-2xs text-on-surface-variant italic">
+                            Noch keine Verhaltenskarten erfasst.
+                          </p>
+                        )}
+
+                        {/* Quick Observation Note Bar */}
+                        <div className="flex items-center gap-1.5">
                           <input
                             type="text"
-                            placeholder="Notiz hinzufügen (als grüne Karte erfassen)..."
+                            placeholder="Kurznotiz hinzufügen (als grüne Karte)..."
                             value={inlineNotes[pupil.id] || ''}
                             onChange={(e) =>
                               setInlineNotes((prev) => ({ ...prev, [pupil.id]: e.target.value }))
@@ -1869,14 +1923,59 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSaveInlineNote(pupil.id);
                             }}
-                            className="flex-1 min-h-[44px] bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                            className="h-9 px-3 rounded-lg bg-surface-2 text-on-surface placeholder:text-on-surface-variant/60 text-sm flex-1 focus:outline-none focus:bg-surface-3 border border-hairline/60 selectable"
                           />
                           <button
+                            type="button"
                             onClick={() => handleSaveInlineNote(pupil.id)}
                             disabled={savingInlineNote === pupil.id || !inlineNotes[pupil.id]?.trim()}
-                            className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-50 text-sm font-bold transition disabled:opacity-40"
+                            aria-label="Kurznotiz speichern"
+                            className="pressable focus-ring h-9 px-3 rounded-lg bg-surface-3 hover:bg-surface-bright text-accent hover:text-on-surface flex items-center justify-center transition disabled:opacity-40"
                           >
-                            {savingInlineNote === pupil.id ? '...' : 'Notiz speichern'}
+                            <Send className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                        </div>
+
+                        {/* Direct Escalation & Profile Action Pills */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenRedCardModal(pupil)}
+                            title="Rote Karte vergeben (sofortiger Rangverlust · Tastatur: 3)"
+                            className="pressable focus-ring h-9 rounded-lg bg-surface-2 hover:bg-surface-bright text-on-surface text-2xs font-semibold flex items-center justify-center gap-1.5 transition"
+                          >
+                            <ShieldAlertIcon className="w-3.5 h-3.5 text-critical" aria-hidden="true" />
+                            <span>Rot</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTimeoutModal(pupil, 'timeout')}
+                            title="Ins Time-Out (Lernwerkstatt) schicken (Tastatur: 4)"
+                            className="pressable focus-ring h-9 rounded-lg bg-surface-2 hover:bg-surface-bright text-on-surface text-2xs font-semibold flex items-center justify-center gap-1.5 transition"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
+                            <span>Time-Out</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTimeoutModal(pupil, 'cooldown')}
+                            title="Cool-Down in die Lernwerkstatt (kein Rangverlust, Notiz möglich · Tastatur: 5)"
+                            className="pressable focus-ring h-9 rounded-lg bg-surface-2 hover:bg-surface-bright text-on-surface text-2xs font-semibold flex items-center justify-center gap-1.5 transition"
+                          >
+                            <Snowflake className="w-3.5 h-3.5 text-info" aria-hidden="true" />
+                            <span>Cool-Down</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setActiveProfilePupilId(pupil.id)}
+                            title="Verhaltensprofil & Stufenpyramide öffnen"
+                            className="pressable focus-ring h-9 rounded-lg bg-surface-2 hover:bg-surface-bright text-on-surface text-2xs font-semibold flex items-center justify-center gap-1.5 transition"
+                          >
+                            <UserIcon className="w-3.5 h-3.5 text-on-surface-variant" aria-hidden="true" />
+                            <span>Profil</span>
                           </button>
                         </div>
                       </div>
@@ -1886,6 +1985,41 @@ export const Schulalltag: React.FC<SchulalltagProps> = ({
               })
             )}
           </div>
+
+          {/* Bottom Floating Triage / Summary Capsule */}
+          {pupils.length > 0 && (
+            <div className="sticky bottom-20 md:bottom-4 z-30 mt-3 no-print">
+              <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-surface-3/95 backdrop-blur-md border border-hairline-strong shadow-xl">
+                <div className="flex items-center gap-2 min-w-0 tabular text-sm">
+                  <div className="flex items-center gap-1 text-positive font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-positive" />
+                    <span>{classSummary.green} Positiv</span>
+                  </div>
+                  <span className="text-on-surface-variant/40">·</span>
+                  <div className="flex items-center gap-1 text-accent font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-accent-dim" />
+                    <span>{classSummary.yellow} Gelb</span>
+                  </div>
+                  <span className="text-on-surface-variant/40">·</span>
+                  <div className="flex items-center gap-1 text-critical-soft font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-critical" />
+                    <span>{classSummary.incidents} Vorfälle</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode('lw')}
+                  className="pressable focus-ring h-8 px-3 rounded-lg bg-accent text-on-accent text-sm font-bold flex items-center gap-1.5 shrink-0 shadow-sm transition"
+                >
+                  <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>
+                    Lernwerkstatt{activeTimeouts.length > 0 ? ` (${activeTimeouts.length})` : ''}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

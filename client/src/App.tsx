@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { ClassSyncState } from './hooks/useLiveSync';
 import { LoginModal } from './components/LoginModal';
@@ -17,6 +17,7 @@ import { canWriteSubjectInClass, isSchoolLeadershipUser } from './app/helpers';
 import { createRatingWriteHandlers, downloadBackup } from './app/actions';
 import { stopViewAs } from './services/api';
 import { AppHeader } from './app/components/AppHeader';
+import { MobileBottomNav } from './app/components/MobileBottomNav';
 import { ClassNavBar } from './app/components/ClassNavBar';
 import { AppBanners } from './app/components/AppBanners';
 import { MainContent } from './app/components/MainContent';
@@ -26,6 +27,8 @@ export function App() {
   const toast = useToast();
   const { forceDark } = useTheme();
   const { activeTab, setActiveTab, showAllModules, toggleAllModules } = useModuleVisibility();
+  const [schulalltagView, setSchulalltagView] = useState<'class' | 'lw' | 'all'>('class');
+  const [lwActiveCount, setLwActiveCount] = useState(0);
   const modals = useAppModals();
   const { conferenceModalOpen } = modals;
 
@@ -187,8 +190,14 @@ export function App() {
         <AppHeader
           currentUser={currentUser}
           currentClass={currentClass}
+          classes={classes}
+          selectedClassId={selectedClassId}
+          onSelectClass={classData.setSelectedClassId}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          schulalltagView={schulalltagView}
+          onSelectSchulalltagView={setSchulalltagView}
+          lwActiveCount={lwActiveCount}
           showAllModules={showAllModules}
           toggleAllModules={toggleAllModules}
           isConnected={live.isConnected}
@@ -229,7 +238,7 @@ export function App() {
 
       {/* Main Body */}
       {/* safe-bottom keeps content clear of the home indicator in a Home Screen app. */}
-      <main className="vt-panel flex-1 px-4 md:px-6 py-4 md:py-6 max-w-[1600px] w-full mx-auto safe-bottom">
+      <main className="vt-panel flex-1 px-3 sm:px-6 py-3 sm:py-5 pb-24 md:pb-6 max-w-[1600px] w-full mx-auto safe-bottom">
         <MainContent
           activeTab={activeTab}
           loadingClass={loadingClass}
@@ -245,6 +254,9 @@ export function App() {
           ratingPupilId={null}
           isLockedByConference={live.isLockedByConference}
           canRateCurrentClass={canRateCurrentClass}
+          schulalltagView={schulalltagView}
+          onSchulalltagViewChange={setSchulalltagView}
+          onLwActiveCountChange={setLwActiveCount}
           grid={{
             softLocks: live.softLocks,
             conflict: live.conflict,
@@ -266,6 +278,20 @@ export function App() {
           onBatchUpdate={handleBatchUpdate}
         />
       </main>
+
+      <MobileBottomNav
+        activeTab={activeTab}
+        schulalltagView={schulalltagView}
+        lwActiveCount={lwActiveCount}
+        onSelectTab={(tab, subView) => {
+          if (tab === 'schulalltag' && subView) {
+            setSchulalltagView(subView);
+          } else if (tab === 'schulalltag' && schulalltagView === 'lw') {
+            setSchulalltagView('class');
+          }
+          setActiveTab(tab);
+        }}
+      />
 
       <AppModals
         modals={modals}

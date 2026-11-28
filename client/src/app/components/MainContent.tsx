@@ -36,6 +36,9 @@ export interface MainContentProps {
   ratingPupilId: number | null;
   isLockedByConference: boolean;
   canRateCurrentClass: boolean;
+  schulalltagView?: 'class' | 'lw' | 'all';
+  onSchulalltagViewChange?: (view: 'class' | 'lw' | 'all') => void;
+  onLwActiveCountChange?: (count: number) => void;
   grid: GridLiveProps;
   modals: AppModals;
   onSelectClass: (classId: number) => void;
@@ -63,6 +66,9 @@ export function MainContent({
   ratingPupilId,
   isLockedByConference,
   canRateCurrentClass,
+  schulalltagView,
+  onSchulalltagViewChange,
+  onLwActiveCountChange,
   grid,
   modals,
   onSelectClass,
@@ -159,6 +165,9 @@ export function MainContent({
           onSelectClass={(cid) => onSelectClass(cid)}
           onRefreshClassData={onReloadClass}
           criteria={criteria}
+          viewMode={schulalltagView}
+          onViewModeChange={onSchulalltagViewChange}
+          onActiveTimeoutCountChange={onLwActiveCountChange}
         />
       );
     }

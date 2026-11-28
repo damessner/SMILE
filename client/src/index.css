@@ -24,7 +24,7 @@
      system-ui first would pick the browser default rather than the platform's
      intended face on some Windows installs. */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
     system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono:
     ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
@@ -54,24 +54,32 @@
   --radius-3xl: 28px;
 
   /* --- Material --------------------------------------------------------
-     Four elevation levels, expressed as surface + border + shadow rather
-     than ad-hoc border-slate-8xx declarations. */
-  --color-surface-0: #080b12;   /* app background */
-  --color-surface-1: #0e1320;   /* cards, rows */
-  --color-surface-2: #161d2e;   /* raised: expanded row, inputs */
-  --color-surface-3: #1e2637;   /* floating: modals, toasts */
+     Elevation levels expressed as deep-navy Material 3 tonal surfaces
+     plus hairline separators. */
+  --color-surface-lowest: #060e20; /* recessed drawer / callout floor */
+  --color-surface-0: #0b1326;      /* app background */
+  --color-surface-1: #131b2e;      /* top/bottom bar, context header, rows */
+  --color-surface-2: #171f33;      /* cards, avatars, subtle containers */
+  --color-surface-3: #222a3d;      /* elevated: chips, inputs, floating capsule */
+  --color-surface-bright: #31394d; /* hover / interactive highlight */
 
-  --color-hairline: #232c40;    /* the 1px separator */
-  --color-hairline-strong: #33405a;
+  --color-hairline: #232d45;       /* the 1px separator */
+  --color-hairline-strong: #313d57;
+
+  --color-on-surface: #dae2fd;
+  --color-on-surface-variant: #b8c2db;
 
   /* Brand: warm amber, matching the school identity. */
-  --color-accent: #f5b83d;
-  --color-accent-dim: #d99b26;
+  --color-accent: #ffc174;
+  --color-accent-dim: #f59e0b;
+  --color-on-accent: #472a00;
 
-  /* Semantic, tuned for dark surfaces so they do not vibrate. */
-  --color-positive: #34d399;
-  --color-caution: #fbbf24;
-  --color-critical: #fb7185;
+  /* Semantic, tuned for dark navy surfaces so they stay calm and legible. */
+  --color-positive: #4edea3;
+  --color-positive-dim: #00a572;
+  --color-caution: #ffc174;
+  --color-critical: #ff919a;
+  --color-critical-soft: #ffbbbe;
   --color-info: #60a5fa;
   --color-warning: #fb923c;
 
@@ -79,8 +87,8 @@
      Derived from the semantic layer where possible; the foreground colors
      need per-theme overrides because the accent flips light/dark. */
   --btn-primary-bg: var(--color-accent);
-  --btn-primary-bg-hover: color-mix(in srgb, var(--color-accent) 78%, white);
-  --btn-primary-fg: #17130a;
+  --btn-primary-bg-hover: color-mix(in srgb, var(--color-accent) 82%, white);
+  --btn-primary-fg: var(--color-on-accent);
   --btn-secondary-bg: var(--color-surface-2);
   --btn-secondary-bg-hover: var(--color-surface-3);
   --btn-secondary-fg: var(--color-slate-200);
@@ -291,21 +299,29 @@
     --color-slate-950: #f4f7fb; /* page background */
 
     /* --- Surfaces ------------------------------------------------------ */
+    --color-surface-lowest: #eef2f7;
     --color-surface-0: #f4f7fb;
     --color-surface-1: #ffffff;
     --color-surface-2: #f8fafc;
-    --color-surface-3: #ffffff;
+    --color-surface-3: #eef2f7;
+    --color-surface-bright: #e2e8f0;
     --color-hairline: #e2e8f0;
     --color-hairline-strong: #cbd5e1;
+
+    --color-on-surface: #0f172a;
+    --color-on-surface-variant: #475569;
 
     /* --- Brand --------------------------------------------------------- */
     --color-accent: #b45309;
     --color-accent-dim: #92400e;
+    --color-on-accent: #ffffff;
 
     /* --- Semantic, darkened for legibility on white -------------------- */
     --color-positive: #047857;
+    --color-positive-dim: #059669;
     --color-caution: #b45309;
     --color-critical: #be123c;
+    --color-critical-soft: #be123c;
     --color-info: #1d4ed8;
     --color-warning: #c2410c;
 
@@ -355,23 +371,30 @@
     --color-slate-900: #0f172a;
     --color-slate-950: #020617;
 
-    --color-surface-0: #080b12;
-    --color-surface-1: #0e1320;
-    --color-surface-2: #161d2e;
-    --color-surface-3: #1e2637;
-    --color-hairline: #232c40;
-    --color-hairline-strong: #33405a;
-    --color-accent: #f5b83d;
-    --color-accent-dim: #d99b26;
-    --color-positive: #34d399;
-    --color-caution: #fbbf24;
-    --color-critical: #fb7185;
+    --color-surface-lowest: #060e20;
+    --color-surface-0: #0b1326;
+    --color-surface-1: #131b2e;
+    --color-surface-2: #171f33;
+    --color-surface-3: #222a3d;
+    --color-surface-bright: #31394d;
+    --color-hairline: #232d45;
+    --color-hairline-strong: #313d57;
+    --color-on-surface: #dae2fd;
+    --color-on-surface-variant: #b8c2db;
+    --color-accent: #ffc174;
+    --color-accent-dim: #f59e0b;
+    --color-on-accent: #472a00;
+    --color-positive: #4edea3;
+    --color-positive-dim: #00a572;
+    --color-caution: #ffc174;
+    --color-critical: #ff919a;
+    --color-critical-soft: #ffbbbe;
     --color-info: #60a5fa;
     --color-warning: #fb923c;
 
     --btn-primary-bg: var(--color-accent);
-    --btn-primary-bg-hover: color-mix(in srgb, var(--color-accent) 78%, white);
-    --btn-primary-fg: #17130a;
+    --btn-primary-bg-hover: color-mix(in srgb, var(--color-accent) 82%, white);
+    --btn-primary-fg: var(--color-on-accent);
     --btn-danger-bg: #e11d48;
     --btn-danger-bg-hover: #f43f5e;
     --btn-danger-fg: #fff1f2;
@@ -475,15 +498,30 @@
   */
   .material-bar {
 
-    background-color: var(--color-surface-0);
-    background-color: color-mix(in srgb, var(--color-surface-0) 82%, transparent);
+    background-color: var(--color-surface-1);
+    background-color: color-mix(in srgb, var(--color-surface-1) 88%, transparent);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     border-bottom: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-sm);
   }
   @supports not (backdrop-filter: blur(1px)) {
 
-    .material-bar { background-color: var(--color-surface-0); }
+    .material-bar { background-color: var(--color-surface-1); }
+  }
+
+  .material-bottom-bar {
+
+    background-color: var(--color-surface-1);
+    background-color: color-mix(in srgb, var(--color-surface-1) 92%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid var(--color-hairline);
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 0.25);
+  }
+  @supports not (backdrop-filter: blur(1px)) {
+
+    .material-bottom-bar { background-color: var(--color-surface-1); }
   }
 
   /* --- Form field -------------------------------------------------------
@@ -533,14 +571,16 @@
       color 140ms var(--ease-out-quint);
   }
   .segmented-item:hover { color: var(--color-slate-100); }
-  .segmented-item[aria-current='true'] {
+  .segmented-item[aria-current='true'],
+  .segmented-item[aria-pressed='true'] {
 
     background-color: var(--color-accent);
     color: #131313;
     font-weight: 700;
     box-shadow: var(--shadow-sm);
   }
-  [data-theme='light']:not([data-force-dark]):not([data-mode='beamer']) .segmented-item[aria-current='true'] { color: #ffffff; }
+  [data-theme='light']:not([data-force-dark]):not([data-mode='beamer']) .segmented-item[aria-current='true'],
+.segmented-item[aria-pressed='true'] { color: #ffffff; }
 
   /* Square icon-only button in the header (44px target). */
   .icon-button {
@@ -636,6 +676,32 @@
   /* Width-only bar for elements that keep their own height (pyramid levels):
      size comes from the --meter-value custom property. */
   .bar-w { width: var(--meter-value, 100%); }
+
+  /* --- Heatmap -----------------------------------------------------------
+     Cell intensity arrives as the --heat custom property (0..1); the color is
+     a mix from the empty surface up to the critical color. */
+  .heat-cell {
+
+    --heat: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-hairline);
+    background: color-mix(in srgb, var(--color-critical) calc(var(--heat) * 100%), var(--color-surface-0));
+    color: var(--color-slate-300);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    transition: transform 120ms var(--ease-out-quint);
+  }
+  .heat-cell:hover { transform: scale(1.1); }
+  .heat-cell[data-hot] { color: #131313; font-weight: 800; }
+  .heat-legend {
+
+    background: linear-gradient(90deg, var(--color-surface-0), var(--color-critical));
+  }
 }
 
 /* ==========================================================================
@@ -697,6 +763,7 @@
    or the user's reduce-motion preference forbids it).
 */
 .vt-panel { view-transition-name: main-panel; }
+.vt-stats { view-transition-name: stats-panel; }
 
 ::view-transition-old(main-panel),
 ::view-transition-new(main-panel) {

@@ -370,7 +370,8 @@ describe('Schulalltag per-subject panel, red card modal, and configured rubric',
     renderSchulalltag([pupilWithPendingD(1, 'Anna Mixed')]);
 
     const row = (await screen.findByText('Anna Mixed')).closest<HTMLElement>('div.cursor-pointer')!;
-    await userEvent.click(within(row).getByRole('button', { name: /Rot/i }));
+    await userEvent.click(row);
+    await userEvent.click(screen.getByRole('button', { name: /^Rot$/i }));
 
     // Step 1 warning mirrors the real demotion: M Meister -> Geselle, not a fabricated Lehrling
     expect(screen.getByText(/M: Meister/i)).toBeInTheDocument();
@@ -414,8 +415,9 @@ describe('Schulalltag retroactive Time-Out', () => {
     renderSchulalltag([anna]);
 
     const row = (await screen.findByText('Anna Retro')).closest<HTMLElement>('div.cursor-pointer')!;
+    await userEvent.click(row);
     await userEvent.click(
-      within(row).getByTitle(/Ins Time-Out \(Lernwerkstatt\) schicken/),
+      screen.getByTitle(/Ins Time-Out \(Lernwerkstatt\) schicken/),
     );
 
     await userEvent.click(
@@ -848,5 +850,74 @@ describe('Schulalltag retroactive card note editing', () => {
 
     expect(api.updateCardNote).not.toHaveBeenCalled();
     expect(await screen.findByText(/Begründung \/ Vorfallsbeschreibung zwingend erforderlich/i)).toBeInTheDocument();
+  });
+});
+
+describe('Schulalltag streamlined rows and quick filters', () => {
+  it('shows only non-zero badges when collapsed and reveals escalation actions on expand', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      {
+        id: 'y1',
+        pupil_id: 2,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'yellow',
+        note: 'Störung',
+        created_at: '2026-11-17T08:00:00Z',
+      },
+    ] as any);
+
+    renderSchulalltag([
+      pupil(1, 'David Eder'),
+      pupil(2, 'Jonas Maier'),
+    ]);
+
+    const davidRow = (await screen.findByText('David Eder')).closest<HTMLElement>('div.cursor-pointer')!;
+    const jonasRow = (await screen.findByText('Jonas Maier')).closest<HTMLElement>('div.cursor-pointer')!;
+
+    expect(within(davidRow).getByText('unauffällig')).toBeInTheDocument();
+    expect(within(jonasRow).getByText('1× Gelb')).toBeInTheDocument();
+    expect(within(jonasRow).queryByText('0× Rot')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Cool-Down$/i })).toBeNull();
+
+    await userEvent.click(jonasRow);
+
+    expect(screen.getByRole('button', { name: /^Rot$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Time-Out$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Cool-Down$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Profil$/i })).toBeInTheDocument();
+  });
+
+  it('filters to flagged pupils when clicking the Auffällig chip', async () => {
+    const api = await import('../services/api');
+    vi.mocked(api.getClassCards).mockResolvedValueOnce([
+      {
+        id: 'y1',
+        pupil_id: 2,
+        class_id: CLASS_ID,
+        teacher_id: 1,
+        teacher_short: 'TST',
+        teacher_name: 'Test',
+        card_type: 'yellow',
+        note: 'Hinweis',
+        created_at: '2026-11-17T08:00:00Z',
+      },
+    ] as any);
+
+    renderSchulalltag([
+      pupil(1, 'David Clean'),
+      pupil(2, 'Jonas Flagged'),
+    ]);
+
+    await screen.findByText('David Clean');
+    await screen.findByText('1× Gelb');
+
+    await userEvent.click(screen.getByRole('button', { name: /Auffällig/i }));
+
+    expect(screen.queryByText('David Clean')).toBeNull();
+    expect(screen.getByText('Jonas Flagged')).toBeInTheDocument();
   });
 });
